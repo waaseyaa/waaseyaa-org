@@ -3,6 +3,23 @@
 {% block title %}Waaseyaa: sovereign content platforms, readable by humans and agents alike{% endblock %}
 
 {% block head %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Waaseyaa",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Linux, macOS, Windows",
+  "programmingLanguage": "PHP",
+  "softwareVersion": "{{ framework_version|default('alpha') }}",
+  "releaseNotes": "Alpha. In production at First Nations Procurement Inc.",
+  "license": "https://spdx.org/licenses/GPL-2.0-or-later.html",
+  "downloadUrl": "https://packagist.org/packages/waaseyaa/framework",
+  "codeRepository": "https://github.com/waaseyaa/framework",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "description": "Waaseyaa is a sovereignty-first, entity-first PHP framework for content platforms readable by humans and agents alike."
+}
+</script>
 <link rel="stylesheet" href="/workspace/assets/workspace-chat.css">
 <style>
   /* Theme the shared chat surface with the site tokens. */

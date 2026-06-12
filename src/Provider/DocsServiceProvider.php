@@ -76,6 +76,16 @@ final class DocsServiceProvider extends ServiceProvider
                 ->build(),
         );
 
+        $sitemap = new \App\Controller\SitemapController($corpus, $urls);
+        $router->addRoute(
+            'sitemap.xml',
+            RouteBuilder::create('/sitemap.xml')
+                ->controller(fn () => $sitemap->serve())
+                ->allowAll()
+                ->methods('GET')
+                ->build(),
+        );
+
         $router->addRoute(
             'llms.txt',
             RouteBuilder::create('/llms.txt')

@@ -5,13 +5,26 @@
 
 {% block nav %}
   <a href="/docs" aria-current="page">Docs</a>
+  <a href="/why">Why Waaseyaa</a>
+  <a href="/compare">Compare</a>
   <a href="https://github.com/waaseyaa/framework">GitHub</a>
-  <a href="https://packagist.org/packages/waaseyaa/framework">Packagist</a>
 {% endblock %}
 
 {% block head %}
   <link rel="canonical" href="{{ canonical_url }}">
   <link rel="alternate" type="text/markdown" href="{{ markdown_url }}">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": {{ title|json_encode|raw }},
+    "url": {{ canonical_url|json_encode|raw }},
+    "version": {{ framework_version|default('unknown')|json_encode|raw }},
+    "about": "Waaseyaa framework specification",
+    "isPartOf": { "@type": "WebSite", "name": "Waaseyaa", "url": "/" },
+    "license": "https://spdx.org/licenses/GPL-2.0-or-later.html"
+  }
+  </script>
 {% endblock %}
 
 {% block content %}

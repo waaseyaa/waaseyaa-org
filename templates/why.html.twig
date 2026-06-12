@@ -1,0 +1,51 @@
+{% extends "base.html.twig" %}
+
+{% block title %}Why Waaseyaa: data sovereignty as architecture{% endblock %}
+{% block description %}Waaseyaa exists so that Nations and organizations can run content platforms on infrastructure they own, with OCAP-aligned access and audit built into the framework core.{% endblock %}
+
+{% block nav %}
+  <a href="/docs">Docs</a>
+  <a href="/why" aria-current="page">Why Waaseyaa</a>
+  <a href="/compare">Compare</a>
+  <a href="https://github.com/waaseyaa/framework">GitHub</a>
+{% endblock %}
+
+{% block head %}
+<link rel="canonical" href="{{ canonical_base }}/why">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Why Waaseyaa: data sovereignty as architecture",
+  "url": "{{ canonical_base }}/why",
+  "about": "Indigenous data sovereignty, OCAP principles, and the Waaseyaa PHP framework",
+  "isPartOf": { "@type": "WebSite", "name": "Waaseyaa", "url": "{{ canonical_base }}/" }
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<main class="page">
+  <h1>Why Waaseyaa</h1>
+
+  <p>Most content platforms answer "where does the data live?" with someone else's cloud and "who can see it?" with a configuration page. For First Nations and the organizations that work with them, those are not configuration details. They are questions of jurisdiction.</p>
+
+  <h2>OCAP as architecture, not policy</h2>
+  <p>The First Nations principles of OCAP (ownership, control, access, and possession, a registered trademark of the First Nations Information Governance Centre) say that Nations own their information, control how it is used, govern access to it, and can physically possess it. Waaseyaa's position is that a framework should make those properties structural:</p>
+  <ul class="why-list">
+    <li><strong>Possession.</strong> One PHP process and a SQLite file by default. The reference deployment is a Raspberry Pi a Nation can hold in one hand, not a managed cloud. See <a href="/docs/specs/infrastructure">infrastructure.md</a>.</li>
+    <li><strong>Access.</strong> Entity access is deny-unless-granted: nothing is readable until a policy says so. Field-level policies restrict further. See <a href="/docs/specs/access-control">access-control.md</a> and <a href="/docs/specs/field-access">field-access.md</a>.</li>
+    <li><strong>Control.</strong> Who saw what, when, is a framework concern: the OCAP audit log is append-only in core, enforced at the database layer, not an optional plugin. See <a href="/docs/specs/ocap-audit-log">ocap-audit-log.md</a>.</li>
+    <li><strong>Ownership.</strong> GPL-2.0 licensed and installable from Packagist; the application graph is introspectable by its owner. See <a href="/docs/specs/bimaaji">bimaaji.md</a>.</li>
+  </ul>
+
+  <h2>Running code, stated plainly</h2>
+  <p>Waaseyaa is alpha software. Its APIs still change between releases, and the <a href="/docs/specs/stability-charter">stability charter</a> says exactly which surfaces are protected. It is also in production: First Nations Procurement Inc. runs <a href="https://fnprocure.ca">fnprocure.ca</a> and its internal workspace on Waaseyaa, and <a href="https://oiatc.ca">oiatc.ca</a> is served by a Waaseyaa application from a Raspberry Pi. This site is a Waaseyaa application too, built from the same blocks.</p>
+
+  <h2>Spec-driven inside, agent-readable outside</h2>
+  <p>Every framework subsystem is governed by a written spec in the repository, and those specs gate review and CI. The docs on this site are that corpus, published nearly verbatim with provenance, because the honest source of truth is the one the framework itself is built against. Agents get the same corpus as Markdown and over MCP; what the docs assistant on the homepage can do, your own agent can do. See <a href="/docs/specs/workflow">workflow.md</a> and <a href="/docs/specs/mcp-endpoint">mcp-endpoint.md</a>.</p>
+
+  <h2>What Waaseyaa is not</h2>
+  <p>It is not a Drupal fork and not a Laravel application: it is a Symfony 7 based, entity-first framework with its own seven-layer architecture. It is not finished, and the <a href="/compare">comparison page</a> is open about the gaps. It is not a movement looking for believers; it is a working codebase looking for the people whose problems it was built to solve.</p>
+</main>
+{% endblock %}

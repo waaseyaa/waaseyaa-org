@@ -1,0 +1,130 @@
+{% extends "base.html.twig" %}
+
+{% block title %}Waaseyaa vs Drupal vs Laravel for sovereign content platforms{% endblock %}
+{% block description %}A factual comparison of Waaseyaa, Drupal 11, and Laravel for building sovereign content platforms: entities, revisions, access control, audit, agent readiness, and honest gaps.{% endblock %}
+
+{% block nav %}
+  <a href="/docs">Docs</a>
+  <a href="/why">Why Waaseyaa</a>
+  <a href="/compare" aria-current="page">Compare</a>
+  <a href="https://github.com/waaseyaa/framework">GitHub</a>
+{% endblock %}
+
+{% block head %}
+<link rel="canonical" href="{{ canonical_base }}/compare">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Is Waaseyaa a Drupal fork?",
+      "acceptedAnswer": { "@type": "Answer", "text": "No. Waaseyaa is a Symfony 7 based, entity-first PHP framework with its own seven-layer architecture. It replaces the role Drupal plays for content platforms without sharing any of Drupal's runtime or code." }
+    },
+    {
+      "@type": "Question",
+      "name": "Is Waaseyaa production-ready?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Waaseyaa is alpha. APIs can change between releases within the bounds of its stability charter. It runs in production at First Nations Procurement Inc. and serves oiatc.ca from a Raspberry Pi." }
+    },
+    {
+      "@type": "Question",
+      "name": "When is Drupal or Laravel the better choice?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Choose Drupal when you need admin-composable listings (Views), a mature module ecosystem, and a stable platform today. Choose Laravel when you are building a general web application rather than a content platform. Choose Waaseyaa when data sovereignty, typed revisionable entities, an append-only audit log, and agent readability are the requirements and alpha-stage APIs are acceptable."
+      }
+    }
+  ]
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<main class="page page-compare">
+  <h1>Waaseyaa, Drupal, Laravel</h1>
+  <p>For one job: a sovereign content platform, meaning typed content with revisions and translations, strict access control, an audit trail the owner can trust, on infrastructure the owner can possess. Stated factually, including where Waaseyaa is behind. Reference versions: Waaseyaa {{ framework_version|default('alpha') }}, Drupal 11, Laravel 12.</p>
+
+  <table class="cmp">
+    <thead>
+      <tr><th>Dimension</th><th>Waaseyaa</th><th>Drupal 11</th><th>Laravel 12</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <th>What it is</th>
+        <td>Entity-first PHP framework for content platforms (Symfony 7 components)</td>
+        <td>Mature general-purpose CMS</td>
+        <td>General-purpose web framework</td>
+      </tr>
+      <tr>
+        <th>Stage</th>
+        <td>Alpha; in production at FNPI and on oiatc.ca</td>
+        <td>Stable; 20+ years of releases</td>
+        <td>Stable; yearly major releases</td>
+      </tr>
+      <tr>
+        <th>Content entities, revisions, translations</th>
+        <td>In core: typed entities, two-axis revisionable and translatable storage (<a href="/docs/specs/revision-system-unified">revision-system-unified.md</a>)</td>
+        <td>In core, mature</td>
+        <td>Not in core; Eloquent models plus community packages</td>
+      </tr>
+      <tr>
+        <th>Access control</th>
+        <td>Deny-unless-granted entity policies plus field-level policies in core (<a href="/docs/specs/access-control">access-control.md</a>)</td>
+        <td>Permission and hook based, mature; field access in core</td>
+        <td>Gates and policies; semantics are app-defined</td>
+      </tr>
+      <tr>
+        <th>Audit / data governance</th>
+        <td>Append-only OCAP audit log in core, enforced at the database layer (<a href="/docs/specs/ocap-audit-log">ocap-audit-log.md</a>)</td>
+        <td>Revision log and contrib modules; no append-only audit log in core</td>
+        <td>Not in core; packages or app code</td>
+      </tr>
+      <tr>
+        <th>Agent readiness</th>
+        <td>MCP endpoint, typed agent tools, application-graph introspection, and agent skill packs shipped by the framework (<a href="/docs/specs/mcp-endpoint">mcp-endpoint.md</a>, <a href="/docs/specs/bimaaji-install">bimaaji-install.md</a>)</td>
+        <td>JSON:API in core; MCP via contrib</td>
+        <td>Laravel Boost provides an MCP server and version-pinned docs</td>
+      </tr>
+      <tr>
+        <th>Smallest honest deployment</th>
+        <td>One PHP process, SQLite file; runs on a Raspberry Pi (<a href="/docs/specs/infrastructure">infrastructure.md</a>)</td>
+        <td>PHP + MySQL/PostgreSQL stack</td>
+        <td>One PHP process, SQLite supported</td>
+      </tr>
+      <tr>
+        <th>Admin-composable listings (Views)</th>
+        <td>None. Listings are controllers plus templates today; this is Waaseyaa's largest gap against Drupal (<a href="/docs/specs/drupal-comparison-matrix">drupal-comparison-matrix.md</a>)</td>
+        <td>Views in core; the strongest site-building feature in the field</td>
+        <td>None in core</td>
+      </tr>
+      <tr>
+        <th>Admin UI</th>
+        <td>Nuxt 3 admin SPA, alpha (<a href="/docs/specs/admin-spa">admin-spa.md</a>)</td>
+        <td>Mature core admin UI</td>
+        <td>None in core; Nova (commercial), Filament (community)</td>
+      </tr>
+      <tr>
+        <th>Ecosystem size</th>
+        <td>Small: one team, a spec corpus, a handful of production apps</td>
+        <td>Tens of thousands of contrib modules</td>
+        <td>The largest PHP package ecosystem</td>
+      </tr>
+      <tr>
+        <th>License</th>
+        <td>GPL-2.0-or-later</td>
+        <td>GPL-2.0-or-later</td>
+        <td>MIT</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Frequently asked</h2>
+  <h3>Is Waaseyaa a Drupal fork?</h3>
+  <p>No. It is a Symfony 7 based, entity-first framework with its own seven-layer architecture and none of Drupal's runtime or code. The framework keeps a public <a href="/docs/specs/drupal-comparison-matrix">comparison matrix against Drupal</a> precisely so the gaps stay named.</p>
+
+  <h3>Is Waaseyaa production-ready?</h3>
+  <p>It is alpha, and says so. APIs change between releases within the bounds of the <a href="/docs/specs/stability-charter">stability charter</a>. It runs in production at First Nations Procurement Inc. and serves oiatc.ca from a Raspberry Pi.</p>
+
+  <h3>When is Drupal or Laravel the better choice?</h3>
+  <p>Choose Drupal when you need admin-composable listings, a mature contrib ecosystem, and a platform that is stable today. Choose Laravel when you are building a general web application rather than a content platform. Choose Waaseyaa when the requirements are data sovereignty, typed revisionable content, an append-only audit trail, and agent readability, and alpha-stage APIs are acceptable.</p>
+</main>
+{% endblock %}

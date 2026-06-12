@@ -277,6 +277,18 @@ a { color: inherit; }
 .spec-body a { color: var(--teal-700); }
 .spec-body blockquote { border-left: 3px solid var(--card-line); padding-left: 14px; margin: 0 0 12px; color: var(--muted); }
 
+/* Why / Compare pages */
+.why-list { list-style: none; margin: 8px 0 16px; }
+.why-list li { font-size: 14.5px; line-height: 1.7; color: var(--ink-soft); padding: 10px 0; border-bottom: 1px solid var(--line); }
+.why-list a, .page a { color: var(--teal-700); }
+.page-compare { max-width: 980px; }
+.cmp { border-collapse: collapse; width: 100%; margin: 18px 0 26px; display: block; overflow-x: auto; }
+.cmp th, .cmp td { border: 1px solid var(--card-line); padding: 9px 12px; font-size: 13.5px; line-height: 1.55; text-align: left; vertical-align: top; color: var(--ink-soft); min-width: 130px; }
+.cmp thead th { background: var(--wash); font-weight: 600; color: var(--ink); }
+.cmp tbody th { background: var(--chat-bg); font-weight: 600; color: var(--ink); }
+.cmp td:nth-child(2) { background: #fbfefd; }
+.page h3 { font-size: 16px; margin: 18px 0 4px; }
+
 /* Footer */
 .foot {
   border-top: 1px solid var(--line);
