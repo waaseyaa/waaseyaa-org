@@ -2,6 +2,27 @@
 
 {% block title %}Waaseyaa: sovereign content platforms, readable by humans and agents alike{% endblock %}
 
+{% block head %}
+<link rel="stylesheet" href="/workspace/assets/workspace-chat.css">
+<style>
+  /* Theme the shared chat surface with the site tokens. */
+  [data-ws-chat] {
+    --ws-accent: #0f766e;
+    --ws-accent-strong: #0d4f4f;
+    --ws-accent-soft: #e4f4f1;
+    --ws-ink: #0c1f1d;
+    --ws-muted: #46615d;
+    --ws-line: #d4e6e2;
+    --ws-bg: #f4faf8;
+    --ws-user-bubble: #07211e;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <main>
 
@@ -35,18 +56,17 @@
   <section class="surface">
     <div class="chat">
       <div class="chat-h">Ask the docs &middot; answers cite the specs</div>
-      <div class="msgs">
-        <div class="ans">This assistant answers from the framework's spec corpus and cites the spec behind every answer. It is not wired up yet; it arrives with the docs chat milestone.</div>
-      </div>
-      <div class="sugg">
-        <span>How do I add an entity type?</span>
-        <span>What is Bimaaji?</span>
-        <span>Why OCAP-first?</span>
-      </div>
-      <div class="inp idle"><input type="text" placeholder="Chat lands with the docs corpus" disabled></div>
+      {% include 'workspace/chat-panel.html.twig' with { chat: {
+        title: 'Docs assistant',
+        subtitle: 'Grounded on the spec corpus',
+        avatar: 'W',
+        placeholder: 'Ask about the framework...',
+        intro: 'I answer from the framework spec corpus and cite the spec behind every answer. The same corpus is on /docs, as Markdown, and over MCP.',
+        chips: ['How do I add an entity type?', 'What is Bimaaji?', 'How does the OCAP audit log work?'],
+      } } only %}
     </div>
     <div class="doc" id="doc">
-      <div class="crumb"><span>docs / specs / entity-system.md</span>
+      <div class="crumb"><span><a href="/docs/specs/entity-system">docs / specs / entity-system.md</a></span>
         <div class="raw" data-toggle hidden><button type="button" class="on" data-view="html">HTML</button><button type="button" data-view="md">Markdown</button></div>
       </div>
       <div class="htmlview">
@@ -92,20 +112,38 @@ schema time.</div>
 {% endblock %}
 
 {% block scripts %}
+<script src="/workspace/assets/workspace-md.js"></script>
+<script src="/workspace/assets/workspace-chat.js"></script>
 <script>
 (function () {
   var doc = document.getElementById('doc');
   var bar = doc ? doc.querySelector('[data-toggle]') : null;
-  if (!bar) return;
-  bar.hidden = false;
-  bar.addEventListener('click', function (e) {
-    var btn = e.target.closest('button[data-view]');
-    if (!btn) return;
-    doc.classList.toggle('rawmode', btn.dataset.view === 'md');
-    bar.querySelectorAll('button').forEach(function (b) {
-      b.classList.toggle('on', b === btn);
+  if (bar) {
+    bar.hidden = false;
+    bar.addEventListener('click', function (e) {
+      var btn = e.target.closest('button[data-view]');
+      if (!btn) return;
+      doc.classList.toggle('rawmode', btn.dataset.view === 'md');
+      bar.querySelectorAll('button').forEach(function (b) {
+        b.classList.toggle('on', b === btn);
+      });
     });
-  });
+  }
+
+  if (window.WaaseyaaChat) {
+    WaaseyaaChat.mount(document.querySelector('[data-ws-chat]'), {
+      endpoints: {
+        send: '/docs-chat/send',
+        apply: '/docs-chat/send',
+        messages: function (id) { return '/docs-chat/' + id + '/messages'; }
+      },
+      thread: { key: 'ws.chat.docs.pub', initial: 0 },
+      user: { id: 0, label: 'You' },
+      limit: 500,
+      chips: ['How do I add an entity type?', 'What is Bimaaji?', 'How does the OCAP audit log work?'],
+      avatars: { user: 'YOU', ai: 'W' }
+    });
+  }
 })();
 </script>
 {% endblock %}

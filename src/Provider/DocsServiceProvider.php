@@ -4,6 +4,12 @@ declare(strict_types=1);
 
 namespace App\Provider;
 
+use App\Chat\ChatPrompt;
+use App\Chat\ChatSchema;
+use App\Chat\ConversationStore;
+use App\Chat\DocsRetriever;
+use App\Chat\ExtractiveAnswerer;
+use App\Controller\DocsChatController;
 use App\Controller\DocsController;
 use App\Controller\LlmsTxtController;
 use App\Docs\SpecCorpus;
@@ -30,7 +36,19 @@ use Waaseyaa\Routing\WaaseyaaRouter;
  */
 final class DocsServiceProvider extends ServiceProvider
 {
+    public const string CHAT_MODEL = 'claude-sonnet-4-6';
+
     public function register(): void {}
+
+    public function boot(): void
+    {
+        // Best effort: the chat tables exist before the first request needs
+        // them; a bare bootstrap (tests, CLI without a DB) skips silently.
+        try {
+            new ChatSchema(\App\Support\Db::persistent())->ensure();
+        } catch (\Throwable) {
+        }
+    }
 
     public function routes(WaaseyaaRouter $router, ?\Waaseyaa\Entity\EntityTypeManager $entityTypeManager = null): void
     {
@@ -91,6 +109,38 @@ final class DocsServiceProvider extends ServiceProvider
                 ->allowAll()
                 ->methods('POST', 'GET')
                 ->csrfExempt()
+                ->build(),
+        );
+
+        // Docs chat: grounded on the same corpus and search engine as the
+        // MCP tools. Anthropic when a key is configured; honest extractive
+        // quotes otherwise.
+        $anthropicKey = getenv('ANTHROPIC_API_KEY') ?: '';
+        $chat = new DocsChatController(
+            retriever: new DocsRetriever($corpus, new SpecSearch($corpus), $urls),
+            prompts: new ChatPrompt(),
+            extractive: new ExtractiveAnswerer(),
+            conversations: new ConversationStore(\App\Support\Db::persistent()),
+            urls: $urls,
+            provider: $anthropicKey !== '' ? new \Waaseyaa\AI\Agent\Provider\AnthropicProvider($anthropicKey, self::CHAT_MODEL) : null,
+        );
+
+        $router->addRoute(
+            'docs.chat.send',
+            RouteBuilder::create('/docs-chat/send')
+                ->controller(fn (Request $request) => $chat->send($request))
+                ->allowAll()
+                ->methods('POST')
+                ->csrfExempt()
+                ->build(),
+        );
+
+        $router->addRoute(
+            'docs.chat.messages',
+            RouteBuilder::create('/docs-chat/{id}/messages')
+                ->controller(fn (Request $request, string $id) => $chat->messages($request, $id))
+                ->allowAll()
+                ->methods('GET')
                 ->build(),
         );
 
