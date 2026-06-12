@@ -1,169 +1,111 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Waaseyaa</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;1,400&family=Noto+Sans:wght@300;400&family=Noto+Sans+SC:wght@300&family=Noto+Sans+JP:wght@300&family=Noto+Sans+KR:wght@300&family=Noto+Sans+Thai:wght@300&family=Noto+Sans+Devanagari:wght@300&family=Noto+Sans+Arabic:wght@300&family=Noto+Sans+Hebrew:wght@300&family=Noto+Sans+Bengali:wght@300&family=Noto+Sans+Tamil:wght@300&family=Noto+Sans+Kannada:wght@300&family=Noto+Sans+Georgian:wght@300&family=Noto+Sans+Armenian:wght@300&family=Noto+Sans+Khmer:wght@300&family=Noto+Sans+Lao:wght@300&family=Noto+Sans+Myanmar:wght@300&display=swap" rel="stylesheet">
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+{% extends "base.html.twig" %}
 
-    body {
-      font-family: 'Inter', 'Noto Sans', 'Noto Sans SC', 'Noto Sans JP', 'Noto Sans KR', 'Noto Sans Thai', 'Noto Sans Devanagari', 'Noto Sans Arabic', 'Noto Sans Hebrew', 'Noto Sans Bengali', 'Noto Sans Tamil', 'Noto Sans Kannada', 'Noto Sans Georgian', 'Noto Sans Armenian', 'Noto Sans Khmer', 'Noto Sans Lao', 'Noto Sans Myanmar', sans-serif;
-      background: #0a0a0a;
-      color: #fafafa;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      -webkit-font-smoothing: antialiased;
-    }
+{% block title %}Waaseyaa: sovereign content platforms, readable by humans and agents alike{% endblock %}
 
-    main {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      flex: 1;
-      width: 100%;
-      padding: 0 24px;
-    }
+{% block content %}
+<main>
 
-    .greeting {
-      font-size: clamp(3rem, 8vw, 6rem);
-      font-weight: 300;
-      letter-spacing: -0.02em;
-      line-height: 1.3;
-      text-align: center;
-      margin-bottom: 32px;
-      min-height: 1.3em;
-      opacity: 1;
-      transition: opacity 0.6s ease-in-out;
-    }
+  <section class="hero">
+    <h1>Sovereign content platforms,<br><em>readable by humans and agents alike.</em></h1>
+    <p class="lede">Spec-driven inside, agent-readable outside. One docs corpus, three renderings: HTML pages, clean Markdown at the same URLs, and an MCP server your agent can call.</p>
+    <p class="stage">{{ framework_version|default('alpha') }} &middot; alpha &middot; in production at First Nations Procurement Inc.</p>
+  </section>
 
-    .greeting.fade-out {
-      opacity: 0;
-    }
+  <section class="installs">
+    <div class="card">
+      <h3>For you</h3>
+      <div class="cmd">$ composer create-project waaseyaa/waaseyaa my-app --stability=dev</div>
+      <p>PHP 8.5, SQLite by default, one process. Runs in production on a Raspberry Pi.</p>
+    </div>
+    <div class="card">
+      <h3>For your AI client</h3>
+      <div class="cmd">$ vendor/bin/waaseyaa bimaaji:install</div>
+      <p>Framework guidelines and skills for Claude Code, Cursor, Copilot, Codex, Gemini, Windsurf, and Junie, installed from the framework itself.</p>
+    </div>
+  </section>
 
-    .greeting[dir="rtl"] {
-      direction: rtl;
-      unicode-bidi: bidi-override;
-    }
+  <section class="proof">
+    <div>7 enforced layers</div>
+    <div>Spec-driven, natively</div>
+    <div>OCAP audit log in core</div>
+    <div>CI-gated conventions</div>
+    <div>Production on a Raspberry Pi</div>
+  </section>
 
-    .tagline {
-      font-size: 0.95rem;
-      font-weight: 400;
-      font-style: italic;
-      color: #525252;
-      letter-spacing: 0.04em;
-      margin-bottom: 20px;
-    }
+  <section class="surface">
+    <div class="chat">
+      <div class="chat-h">Ask the docs &middot; answers cite the specs</div>
+      <div class="msgs">
+        <div class="ans">This assistant answers from the framework's spec corpus and cites the spec behind every answer. It is not wired up yet; it arrives with the docs chat milestone.</div>
+      </div>
+      <div class="sugg">
+        <span>How do I add an entity type?</span>
+        <span>What is Bimaaji?</span>
+        <span>Why OCAP-first?</span>
+      </div>
+      <div class="inp idle"><input type="text" placeholder="Chat lands with the docs corpus" disabled></div>
+    </div>
+    <div class="doc" id="doc">
+      <div class="crumb"><span>docs / specs / entity-system.md</span>
+        <div class="raw" data-toggle hidden><button type="button" class="on" data-view="html">HTML</button><button type="button" data-view="md">Markdown</button></div>
+      </div>
+      <div class="htmlview">
+        <h1>Entity system</h1>
+        <p class="lede">Every piece of content is a typed, revisionable, access-controlled entity. The docs pages on this site are served from the same spec corpus your agent can query.</p>
+        <div class="code">
+<span class="k">new</span> <span class="t">EntityType</span>(<br>
+&nbsp;&nbsp;id: <span class="s">'story'</span>,<br>
+&nbsp;&nbsp;label: <span class="s">'Story'</span>,<br>
+&nbsp;&nbsp;class: <span class="t">Story</span>::class,<br>
+&nbsp;&nbsp;storageClass: <span class="t">SqlEntityStorage</span>::class,<br>
+&nbsp;&nbsp;keys: [<span class="s">'id'</span> =&gt; <span class="s">'id'</span>, <span class="s">'label'</span> =&gt; <span class="s">'title'</span>],<br>
+&nbsp;&nbsp;revisionable: <span class="k">true</span>,<br>
+);</div>
+        <h2>Two-axis storage</h2>
+        <p>Revisionable and translatable are independent axes, resolved at schema time. The same pipeline serves this website and a Nation's member portal.</p>
+      </div>
+      <div class="md"># Entity system
 
-    .nav {
-      display: flex;
-      gap: 32px;
-    }
+Every piece of content is a typed, revisionable, access-controlled
+entity. The docs pages on this site are served from the same spec
+corpus your agent can query.
 
-    .nav a {
-      color: #525252;
-      text-decoration: none;
-      font-size: 0.85rem;
-      font-weight: 400;
-      letter-spacing: 0.02em;
-      transition: color 0.2s ease;
-    }
+```php
+new EntityType(
+    id: 'story',
+    label: 'Story',
+    class: Story::class,
+    storageClass: SqlEntityStorage::class,
+    keys: ['id' => 'id', 'label' => 'title'],
+    revisionable: true,
+);
+```
 
-    .nav a:hover {
-      color: #fafafa;
-    }
+## Two-axis storage
 
-    footer {
-      padding: 24px;
-      text-align: center;
-    }
+Revisionable and translatable are independent axes, resolved at
+schema time.</div>
+    </div>
+  </section>
 
-    footer p {
-      font-size: 0.75rem;
-      color: #333;
-    }
+</main>
+{% endblock %}
 
-    footer code {
-      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-      font-size: 0.7rem;
-      color: #444;
-    }
-
-    @media (max-width: 480px) {
-      .nav { gap: 20px; }
-      .tagline { font-size: 0.85rem; margin-bottom: 36px; }
-    }
-  </style>
-</head>
-<body>
-
-  <main>
-      <div class="greeting" id="greeting"
-        data-greetings="Ahnii,Hello,Bonjour,Hola,你好,こんにちは,안녕하세요,नमस्ते,สวัสดี,Xin chào,مرحبا,שלום,سلام,Привет,Вітаю,Cześć,Ahoj,Hej,Hei,Moi,Halló,Γεια σου,Merhaba,Sawubona,Habari,Jambo,Salama,Aloha,Kia ora,Bula,Talofa,Hallo,Olá,Ciao,Salut,Здраво,Здравей,Sveiki,Labas,Tere,Szia,Kamusta,Selamat,ស្វស្តី,ສະບາຍດີ,မင်္ဂလာပါ,Osiyo,Hau,Yá'át'ééh,Tânsi,Kwey,Barka,Sannu,Ẹ kú,Kedu,Dumela,Salibonani,Mhoro,Mbote,Muraho,Ayubowan,Vanakkam,Namaskāra,Namaskar,নমস্কার,Sat Srī Akāl,Assalamu Alaikum,Salom,Salam,Barev,Gamarjoba,Përshëndetje,Mirëdita,Saluton,Dia duit,Helo,Demat,Bonghjornu,Saħħa,Tēnā koe,Bok,Živjo,Dobry den,Kaixo,Agur"
-        data-rtl="مرحبا,שלום,سلام,Assalamu Alaikum,اسلام علیکم"
-      >Ahnii</div>
-
-    <p class="tagline">Waaseyaa</p>
-
-    <nav class="nav">
-      <a href="/admin">Admin</a>
-      <a href="/api">API</a>
-      <a href="https://github.com/waaseyaa/framework">Docs</a>
-    </nav>
-  </main>
-
-  <footer>
-    <p>Edit <code>templates/home.html.twig</code> to replace this page</p>
-  </footer>
-
-  <script>
-    (function () {
-      var el = document.getElementById('greeting');
-      if (!el) return;
-
-      var all = el.getAttribute('data-greetings').split(',');
-      var rtlSet = new Set((el.getAttribute('data-rtl') || '').split(','));
-      var first = all[0];
-      var rest = all.slice(1);
-      var queue = shuffle(rest.slice());
-      var delay = 2400;
-
-      function shuffle(arr) {
-        for (var i = arr.length - 1; i > 0; i--) {
-          var j = Math.floor(Math.random() * (i + 1));
-          var tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
-        }
-        return arr;
-      }
-
-      function next() {
-        if (queue.length === 0) {
-          queue = shuffle(rest.slice());
-          queue.unshift(first);
-        }
-        var word = queue.shift();
-        el.classList.add('fade-out');
-        setTimeout(function () {
-          el.textContent = word;
-          if (rtlSet.has(word)) {
-            el.setAttribute('dir', 'rtl');
-          } else {
-            el.removeAttribute('dir');
-          }
-          el.classList.remove('fade-out');
-        }, 600);
-      }
-
-      setInterval(next, delay);
-    })();
-  </script>
-
-</body>
-</html>
+{% block scripts %}
+<script>
+(function () {
+  var doc = document.getElementById('doc');
+  var bar = doc ? doc.querySelector('[data-toggle]') : null;
+  if (!bar) return;
+  bar.hidden = false;
+  bar.addEventListener('click', function (e) {
+    var btn = e.target.closest('button[data-view]');
+    if (!btn) return;
+    doc.classList.toggle('rawmode', btn.dataset.view === 'md');
+    bar.querySelectorAll('button').forEach(function (b) {
+      b.classList.toggle('on', b === btn);
+    });
+  });
+})();
+</script>
+{% endblock %}

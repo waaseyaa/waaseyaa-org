@@ -1,0 +1,272 @@
+/* waaseyaa.org design system.
+   Source of visual truth: the approved merged demo (light, teal on white,
+   dark surfaces reserved for code). Brand palette matches the framework:
+   deep teal #0d4f4f / #0f766e / #14b8a6. */
+
+:root {
+  --teal-900: #0d4f4f;
+  --teal-700: #0f766e;
+  --teal-400: #14b8a6;
+  --teal-300: #5eead4;
+  --ink: #0c1f1d;
+  --ink-soft: #2c4440;
+  --muted: #46615d;
+  --faint: #6b8682;
+  --bg: #fafdfc;
+  --line: #e3efec;
+  --card-line: #d4e6e2;
+  --chip-line: #b9ddd6;
+  --wash: #eef6f4;
+  --wash-deep: #e4f4f1;
+  --chat-bg: #f4faf8;
+  --bubble: #dff1ed;
+  --bubble-ink: #0c4f49;
+  --code-bg: #07211e;
+  --code-fg: #cfe9e4;
+  --code-dim: #7ca6a0;
+  --code-key: #7dd3fc;
+  --code-str: #fbbf77;
+  --sans: 'Inter', sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--ink);
+}
+
+a { color: inherit; }
+
+/* Top bar */
+.top {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 14px 5%;
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  background: #fafdfcee;
+  backdrop-filter: blur(6px);
+  z-index: 10;
+}
+.logo { font-weight: 800; font-size: 17px; letter-spacing: .5px; text-decoration: none; }
+.logo span { color: var(--teal-700); }
+.nav { display: flex; gap: 20px; font-size: 13.5px; color: var(--muted); flex-wrap: wrap; }
+.nav a { text-decoration: none; }
+.nav a:hover { color: var(--teal-700); }
+.nav a[aria-current="page"] { color: var(--ink); font-weight: 500; }
+
+/* Pi status chip. Rendered only when real telemetry exists. */
+.pi {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: #5c7672;
+  background: var(--wash);
+  padding: 6px 13px;
+  border-radius: 99px;
+  white-space: nowrap;
+}
+.pi b { color: var(--teal-400); font-weight: 400; }
+
+/* Hero */
+.hero { text-align: center; padding: 52px 8% 6px; }
+.hero h1 { font-size: 44px; font-weight: 800; letter-spacing: -1.4px; line-height: 1.06; }
+.hero h1 em { font-style: normal; color: var(--teal-700); }
+.hero .lede { margin: 14px auto 0; max-width: 560px; font-size: 16px; line-height: 1.6; color: var(--muted); }
+.hero .stage { margin: 12px auto 0; font-family: var(--mono); font-size: 12px; color: var(--faint); }
+
+/* Install cards */
+.installs { display: flex; gap: 16px; justify-content: center; padding: 28px 8% 6px; flex-wrap: wrap; }
+.card {
+  width: 380px;
+  max-width: 100%;
+  text-align: left;
+  border: 1.5px solid var(--card-line);
+  border-radius: 14px;
+  padding: 16px 18px;
+  background: #fff;
+}
+.card h3 { font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--teal-700); margin-bottom: 9px; }
+.cmd {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  background: var(--code-bg);
+  color: var(--teal-300);
+  border-radius: 8px;
+  padding: 11px 13px;
+  margin-bottom: 7px;
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+.cmd small { color: var(--code-dim); }
+.card p { font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+
+/* Proof chips */
+.proof { display: flex; gap: 10px; justify-content: center; padding: 22px 8%; flex-wrap: wrap; }
+.proof div {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--bubble-ink);
+  background: var(--wash-deep);
+  border-radius: 99px;
+  padding: 7px 14px;
+}
+
+/* Docs surface: two panes, chat beside doc */
+.surface {
+  margin: 6px 5% 30px;
+  border: 1.5px solid var(--card-line);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #fff;
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  min-height: 520px;
+  box-shadow: 0 14px 44px rgba(15, 118, 110, .07);
+}
+.chat { border-right: 1px solid var(--line); background: var(--chat-bg); display: flex; flex-direction: column; }
+.chat-h { padding: 14px 18px 8px; font-size: 11.5px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--faint); }
+.msgs { flex: 1; padding: 6px 18px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+.q {
+  align-self: flex-end;
+  background: var(--bubble);
+  color: var(--bubble-ink);
+  padding: 10px 14px;
+  border-radius: 14px 14px 4px 14px;
+  max-width: 85%;
+  font-size: 13.5px;
+}
+.ans {
+  background: #fff;
+  border: 1px solid var(--card-line);
+  padding: 12px 14px;
+  border-radius: 4px 14px 14px 14px;
+  max-width: 95%;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+.ans code { font-family: var(--mono); font-size: 12px; color: var(--teal-700); }
+.cites { display: flex; gap: 6px; margin-top: 9px; flex-wrap: wrap; }
+.cite {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--teal-700);
+  border: 1px solid var(--chip-line);
+  padding: 3px 8px;
+  border-radius: 99px;
+  text-decoration: none;
+}
+.sugg { display: flex; gap: 8px; padding: 8px 18px 4px; flex-wrap: wrap; }
+.sugg a, .sugg span {
+  font-size: 12px;
+  color: var(--muted);
+  border: 1px solid var(--card-line);
+  background: #fff;
+  border-radius: 99px;
+  padding: 6px 11px;
+  text-decoration: none;
+}
+.sugg a:hover { border-color: var(--teal-700); color: var(--teal-700); }
+.inp {
+  margin: 10px 18px 16px;
+  background: #fff;
+  border: 1.5px solid var(--teal-700);
+  border-radius: 10px;
+  padding: 11px 13px;
+  display: flex;
+  gap: 10px;
+}
+.inp input { border: none; outline: none; flex: 1; font-size: 13.5px; font-family: var(--sans); color: var(--ink); background: transparent; }
+.inp input:disabled { background: transparent; color: var(--faint); }
+.inp.idle { border-color: var(--card-line); }
+.send { color: var(--teal-700); font-weight: 600; cursor: pointer; background: none; border: none; font-size: 14px; }
+.chat-note { padding: 0 18px 14px; font-size: 11.5px; color: var(--faint); }
+
+/* Doc pane */
+.doc { padding: 26px 36px; min-width: 0; }
+.crumb {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--faint);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.raw { border: 1px solid var(--card-line); background: var(--chat-bg); border-radius: 8px; overflow: hidden; display: flex; }
+.raw button, .raw span { padding: 4px 12px; cursor: pointer; background: none; border: none; font: inherit; color: inherit; }
+.raw .on { background: var(--teal-700); color: #fff; font-weight: 600; }
+.doc h1 { font-size: 28px; font-weight: 800; margin: 14px 0 6px; }
+.doc .lede { color: var(--muted); font-size: 14.5px; line-height: 1.6; max-width: 620px; }
+.code {
+  margin: 16px 0;
+  background: var(--code-bg);
+  border-radius: 10px;
+  padding: 16px 18px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--code-fg);
+  overflow-x: auto;
+}
+.code .t { color: var(--teal-300); }
+.code .k { color: var(--code-key); }
+.code .s { color: var(--code-str); }
+.doc h2 { font-size: 17px; margin: 16px 0 6px; }
+.doc p { font-size: 13.5px; line-height: 1.65; color: var(--muted); max-width: 640px; }
+.md {
+  display: none;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.8;
+  color: var(--ink-soft);
+  white-space: pre-wrap;
+  margin-top: 14px;
+}
+.doc.rawmode .md { display: block; }
+.doc.rawmode .htmlview { display: none; }
+
+/* Prose pages (docs, why, compare) */
+.page { max-width: 760px; margin: 0 auto; padding: 40px 5% 60px; }
+.page h1 { font-size: 34px; font-weight: 800; letter-spacing: -1px; margin-bottom: 10px; }
+.page h2 { font-size: 20px; margin: 28px 0 8px; }
+.page p { font-size: 15px; line-height: 1.7; color: var(--muted); margin-bottom: 12px; }
+
+/* Footer */
+.foot {
+  border-top: 1px solid var(--line);
+  padding: 13px 5%;
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--faint);
+  flex-wrap: wrap;
+  gap: 8px;
+  background: #fff;
+}
+.foot a { color: var(--teal-700); text-decoration: none; }
+
+/* Small screens */
+@media (max-width: 900px) {
+  .surface { grid-template-columns: 1fr; }
+  .chat { border-right: none; border-bottom: 1px solid var(--line); }
+  .hero h1 { font-size: 32px; }
+  .doc { padding: 22px 20px; }
+}
+@media (max-width: 480px) {
+  .top { gap: 14px; padding: 12px 16px; }
+  .nav { gap: 14px; }
+  .hero { padding: 36px 16px 6px; }
+  .hero h1 { font-size: 27px; letter-spacing: -.8px; }
+  .installs, .proof { padding-left: 16px; padding-right: 16px; }
+  .surface { margin: 6px 12px 24px; }
+  .pi { display: none; }
+}

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Waaseyaa{% endblock %}</title>
+  <meta name="description" content="{% block description %}Waaseyaa is a sovereignty-first PHP framework for content platforms readable by humans and agents alike. Alpha, in production at First Nations Procurement Inc.{% endblock %}">
+  <meta name="robots" content="{% block robots %}index,follow{% endblock %}">
+  <meta name="theme-color" content="#0f766e">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/site.css">
+  {% block head %}{% endblock %}
+</head>
+<body>
+
+<header class="top">
+  <a class="logo" href="/">waase<span>yaa</span></a>
+  <nav class="nav">
+    {% block nav %}
+      <a href="https://github.com/waaseyaa/framework">GitHub</a>
+      <a href="https://packagist.org/packages/waaseyaa/framework">Packagist</a>
+    {% endblock %}
+  </nav>
+  {% if pi_status is defined and pi_status %}
+  <div class="pi"><b>&#9679;</b> served from a raspberry pi &middot; up {{ pi_status.uptime_days }}d &middot; {{ pi_status.temp_c }}&deg;C</div>
+  {% endif %}
+</header>
+
+{% block content %}{% endblock %}
+
+<footer class="foot">
+  <span>this site is a waaseyaa application &middot; framework {{ framework_version|default('') }}</span>
+  <span><a href="https://github.com/waaseyaa/framework">github</a> &middot; <a href="https://packagist.org/packages/waaseyaa/framework">packagist</a></span>
+</footer>
+
+{% block scripts %}{% endblock %}
+</body>
+</html>
