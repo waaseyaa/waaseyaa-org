@@ -5,6 +5,7 @@
     "license": "GPL-2.0-or-later",
     "require": {
         "php": ">=8.5",
+        "league/commonmark": "^2.8",
         "symfony/dotenv": "^8.0",
         "waaseyaa/framework": "^0.1.0-alpha.199"
     },
@@ -50,7 +51,8 @@
         },
         "waaseyaa": {
             "providers": [
-                "App\\Provider\\AppServiceProvider"
+                "App\\Provider\\AppServiceProvider",
+                "App\\Provider\\DocsServiceProvider"
             ]
         }
     },

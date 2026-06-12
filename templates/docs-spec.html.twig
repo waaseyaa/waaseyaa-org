@@ -1,0 +1,32 @@
+{% extends "base.html.twig" %}
+
+{% block title %}{{ title }}: Waaseyaa spec{% endblock %}
+{% block description %}Waaseyaa framework spec {{ name }}.md, framework {{ framework_version|default('unknown') }}. Also available as Markdown and over MCP.{% endblock %}
+
+{% block nav %}
+  <a href="/docs" aria-current="page">Docs</a>
+  <a href="https://github.com/waaseyaa/framework">GitHub</a>
+  <a href="https://packagist.org/packages/waaseyaa/framework">Packagist</a>
+{% endblock %}
+
+{% block head %}
+  <link rel="canonical" href="{{ canonical_url }}">
+  <link rel="alternate" type="text/markdown" href="{{ markdown_url }}">
+{% endblock %}
+
+{% block content %}
+<main class="page page-spec">
+  <div class="crumb">
+    <span><a href="/docs">docs</a> / specs / {{ name }}.md</span>
+    <div class="raw">
+      <span class="on">HTML</span>
+      <a href="{{ markdown_url }}">Markdown</a>
+      <a href="/.well-known/mcp.json" title="Read-only MCP endpoint at /mcp">MCP</a>
+    </div>
+  </div>
+  <p class="provenance">framework {{ framework_version|default('unknown') }} &middot; synced verbatim from the framework's docs/specs corpus</p>
+  <article class="spec-body">
+    {{ body|raw }}
+  </article>
+</main>
+{% endblock %}

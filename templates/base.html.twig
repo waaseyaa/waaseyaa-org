@@ -19,6 +19,7 @@
   <a class="logo" href="/">waase<span>yaa</span></a>
   <nav class="nav">
     {% block nav %}
+      <a href="/docs">Docs</a>
       <a href="https://github.com/waaseyaa/framework">GitHub</a>
       <a href="https://packagist.org/packages/waaseyaa/framework">Packagist</a>
     {% endblock %}
@@ -32,6 +33,7 @@
 
 <footer class="foot">
   <span>this site is a waaseyaa application &middot; framework {{ framework_version|default('') }}</span>
+  <span>agents: <a href="/llms.txt">/llms.txt</a> &middot; <a href="/.well-known/mcp.json">/.well-known/mcp.json</a> &middot; accept: text/markdown</span>
   <span><a href="https://github.com/waaseyaa/framework">github</a> &middot; <a href="https://packagist.org/packages/waaseyaa/framework">packagist</a></span>
 </footer>
 

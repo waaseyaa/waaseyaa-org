@@ -1,0 +1,32 @@
+{% extends "base.html.twig" %}
+
+{% block title %}Docs: the Waaseyaa spec corpus{% endblock %}
+{% block description %}Every Waaseyaa framework spec, served three ways: HTML, Markdown on the same URL, and a read-only MCP endpoint.{% endblock %}
+
+{% block nav %}
+  <a href="/docs" aria-current="page">Docs</a>
+  <a href="https://github.com/waaseyaa/framework">GitHub</a>
+  <a href="https://packagist.org/packages/waaseyaa/framework">Packagist</a>
+{% endblock %}
+
+{% block content %}
+<main class="page">
+  <h1>Docs</h1>
+  <p>The framework's spec corpus, framework {{ framework_version|default('unknown') }}. These are the same specs the framework is built and reviewed against, published close to as-is. Every page serves three renderings from one source:</p>
+  <ul class="renderings">
+    <li><strong>HTML</strong>: the page you are reading.</li>
+    <li><strong>Markdown</strong>: the same URL with <code>Accept: text/markdown</code>, or the <code>.md</code> suffix. Indexed in <a href="/llms.txt">/llms.txt</a>.</li>
+    <li><strong>MCP</strong>: <code>spec_list</code>, <code>spec_search</code>, <code>spec_read</code> at <code>/mcp</code>, no authentication. Server card: <a href="/.well-known/mcp.json">/.well-known/mcp.json</a>.</li>
+  </ul>
+
+  <ul class="spec-list">
+    {% for spec in specs %}
+    <li>
+      <a href="/docs/specs/{{ spec.name }}">{{ spec.title }}</a>
+      <span class="spec-name">{{ spec.name }}.md</span>
+      {% if spec.description %}<p>{{ spec.description }}</p>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</main>
+{% endblock %}

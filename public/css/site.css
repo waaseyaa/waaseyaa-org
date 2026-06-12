@@ -201,7 +201,8 @@ a { color: inherit; }
   flex-wrap: wrap;
 }
 .raw { border: 1px solid var(--card-line); background: var(--chat-bg); border-radius: 8px; overflow: hidden; display: flex; }
-.raw button, .raw span { padding: 4px 12px; cursor: pointer; background: none; border: none; font: inherit; color: inherit; }
+.raw button, .raw span, .raw a { padding: 4px 12px; cursor: pointer; background: none; border: none; font: inherit; color: inherit; text-decoration: none; display: inline-block; }
+.raw a:hover { color: var(--teal-700); }
 .raw .on { background: var(--teal-700); color: #fff; font-weight: 600; }
 .doc h1 { font-size: 28px; font-weight: 800; margin: 14px 0 6px; }
 .doc .lede { color: var(--muted); font-size: 14.5px; line-height: 1.6; max-width: 620px; }
@@ -238,6 +239,43 @@ a { color: inherit; }
 .page h1 { font-size: 34px; font-weight: 800; letter-spacing: -1px; margin-bottom: 10px; }
 .page h2 { font-size: 20px; margin: 28px 0 8px; }
 .page p { font-size: 15px; line-height: 1.7; color: var(--muted); margin-bottom: 12px; }
+
+/* Docs pages */
+.page .renderings { margin: 0 0 24px 20px; }
+.page .renderings li { font-size: 14px; color: var(--muted); line-height: 1.7; }
+.page code { font-family: var(--mono); font-size: .9em; color: var(--teal-700); background: var(--wash); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+.spec-list { list-style: none; margin-top: 18px; }
+.spec-list li { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.spec-list a { font-weight: 600; text-decoration: none; color: var(--ink); }
+.spec-list a:hover { color: var(--teal-700); }
+.spec-name { font-family: var(--mono); font-size: 11px; color: var(--faint); margin-left: 8px; }
+.spec-list p { font-size: 13px; margin: 4px 0 0; }
+.page-spec { max-width: 860px; }
+.provenance { font-family: var(--mono); font-size: 11.5px; color: var(--faint); margin: 10px 0 4px; }
+.spec-body { margin-top: 12px; overflow-x: clip; }
+.spec-body h1 { font-size: 30px; font-weight: 800; letter-spacing: -.8px; margin: 18px 0 10px; }
+.spec-body h2 { font-size: 21px; margin: 26px 0 8px; }
+.spec-body h3 { font-size: 16px; margin: 20px 0 6px; }
+.spec-body p, .spec-body li { font-size: 14.5px; line-height: 1.7; color: var(--ink-soft); }
+.spec-body p { margin: 0 0 12px; }
+.spec-body ul, .spec-body ol { margin: 0 0 12px 22px; }
+.spec-body pre {
+  background: var(--code-bg);
+  color: var(--code-fg);
+  border-radius: 10px;
+  padding: 14px 16px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.65;
+  overflow-x: auto;
+  margin: 0 0 14px;
+}
+.spec-body pre code { background: none; color: inherit; padding: 0; }
+.spec-body table { border-collapse: collapse; margin: 0 0 16px; width: 100%; display: block; overflow-x: auto; }
+.spec-body th, .spec-body td { border: 1px solid var(--card-line); padding: 7px 10px; font-size: 13px; text-align: left; color: var(--ink-soft); vertical-align: top; }
+.spec-body th { background: var(--wash); font-weight: 600; }
+.spec-body a { color: var(--teal-700); }
+.spec-body blockquote { border-left: 3px solid var(--card-line); padding-left: 14px; margin: 0 0 12px; color: var(--muted); }
 
 /* Footer */
 .foot {
