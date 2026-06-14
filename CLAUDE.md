@@ -37,10 +37,12 @@ entity pipeline.
 src/
 ├── Docs/        The corpus + search engine
 │   ├── SpecCorpus.php          reads resources/specs/ + manifest (provenance)
-│   ├── SpecSearch.php          substring search w/ section headers (shared by MCP + chat)
+│   ├── SpecIndex.php           FTS5 title-weighted ranking (waaseyaa/search) over the corpus; lazy rebuild keyed on framework version
+│   ├── SpecSearch.php          line-level substring search, scanned in SpecIndex rank order (shared by MCP + chat)
+│   ├── Keywords.php            shared query tokenizer (stopwords) for SpecIndex + DocsRetriever
 │   └── MarkdownNegotiation.php Accept: text/markdown detection
 ├── Chat/        Corpus-grounded docs chat (workspace-chat-surface contract)
-│   ├── DocsRetriever.php       keyword retrieval -> section passages
+│   ├── DocsRetriever.php       SpecIndex-ranked specs -> best-section passages
 │   ├── ChatPrompt.php          system/user prompts; answers ONLY from passages, always cite
 │   ├── ExtractiveAnswerer.php  no-key fallback: quotes passages verbatim w/ citations
 │   ├── ConversationStore.php   visitor-scoped transcripts (random cookie; no public accounts)
@@ -95,8 +97,9 @@ specs close to as-is behind the index + chat; editorial rewrites are later.
 Reuses the shared `waaseyaa/workspace` SSE chat client (alpha.203), mounted on
 the home docs surface and themed with site CSS tokens. Backend implements the
 `workspace-chat-surface.md` contract (SSE `meta`/`delta`/`done`, paginated
-`messages`). Retrieval (`DocsRetriever`) lifts the same `SpecSearch` engine the
-MCP tools use, so what the assistant reads, an agent can fetch itself. With
+`messages`). Retrieval (`DocsRetriever`) ranks specs through `SpecIndex`, the
+same title-weighted FTS5 index (waaseyaa/search) the MCP `spec_search` tool
+scans, so what the assistant reads, an agent can fetch itself. With
 `ANTHROPIC_API_KEY` set it streams `claude-sonnet-4-6` grounded on the
 passages; without it, `ExtractiveAnswerer` quotes the passages verbatim. **Every
 answer carries at least one citation link by construction** (docs index on a
@@ -148,11 +151,14 @@ that clones this repo at a pinned `WAASEYAA_ORG_REF`, a Caddy vhost
 
 ## Known gaps
 
-- **Chat retrieval quality:** the keyword retriever mis-ranks some obvious
-  questions (e.g. "how do I add an entity type?" surfaces access-control instead
-  of entity-system), so the model honestly answers "not covered" rather than
-  hallucinating. Improving it (weight spec title/H1/heading matches) is the next
-  chat task.
+- **Chat retrieval quality:** retrieval now ranks specs via `SpecIndex`
+  (waaseyaa/search FTS5 with the spec title weighted above the body), so "how do
+  I add an entity type?" surfaces entity-system. The remaining refinements are a
+  later quality pass: the title-match signal uses substring (not stemmed) token
+  comparison, so a plural query ("revisions") and a long title that repeats the
+  package name ("Bimaaji install ...") can still mis-order the canonical spec
+  below a body-mention. The honest "not covered" miss and the >=1-citation
+  invariant hold throughout.
 - **Pi status chip** stays hidden until a telemetry JSON is wired via
   `WAASEYAA_ORG_PI_STATUS_FILE`.
 - MCP registry listing submission is a deploy-time follow-up.

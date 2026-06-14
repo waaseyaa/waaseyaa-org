@@ -13,6 +13,7 @@ use App\Controller\DocsChatController;
 use App\Controller\DocsController;
 use App\Controller\LlmsTxtController;
 use App\Docs\SpecCorpus;
+use App\Docs\SpecIndex;
 use App\Docs\SpecSearch;
 use App\Mcp\McpEndpointController;
 use App\Mcp\PublicServerCard;
@@ -54,6 +55,18 @@ final class DocsServiceProvider extends ServiceProvider
     {
         $corpus = SpecCorpus::default();
         $urls = SiteUrl::fromEnvironment();
+
+        // Title-weighted FTS5 ranking over the synced corpus, shared by the MCP
+        // spec_search tool and the docs chat. ensure() is idempotent and rebuilds
+        // only when the synced framework version changes; a failure degrades to
+        // the corpus-order substring fallback (MCP) and an honest "not covered"
+        // (chat) rather than a 500.
+        $specIndex = new SpecIndex($corpus, \App\Support\Db::persistent());
+        try {
+            $specIndex->ensure();
+        } catch (\Throwable) {
+        }
+        $search = new SpecSearch($corpus, $specIndex);
 
         $docs = new DocsController($corpus, $urls);
         $llms = new LlmsTxtController($corpus, $urls);
@@ -102,7 +115,7 @@ final class DocsServiceProvider extends ServiceProvider
         // documented override lever.
         $registry = new SpecToolRegistry([
             new SpecListTool($corpus, $urls),
-            new SpecSearchTool($corpus, new SpecSearch($corpus), $urls),
+            new SpecSearchTool($corpus, $search, $urls),
             new SpecReadTool($corpus, $urls),
         ]);
         $mcp = new McpEndpointController(new McpEndpoint(new PublicSpecsAuth(), $registry));
@@ -127,7 +140,7 @@ final class DocsServiceProvider extends ServiceProvider
         // quotes otherwise.
         $anthropicKey = getenv('ANTHROPIC_API_KEY') ?: '';
         $chat = new DocsChatController(
-            retriever: new DocsRetriever($corpus, new SpecSearch($corpus), $urls),
+            retriever: new DocsRetriever($corpus, $specIndex, $urls),
             prompts: new ChatPrompt(),
             extractive: new ExtractiveAnswerer(),
             conversations: new ConversationStore(\App\Support\Db::persistent()),

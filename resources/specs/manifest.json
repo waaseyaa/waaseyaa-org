@@ -1,12 +1,12 @@
 {
-    "framework_version": "v0.1.0-alpha.203",
-    "synced_at": "2026-06-12T02:13:56+00:00",
+    "framework_version": "v0.1.0-alpha.210",
+    "synced_at": "2026-06-14T21:55:40+00:00",
     "source": "vendor/waaseyaa/framework/docs/specs",
     "specs": [
         {
             "name": "access-control",
             "title": "Access Control",
-            "sha1": "a45f75ed2eb1ba9ba7d2e316b07fbeb1e19d1932"
+            "sha1": "7b6f12eabcb882ec9cbda4298669ca25bb11115c"
         },
         {
             "name": "admin-spa",
@@ -26,7 +26,7 @@
         {
             "name": "ai-integration",
             "title": "AI Integration",
-            "sha1": "421bc0c0fa9036b0a4584cecd178007b3039a1c0"
+            "sha1": "99961f085995478846fb961cead9fe3851dac197"
         },
         {
             "name": "ai-schema",
@@ -36,7 +36,7 @@
         {
             "name": "api-layer",
             "title": "API Layer",
-            "sha1": "57910f328a9e73a2b4b24f83048e51f4518bd385"
+            "sha1": "6d4215aaf452504cb74db4e5bf5cbee4d9998351"
         },
         {
             "name": "app-controller-invocation",
@@ -141,7 +141,7 @@
         {
             "name": "entity-system",
             "title": "Entity System",
-            "sha1": "ac2b96bdfbcf909a89f74f249d0f8ee4f9149071"
+            "sha1": "1f3283974f96f9f7c92e4c51ad67e46b3a7e3310"
         },
         {
             "name": "extension-author-onboarding",
@@ -206,7 +206,7 @@
         {
             "name": "infrastructure",
             "title": "Infrastructure",
-            "sha1": "239b7ecb541b41492ad8e0dbc3af191b962e0f29"
+            "sha1": "78d7101a192a1616256b859eca7bc8938bc11e00"
         },
         {
             "name": "ingestion-defaults",
@@ -246,7 +246,7 @@
         {
             "name": "mcp-endpoint",
             "title": "MCP Endpoint",
-            "sha1": "7c3e7333716a0ef3ec02e165db729c059e67e51e"
+            "sha1": "873bfb1b474d113983a63fd263937e8a3859aff7"
         },
         {
             "name": "messaging",
@@ -271,12 +271,12 @@
         {
             "name": "ocap-audit-log",
             "title": "OCAP Audit Log Substrate",
-            "sha1": "befd50b7d9c699c19b1d49f88acbcf2c13d9d526"
+            "sha1": "05b0e62d09c590f328700dc509a5ed674213bede"
         },
         {
             "name": "operations-playbooks",
             "title": "Operations Playbooks",
-            "sha1": "5c4fe9ccdb023bebb8ed3f64e449e05b06795887"
+            "sha1": "1cfe3c1a7aa72879ed62a9aaee47f25e4e2876ae"
         },
         {
             "name": "operator-diagnostics",
@@ -286,7 +286,7 @@
         {
             "name": "package-discovery",
             "title": "Package Discovery",
-            "sha1": "7e059a71c6f6cc0feaba483e7e1a4e20b0a66cfb"
+            "sha1": "2e97120954c1a763d82d187ae9e1663cbc3a088a"
         },
         {
             "name": "per-site-convergence-audit",
@@ -316,7 +316,7 @@
         {
             "name": "revision-system-unified",
             "title": "Revision system (unified, with an optional translation axis)",
-            "sha1": "7ee5968987c28b4ec0dd08c94da1565dff606433"
+            "sha1": "b7cb0d19959a8e30306d6d766e0dac87df35fb78"
         },
         {
             "name": "schema-evolution-v2",
@@ -386,12 +386,12 @@
         {
             "name": "v1.5-verification-gate-contract",
             "title": "v1.5 Verification Gate Contract",
-            "sha1": "a85537d3380a5e9f6edda46b459f172830f0ef1a"
+            "sha1": "3aa9156447d770edc8402aba307ddb487ee69e91"
         },
         {
             "name": "v1.6-verification-gate-contract",
             "title": "v1.6 Verification Gate Contract",
-            "sha1": "aef4ab68fffa13b7da93b508d785c4adceac061c"
+            "sha1": "7ec94c3faf533f261bf7e58edc9cf50a5e933927"
         },
         {
             "name": "version-provenance",

@@ -11,7 +11,7 @@ use App\Chat\DocsRetriever;
 use App\Chat\ExtractiveAnswerer;
 use App\Controller\DocsChatController;
 use App\Docs\SpecCorpus;
-use App\Docs\SpecSearch;
+use App\Docs\SpecIndex;
 use App\Support\SiteUrl;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -31,8 +31,11 @@ final class DocsChatTest extends TestCase
         $db = DBALDatabase::createSqlite(':memory:');
         new ChatSchema($db)->ensure();
 
+        $index = new SpecIndex($corpus, $db);
+        $index->ensure();
+
         $this->controller = new DocsChatController(
-            retriever: new DocsRetriever($corpus, new SpecSearch($corpus), $urls),
+            retriever: new DocsRetriever($corpus, $index, $urls),
             prompts: new ChatPrompt(),
             extractive: new ExtractiveAnswerer(),
             conversations: new ConversationStore($db),
@@ -130,6 +133,16 @@ final class DocsChatTest extends TestCase
         $answer = implode('', array_map(static fn(array $d): string => (string) ($d['text'] ?? ''), $events['delta'] ?? []));
         $this->assertStringContainsString('entity', strtolower($answer));
         $this->assertStringContainsString('/docs/specs/', $answer);
+
+        // The fix: title-weighted ranking surfaces the entity-system spec, not
+        // an access-control spec that merely repeats the phrase in its body.
+        $sources = $events['done'][0]['sources'] ?? [];
+        $sourceUrls = array_column($sources, 'source_url');
+        $this->assertContains(
+            'https://waaseyaa.org/docs/specs/entity-system',
+            $sourceUrls,
+            'The entity-type question must rank and cite the entity-system spec.',
+        );
     }
 
     #[Test]

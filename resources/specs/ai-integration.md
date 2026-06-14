@@ -1,5 +1,7 @@
 # AI Integration
 
+<!-- Spec reviewed 2026-06-12 - mission optimistic-locking-01KTXCHY WP03 (#1647): new "Optimistic Locking on the Stock Entity Tools" section — entity.update gains the optional top-level expected_revision_id argument (integer, minimum 1; an argument, never a writable value — values.revision_id stays key-guard-refused); stale expectation → structured two-block revision_conflict error (expected + current, machine-correctable: re-read/re-diff/retry); unsupported paths (storage LogicException matrix, non-concrete repository) → distinct revision_expectation_unsupported (do not retry); dry-run with an expectation reports the byte-identical conflict payload (shared builder); success payloads carry the post-save revision_id; entity.read/entity.list expose a top-level revision_id member on revisionable entities (omitted = no expectation formable); SC-002 approve-time staleness recipe pointer to the mission quickstart as the canonical consumer pattern. No-expectation calls byte-identical. -->
+<!-- Spec reviewed 2026-06-12 - mission live-entity-validation-key-protection-01KTWQT3 (#1646, alpha.204): new "Identity-Key Write Protection" section — the stock entity agent tools (entity.create / entity.update in packages/ai-tools) refuse identity-key writes whole-write via EntityKeyGuard, and surface save-time EntityValidationException as the structured validation_failed error. label/bundle never refused; revision_log stays writable via its dedicated argument; #1638 scoped writes noted as the separate broader mechanism. -->
 <!-- Spec reviewed 2026-04-09k - `EmbeddingPipeline`, `McpToolExecutor`, and `SearchController` read entity fields through `EntityValues::toCastAwareMap()` / `WorkflowVisibility::isNodePublicForEntity()` (#1181 ST-8) -->
 <!-- Spec reviewed 2026-04-09 ST-9 - embedding text extraction vs EntityEmbedder; MCP cast-aware payloads (#1181) -->
 <!-- Spec reviewed 2026-04-09 ST-10 - EntityEmbedder / EntityEmbeddingListener / SemanticIndexWarmer use EntityValues + WorkflowVisibility::isNodePublicForEntity (#1181) -->
@@ -805,6 +807,145 @@ MCP tool execution has the following safety properties:
 4. **Dry-run support:** All agents must implement `dryRun()` to preview changes without mutations.
 5. **Query access bypass:** `McpToolExecutor` sets `accessCheck(false)` on entity queries. Access control for MCP tool calls is expected to be enforced at the agent/endpoint level, not the individual query level.
 6. **FieldableInterface check:** Updates verify the entity implements `FieldableInterface` before calling `set()`.
+
+## Identity-Key Write Protection (stock entity tools, #1646)
+
+Applies to the stock tools `entity.create` and `entity.update` (`packages/ai-tools/src/Entity/`, see `docs/specs/agent-executor.md` for the tool registry), over every transport that dispatches them (in-app agent, MCP). Guard implementation: `Waaseyaa\AI\Tools\Entity\EntityKeyGuard`. Canonical contract: `kitty-specs/live-entity-validation-key-protection-01KTWQT3/contracts/tool-refusal.md`.
+
+### Refusal set
+
+Per entity type: the registered entity-key column names for the kinds `id`, `uuid`, `revision`, `langcode`, `default_langcode` (so renamed columns like `id => nid` are refused under their real name), unioned with the literal names `uuid`, `langcode`, `default_langcode` (the floor catches translatable schema columns on types that never registered the kind). The `label` and `bundle` kinds are NEVER refused — label is ordinary content (e.g. `title`), bundle is create-time structure.
+
+### Whole-write rejection
+
+If the `values` payload contains ANY refused key, the tool returns an error result: no entity is constructed (create) and no field is set (update). Partial application is forbidden. On create this includes a model-supplied `id` — agent-created entities get system-assigned identity (research D3); the `enforceIsNew()` pre-set-id path remains available to non-tool callers, and consumers needing agent-driven pre-set ids ship a custom tool.
+
+### Check order
+
+capability → argument shape → entity-type existence → access → **identity-key refusal** → mutation/validation. The refusal must not leak entity existence to callers lacking access.
+
+### Error shapes
+
+Identity-key refusal (keys sorted alphabetically):
+
+```
+message: "entity.<op>: refused identity keys: <k1>, <k2> — identity fields cannot be written through this tool"
+content: [ {"type": "text", "text": <message>},
+           {"type": "json", "data": {"error": "identity_keys_refused", "refused_keys": ["<k1>", "<k2>"]}} ]
+```
+
+Save-time validation failure (`EntityValidationException` is caught distinctly, before the generic `\Throwable` arm; violations sorted by field name, insertion order as the stable tiebreak — NFR-003 determinism):
+
+```
+message: "entity.<op>: validation failed: <field>: <message>[; <field>: <message>...]"
+content: [ {"type": "text", "text": <message>},
+           {"type": "json", "data": {"error": "validation_failed",
+             "violations": [ {"field": "...", "message": "...", "invalid_value_type": "..."} ]}} ]
+```
+
+Other throwables keep the generic error mapping. The tools add no private validation fork and no `validate: false` — tool writes reach `EntityRepository::save()` with default validation ON (single seam; see `docs/specs/entity-system.md` § Entity Validation).
+
+### Dry-run and revision_log
+
+- **dry-run** reports an identity-key refusal identically to execute — a dry run of an invalid call must not claim it would succeed.
+- **`revision_log` stays writable** via its dedicated tool argument; it is content, not identity.
+
+### Relation to scoped writes (#1638)
+
+This guard is a fixed, non-configurable floor: identity is never agent-writable through the stock tools. Per-type/per-field configurable write scoping (allowlists for what an agent may write) is #1638's separate, broader mechanism and is out of scope here.
+
+## Optimistic Locking on the Stock Entity Tools (#1647)
+
+Mission `optimistic-locking-01KTXCHY`. Canonical contract:
+`kitty-specs/optimistic-locking-01KTXCHY/contracts/conflict-surfaces.md`. The
+tools translate the storage contract (`docs/specs/revision-system-unified.md`
+§3b); they implement no conflict check of their own.
+
+### `entity.update` — the `expected_revision_id` argument
+
+Optional **top-level** argument (JSON Schema `integer`, `minimum: 1`):
+
+```json
+"expected_revision_id": { "type": "integer", "minimum": 1,
+  "description": "Optional optimistic-locking expectation: the revision_id the caller read. The save is refused with a revision_conflict error if the entity's current revision differs. Revisionable entity types only." }
+```
+
+It is an argument, not a value: `revision_id` inside `values` stays refused by
+`EntityKeyGuard` (kind `revision`, see Identity-Key Write Protection above) —
+the expectation can never collide with a writable field. When present, the save
+call becomes `$repository->save($entity, context:
+SaveContext::default()->withExpectedRevisionId($n))`, guarded by `$repository
+instanceof EntityRepository` (the only SaveContext-capable implementation —
+`EntityRepositoryInterface` is deliberately not widened); a stated expectation
+against any other repository implementation returns the
+`revision_expectation_unsupported` error, never a silent plain save. Calls
+**without** the argument are byte-identical to before (FR-003 at the tool
+level). Check order is unchanged: capability → argument shape → type known →
+load → entity access `update` → key-guard refusal → field set → save (the
+conflict surfaces at save time, after validation).
+
+### Error shapes (two-block, Mission 1 house shape)
+
+Conflict — `RevisionConflictException` caught specifically, before the generic
+`\Throwable` arm. **Machine-correctable: re-read (or use `current` directly),
+re-diff, retry with the new revision id.**
+
+```
+content: [ {"type": "text", "text": <message>},
+           {"type": "json", "data": {"error": "revision_conflict",
+             "entity_type": "<type>", "id": "<id>",
+             "expected": 5, "current": 6}} ]
+```
+
+`current` is `null` when no readable head exists (entity vanished, or a
+pre-backfill row with no revision pointer). Deterministic: the two revision
+ids plus static identity (NFR-003).
+
+Unsupported path — the storage `\LogicException` rejection matrix (and the
+non-concrete-repository case) maps to the same two-block shape. **Distinct
+from `revision_conflict` — agents must NOT retry these.**
+
+```
+content: [ {"type": "text", "text": <message>},
+           {"type": "json", "data": {"error": "revision_expectation_unsupported",
+             "entity_type": "<type>", "reason": "<message>"}} ]
+```
+
+### Dry-run parity
+
+A dry run carrying `expected_revision_id` loads the entity and compares the
+head: a mismatch returns the **byte-identical** `revision_conflict` payload a
+real call would produce (same `data` members, same values for the same world
+state — one shared builder, so the bytes cannot fork); a match returns the
+existing `would_update` success. A dry run without the argument is
+byte-identical to today (no load happens). The dry-run check is a
+read-compare — it cannot be authoritative; only the real save's guarded claim
+is.
+
+### Success payload and read exposure (FR-008)
+
+- `entity.update` success payloads now carry `revision_id` = the post-save
+  head (read back from the saved entity), so a chaining agent can state its
+  next expectation without a re-read.
+- `entity.read` emits a top-level `revision_id` member (duck-typed
+  `getRevisionId()`; **omitted** for non-revisionable types — absence means
+  "no expectation formable").
+- `entity.list` items carry the same optional member (entities are already
+  loaded — zero added queries).
+- `entity.list_revisions` is unchanged (already exposes per-revision ids).
+- Conflict payloads are themselves reads: they carry the current head, so the
+  re-read-and-retry loop can skip a round-trip.
+
+### The canonical consumer pattern
+
+The approve-time staleness recipe (agent drafts a change, a human approves it
+later, the entity may have moved in between) is documented step-by-step in the
+mission quickstart —
+`kitty-specs/optimistic-locking-01KTXCHY/quickstart.md` §2 (SC-002): record
+`revision_id` at draft time, state it via `expected_revision_id` at approve
+time, treat `revision_conflict` as the feature (re-read, re-diff, re-approve)
+— the competing writer's work is never silently reverted. End-to-end pin:
+`tests/Integration/AgentRun/DualWriterConflictTest.php`.
 
 ## Dual-State Bug Pattern
 

@@ -27,6 +27,15 @@ final class SpecCorpus
         return new self(dirname(__DIR__, 2) . '/resources/specs');
     }
 
+    /**
+     * The directory the corpus reads from. Used by SpecIndex to scan the
+     * synced markdown files into the search index.
+     */
+    public function dir(): string
+    {
+        return $this->dir;
+    }
+
     public function frameworkVersion(): ?string
     {
         $version = $this->manifest()['framework_version'] ?? null;
