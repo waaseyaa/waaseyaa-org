@@ -1,150 +1,166 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this application.
+Guidance for Claude Code (and any agent) working in this repository.
 
 ## Overview
 
-<!-- Replace with your app description -->
-A Waaseyaa application built on the [Waaseyaa framework](https://github.com/waaseyaa/framework).
+**waaseyaa.org** is the Waaseyaa framework's own public site, built as a Waaseyaa
+consuming app (composer-depends on `waaseyaa/framework`, alpha.203). It is the
+source of truth for humans *and* agents and is meant to dogfood the framework.
+
+The architecture is **one docs corpus, three renderings**:
+
+1. **HTML** — server-rendered Twig pages for humans and AI-search crawlers.
+2. **Markdown** — the *same* docs URL returns clean Markdown when the request
+   sends `Accept: text/markdown` (or appends `.md`).
+3. **MCP** — the same corpus is queryable over a public, read-only MCP endpoint
+   at `/mcp` (server card at `/.well-known/mcp.json`).
+
+The docs corpus is the framework's own `docs/specs/*.md`, synced at build time
+with provenance (spec name + framework version). The site is **alpha** and runs
+in production on a Raspberry Pi (live at https://waaseyaa.org). Be honest in all
+copy: no em dashes, no "cutting edge", stage labels accurate (enforced by tests,
+see `tests/Unit/ContentHonestyTest.php`).
+
+## This app has NO entities
+
+It is a read-only public site over a synced file corpus plus a docs chat. There
+are no `EntityType`s; `src/Entity`, `src/Access`, `src/Seed` etc. are empty
+skeleton stubs. Chat transcripts are stored in plain tables via
+`DatabaseInterface` (`src/Chat/ChatSchema.php`), which is the correct layer for
+non-entity tables. Do not add entities unless a feature genuinely needs the
+entity pipeline.
 
 ## Architecture
 
 ```
 src/
-├── Access/        Authorization policies
-├── Controller/    HTTP controllers (thin orchestration)
-├── Domain/        Domain logic grouped by bounded context
-├── Entity/        Entity classes (extend ContentEntityBase)
-├── Provider/      Service providers (DI, routing, entity registration)
-└── Support/       Cross-cutting utilities
+├── Docs/        The corpus + search engine
+│   ├── SpecCorpus.php          reads resources/specs/ + manifest (provenance)
+│   ├── SpecSearch.php          substring search w/ section headers (shared by MCP + chat)
+│   └── MarkdownNegotiation.php Accept: text/markdown detection
+├── Chat/        Corpus-grounded docs chat (workspace-chat-surface contract)
+│   ├── DocsRetriever.php       keyword retrieval -> section passages
+│   ├── ChatPrompt.php          system/user prompts; answers ONLY from passages, always cite
+│   ├── ExtractiveAnswerer.php  no-key fallback: quotes passages verbatim w/ citations
+│   ├── ConversationStore.php   visitor-scoped transcripts (random cookie; no public accounts)
+│   ├── ChatSchema.php          raw chat tables (DatabaseInterface)
+│   └── Passage.php
+├── Mcp/         Public, unauthenticated, READ-ONLY MCP surface
+│   ├── PublicSpecsAuth.php     resolves every request to SpecReaderAccount
+│   ├── SpecReaderAccount.php   one capability: site.specs.read
+│   ├── SpecToolRegistry.php    the ONLY tools exposed (explicit list = security boundary)
+│   ├── Tool/{SpecListTool,SpecSearchTool,SpecReadTool}.php
+│   ├── McpEndpointController.php  adapts framework McpEndpoint -> Symfony Response
+│   └── PublicServerCard.php    /.well-known/mcp.json (auth: none)
+├── Controller/  HomeController, DocsController, DocsChatController,
+│                LlmsTxtController, SitemapController, StaticPageController
+├── Provider/    AppServiceProvider (home/why/compare), DocsServiceProvider (docs/markdown/llms/mcp/chat)
+└── Support/     SpecCorpus URLs (SiteUrl), FrameworkVersion, PiTelemetry, Db
+resources/specs/ synced corpus + manifest.json (committed; do not hand-edit)
+templates/       base, home, docs-index, docs-spec, why, compare (schema.org JSON-LD in heads)
+bin/sync-specs.php  build-time corpus sync (see below)
 ```
 
-### Key Patterns
+### Routes (all `allowAll()`, GET unless noted)
 
-- **Entities** extend `ContentEntityBase` and register via `EntityTypeManager`
-- **Persistence** uses `EntityRepository` + `SqlStorageDriver` (see `.claude/rules/waaseyaa-framework.md`)
-- **Routes** defined in `ServiceProvider::routes()` via `WaaseyaaRouter`
-- **Auth** via `Waaseyaa\Auth\AuthManager` (session-based)
-- **Config** via `config/waaseyaa.php` — use `getenv()` or `env()` helper, NEVER `$_ENV`
-- **PSR-4 one-class-per-file** — each PHP file declares exactly one class/interface/enum. Namespace matches directory path.
+| Route | Path | Controller | Provider |
+|-------|------|-----------|----------|
+| home / why / compare | `/`, `/why`, `/compare` | Home/StaticPage | `AppServiceProvider` |
+| docs index | `/docs` | DocsController::index | `DocsServiceProvider` |
+| spec page | `/docs/specs/{name}` (HTML or `.md`/Accept) | DocsController::spec | " |
+| llms.txt | `/llms.txt` | LlmsTxtController | " |
+| sitemap | `/sitemap.xml` | SitemapController | " |
+| MCP (public) | `/mcp` (POST/GET, csrfExempt) | McpEndpointController | " |
+| server card | `/.well-known/mcp.json` | PublicServerCard | " |
+| chat send | `/docs-chat/send` (POST, csrfExempt) | DocsChatController::send | " |
+| chat messages | `/docs-chat/{id}/messages` | DocsChatController::messages | " |
 
-### ServiceProvider DI Methods
+`DocsServiceProvider` overrides the framework's default `/mcp` and
+`mcp.server_card` routes (`removeRoute()` then re-add) because the framework
+default is bearer-auth and returns a value object the SSR dispatcher can't
+convert. App providers register after framework providers, so this wins.
 
-Service providers extend `Waaseyaa\Foundation\ServiceProvider\ServiceProvider`. Register bindings in `register()`, use `boot()` for event subscribers and cache warming.
+## The docs corpus (build step)
 
-```php
-// In register():
-$this->singleton(MyInterface::class, fn () => new MyService($this->resolve(Dependency::class)));
-$this->bind(TransientService::class, TransientService::class);  // new instance each time
-$myService = $this->resolve(MyInterface::class);  // resolve a registered binding
-$this->tag(MyInterface::class, 'my_tag');  // tag for grouped resolution
-$this->entityType(new EntityType(...));  // register an entity type
-```
+`bin/sync-specs.php` copies `vendor/waaseyaa/framework/docs/specs/*.md` into
+`resources/specs/` and writes `manifest.json` (framework version + per-spec
+title/sha1). The vendor dist is the canonical source — it is version-locked by
+composer, so provenance is exact. **Rerun `php bin/sync-specs.php` after every
+`composer update` of `waaseyaa/framework`** and commit the result. v1 ships
+specs close to as-is behind the index + chat; editorial rewrites are later.
 
-**Method signatures** (from `Waaseyaa\Foundation\ServiceProvider\ServiceProvider`):
+## Chat
 
-| Method | Signature | Purpose |
-|--------|-----------|---------|
-| `singleton()` | `protected singleton(string $abstract, string\|callable $concrete): void` | Bind as shared instance (resolved once) |
-| `bind()` | `protected bind(string $abstract, string\|callable $concrete): void` | Bind as transient (new instance each call) |
-| `resolve()` | `public resolve(string $abstract): mixed` | Resolve a binding (falls back to kernel resolver) |
-| `tag()` | `protected tag(string $abstract, string $tag): void` | Tag a binding for grouped resolution |
-| `entityType()` | `protected entityType(EntityTypeInterface $entityType): void` | Register an entity type definition |
-
-### Key Framework Namespaces
-
-| Interface | Full Namespace | Purpose |
-|-----------|---------------|---------|
-| `EntityRepositoryInterface` | `Waaseyaa\Entity\Repository\EntityRepositoryInterface` | Entity CRUD (find, findBy, save, delete, saveMany, deleteMany) |
-| `AccessPolicyInterface` | `Waaseyaa\Access\AccessPolicyInterface` | Entity access control (access, createAccess, appliesTo) |
-| `FieldAccessPolicyInterface` | `Waaseyaa\Access\FieldAccessPolicyInterface` | Field-level access (open-by-default, Forbidden restricts) |
-| `QueueInterface` | `Waaseyaa\Queue\QueueInterface` | Dispatch messages: `dispatch(object $message): void` |
-| `Job` | `Waaseyaa\Queue\Job` | Abstract queue job base class |
-| `DatabaseInterface` | `Waaseyaa\Database\DatabaseInterface` | Raw SQL via Doctrine DBAL (for non-entity tables) |
-| `ServiceProvider` | `Waaseyaa\Foundation\ServiceProvider\ServiceProvider` | Base class for service providers |
-
-### Queue Job Pattern
-
-```php
-use Waaseyaa\Queue\Job;
-use Waaseyaa\Queue\QueueInterface;
-
-final class SendWelcomeEmail extends Job
-{
-    public int $tries = 3;        // max attempts
-    public int $timeout = 30;     // seconds before timeout
-    public int $retryAfter = 10;  // seconds between retries
-
-    public function __construct(private readonly string $userId) {}
-
-    public function handle(): void
-    {
-        // Job logic here
-    }
-
-    public function failed(\Throwable $e): void
-    {
-        // Cleanup on final failure (optional override)
-    }
-}
-
-// Dispatch via QueueInterface:
-$queue->dispatch(new SendWelcomeEmail($userId));
-```
-
-## Orchestration Table
-
-<!-- Map file patterns to skills and specs as you add them -->
-| File Pattern | Skill | Spec |
-|-------------|-------|------|
-| `src/Entity/**` | `waaseyaa:entity-system` | entity-system.md |
-| `src/Access/**` | `waaseyaa:access-control` | access-control.md |
-| `src/Provider/**` | `feature-dev` | — |
-| `.claude/rules/**` | `waaseyaa:spec-maintenance` | — |
-| `docs/specs/**` | `waaseyaa:spec-maintenance` | — |
-
-<!-- Note: waaseyaa:* skills are placeholders. They will not function
-     until the skills are built. The entries document intended routing. -->
-
-## Specs and Spec Kitty
-
-Framework subsystem specs ship in the `waaseyaa/framework` repo under `docs/specs/`. Read them from checkout or upstream; there is no bundled Node spec MCP in the framework.
-
-This repository may adopt **[Spec Kitty](https://github.com/Priivacy-ai/spec-kitty)** for structured spec/plan/task workflows (see framework `CLAUDE.md`). Framework governance is **Spec Kitty–first**; GitHub is PR/CI and optional issues per `docs/specs/workflow.md`.
+Reuses the shared `waaseyaa/workspace` SSE chat client (alpha.203), mounted on
+the home docs surface and themed with site CSS tokens. Backend implements the
+`workspace-chat-surface.md` contract (SSE `meta`/`delta`/`done`, paginated
+`messages`). Retrieval (`DocsRetriever`) lifts the same `SpecSearch` engine the
+MCP tools use, so what the assistant reads, an agent can fetch itself. With
+`ANTHROPIC_API_KEY` set it streams `claude-sonnet-4-6` grounded on the
+passages; without it, `ExtractiveAnswerer` quotes the passages verbatim. **Every
+answer carries at least one citation link by construction** (docs index on a
+retrieval miss) — `tests/Integration/DocsChatTest.php` enforces this; keep it
+true.
 
 ## Development
 
 ```bash
-composer install                    # Install dependencies
-php -S localhost:8080 -t public     # Dev server
-./vendor/bin/phpunit                # Run tests
-./vendor/bin/waaseyaa               # CLI
-bin/maintenance/waaseyaa-version    # Framework provenance (path SHA, lockfile, drift vs golden)
-bin/maintenance/waaseyaa-audit-site # Mechanical convergence preflight (validate + bins + provenance)
-./vendor/bin/waaseyaa sync-rules    # Update framework rules from Waaseyaa
+composer install
+php -S 127.0.0.1:8098 -t public public/index.php   # dev server (port 8098)
+./vendor/bin/phpunit                                # tests (must stay green)
+php bin/sync-specs.php                              # re-sync corpus after a framework bump
 ```
 
-Set `WAASEYAA_GOLDEN_SHA` or add `.waaseyaa-golden-sha` for CI drift gates (see `docs/specs/version-provenance.md` in the framework repo).
+`.env`: `APP_URL`/`WAASEYAA_ORG_CANONICAL_URL` set the canonical origin (falls
+back to APP_URL), `WAASEYAA_ORG_PI_STATUS_FILE` points at a telemetry JSON for
+the Pi status chip (chip is hidden when unset/stale). Use `getenv()`, never
+`$_ENV`.
 
-**Per-site convergence audits:** follow [per-site-convergence-audit.md](https://github.com/waaseyaa/framework/blob/main/docs/specs/per-site-convergence-audit.md) in the Waaseyaa monorepo; record findings under `docs/audits/` per that spec.
+## Deploy (Raspberry Pi)
 
-## Agent context
+Deployed via `waaseyaa-infra` (the shared Pi stack), per its
+`runbooks/03-add-a-site.md`: a composer-only `compose/waaseyaa-org/Dockerfile`
+that clones this repo at a pinned `WAASEYAA_ORG_REF`, a Caddy vhost
+(`waaseyaa.org`, `www`, `waaseyaa.oiatc.ca`), and `deploy-waaseyaa-org.yml`.
 
-| Layer | Location | Purpose |
-|------|----------|---------|
-| **Constitution** | `CLAUDE.md` (this file) | Architecture, conventions, orchestration |
-| **Rules** | `.claude/rules/waaseyaa-*.md` | Framework invariants (always active, never cited) |
-| **Specs** | `docs/specs/*.md` | Domain contracts — read from disk; optional Spec Kitty in framework repo |
+- **Cut a deploy:** push this repo's `main`, then bump `WAASEYAA_ORG_REF` in
+  `waaseyaa-infra/compose/docker-compose.yml` and push → the GitHub Action
+  rebuilds on the Pi over Tailscale. Don't build by hand.
+- **First-deploy DB quirk:** in `APP_ENV=production` the kernel won't boot with
+  a missing SQLite file, and that abort precedes `db:init` registration. The
+  deploy workflow runs the one-shot `db:init` with `-e APP_ENV=local` so the DB
+  is created/migrated; the long-running container stays production.
+- Secrets (incl. `ANTHROPIC_API_KEY`) come from the `waaseyaa-infra` ansible
+  vault, never committed. Caddyfile changes need `docker compose up -d
+  --force-recreate caddy` (not `restart`).
 
-Framework rules are owned by Waaseyaa. Update them via `./vendor/bin/waaseyaa sync-rules` after `composer update`.
+## Conventions
 
-When modifying a subsystem, update its spec in the same PR.
+- Framework invariants (forbidden deps, DI methods, persistence pipeline) live
+  in `.claude/rules/waaseyaa-*.md` — always active. It is **NOT** Laravel/Drupal.
+- PHP 8.5, `declare(strict_types=1)`, `final class` by default, PSR-4
+  one-class-per-file, namespace matches directory.
+- Service providers extend `Waaseyaa\Foundation\ServiceProvider\ServiceProvider`
+  (`register()` for bindings, `boot()` for setup, `routes()` for routes).
+- schema.org JSON-LD on every page (SoftwareApplication on home, TechArticle on
+  specs/why, FAQPage on compare).
 
-## Known Gaps
+## Known gaps
 
-<!-- Track technical debt and migration items here -->
+- **Chat retrieval quality:** the keyword retriever mis-ranks some obvious
+  questions (e.g. "how do I add an entity type?" surfaces access-control instead
+  of entity-system), so the model honestly answers "not covered" rather than
+  hallucinating. Improving it (weight spec title/H1/heading matches) is the next
+  chat task.
+- **Pi status chip** stays hidden until a telemetry JSON is wired via
+  `WAASEYAA_ORG_PI_STATUS_FILE`.
+- MCP registry listing submission is a deploy-time follow-up.
 
 ## Gotchas
 
-- **Never use `$_ENV`** — Waaseyaa's `EnvLoader` only populates `putenv()`/`getenv()`. Use `getenv()` or the `env()` helper.
-- **SQLite write access** — Both the `.sqlite` file AND its parent directory need write permissions for WAL/journal files.
+- **Never use `$_ENV`** — Waaseyaa's `EnvLoader` only populates `getenv()`.
+- **SQLite write access** — the `.sqlite` file AND its parent dir need write
+  perms (WAL/journal).
+- **Don't hand-edit `resources/specs/`** — it is generated; change the corpus by
+  re-running `bin/sync-specs.php` against an updated framework.
