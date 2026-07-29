@@ -1,5 +1,6 @@
 # Bimaaji — Application Graph & Agent Mutation Layer
 
+<!-- Spec reviewed 2026-06-22 - WP15 (alpha245 security, audit): MutationValidator runs sovereignty guardrails before structural validation; BimaajiServiceProvider wires SovereigntyGuardrails into the live validator binding. Acceptance: MutationValidatorTest::it_gates_sovereignty_sensitive_operations_through_the_guardrails. -->
 <!-- Spec reviewed 2026-05-23 - M3 WP04 (bimaaji-mcp-bridge-01KS5VS8): added "MCP exposure" subsection enumerating the five bimaaji #[AsAgentTool] adapters surfaced over MCP through AgentToolRegistryBridge. Updated Implementation Status to flip M2 + M3 from "Deferred" to "Shipped". Bound SpecIndexProvider as a container singleton in BimaajiServiceProvider (WP02). -->
 <!-- Spec reviewed 2026-05-21 - M1 (bimaaji-wakeup-01KS5VEY) flipped Implementation Status from "scaffolding only" to "shipped". -->
 
@@ -60,7 +61,6 @@ Bimaaji sits at **Layer 5 (AI)** alongside `ai-schema`, `ai-agent`, `ai-pipeline
 │         GraphSectionProviderInterface        │
 ├─────────────────────────────────────────────┤
 │  MutationRequest → Validator → MutationResult│
-│  TaskDSL → MutationRequest → PatchSet        │
 └─────────────────────────────────────────────┘
 ```
 
@@ -97,6 +97,7 @@ Request/result types for agent-safe changes. No filesystem writes — the protoc
 - `MutationRequest` — what the agent wants to change (entity type, field, route, etc.)
 - `MutationResult` — success/failure with error codes, validated against graph
 - Sovereignty violations delegated to guardrail rules
+- `entityType` and non-null `field` identifiers are restricted to `^[a-z][a-z0-9_]*$`; invalid names fail validation before they can become suggested paths.
 
 ### Patch Generator
 
@@ -104,10 +105,7 @@ Converts accepted `MutationResult` into reviewable patches:
 - PHP files: AST-safe via `nikic/php-parser`, round-trip tested
 - Non-PHP: constrained operations with risk flags
 - Output: file path, content hashes, diff text
-
-### Task DSL
-
-Versioned YAML/JSON DSL mapping high-level tasks (`add_field`, `add_entity_type`) to `MutationRequest` → `PatchSet` pipelines. JSON Schema validated.
+- Defense in depth: `PatchGenerator` independently evaluates the same identifier allowlist and derives `PatchEntry::$unsafe` from that result. A forged successful `MutationResult` with path-breaking identifiers is therefore visibly unsafe even if it bypasses `MutationValidator`. Patch generation still never writes to disk.
 
 ### Sovereignty Guardrails
 
@@ -134,7 +132,6 @@ packages/bimaaji/
 │   │   ├── MutationRequest.php
 │   │   └── MutationResult.php
 │   ├── Patch/
-│   ├── Dsl/
 │   ├── Policy/
 │   └── Spec/
 ├── tests/

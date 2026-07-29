@@ -1,5 +1,8 @@
 # OCAP Audit Log Substrate
 
+<!-- Spec reviewed 2026-07-17 - #2064 WP1 adds the StrictPrivilegedReadLedgerInterface reservation/finalization contract and metadata-only descriptor/receipt/outcome values. It is separate from and does not alter the existing best-effort AuditWriterInterface; no implementation is wired in WP1. Canonical contract: entity-field-read-boundary.md. -->
+<!-- Spec reviewed 2026-07-17 - #2064 WP2 adds durable strict privileged-read persistence as immutable reservation/finalization events, atomic single-finalization, explicit interrupted reservations, exact multi-field/bootstrap and dormant query readers, and complete classifications for every flat audit table column. This remains separate from best-effort AuditWriterInterface telemetry. -->
+
 **Package:** `waaseyaa/audit` (L1 — Core Data)
 **Mission:** `ocap-audit-log-substrate-01KSEFTF`
 **Requirement refs:** FR-001–FR-015, NFR-001–NFR-005, C-001–C-005, DIR-004
@@ -48,7 +51,8 @@ L1 packages/audit
   AuditRetentionPolicy         ← typed read model over a retention-policy row (NOT a registered entity)
   AuditEventQuery              ← DatabaseInterface-backed read impl
   AuditEventWriter             ← insert-only raw DatabaseInterface impl (via AppendOnlyAuditDatabase)
-  AppendOnlyAuditDatabase      ← DatabaseInterface decorator; throws on UPDATE/DELETE of audit_event
+  AppendOnlyAuditDatabase      ← DatabaseInterface decorator; throws on UPDATE/DELETE of audit_event, on destructive raw SQL (DROP/ALTER/TRUNCATE…audit_event via query()), and — through AppendOnlySchema — on destructive schema DDL (dropTable/dropField/dropIndex) of audit_event
+  AppendOnlySchema             ← SchemaInterface decorator returned by AppendOnlyAuditDatabase::schema(); refuses destructive DDL on append-only tables, passes additive DDL + non-append-only tables through
 
 L4 packages/api
   AuditQueryReadModelInterface ← api-local read-model interface (@api)
@@ -90,6 +94,8 @@ This is the same pattern used by the AI observability dashboard (M5A,
 
 Indices: `uuid` (UNIQUE), `account_uid`, `actor_uid`,
 `(entity_type_id, entity_uuid)`, `(event_kind, created_at)`, `created_at`.
+
+**Single source of truth.** `Schema/AuditEventSchemaHandler::ensureSchema()` is the **one** authoritative definition of the audit schema (the `audit_event`, `audit_retention_policy`, and `audit_checkpoint` tables, their indices, and the genesis anchor). `AuditServiceProvider::boot()` calls it on every boot, and the standalone migration `migrations/2026_05_25_000001_create_audit_event_table.php` **delegates to the same handler** (`new AuditEventSchemaHandler(new DBALDatabase($schema->getConnection()))->ensureSchema()`) rather than hand-maintaining its own `CREATE TABLE`. This guarantees a standalone `migrate` produces byte-identical schema to the boot path; a hand-written migration previously drifted (it lacked `actor_uid`/`row_hash`/`prev_hash`), so a migrate-only install produced a schema the writer's INSERT failed against.
 
 ### Actor semantics (`actor_uid` vs `account_uid`)
 
@@ -137,9 +143,130 @@ behavior.
 
 ---
 
+## Tamper-evidence (hash chain + signed checkpoints)
+
+The append-only decorator *prevents* mutation through sanctioned paths, but a
+party with raw DB access can still edit/delete history. Tamper-evidence makes
+such mutation **detectable** (design: `craftsmanship/AUDIT-TAMPER-EVIDENCE-DESIGN.md`).
+The scheme is **A+C hybrid, per-segment (checkpoint-time) chaining** — no
+hot-path serialization on the writer.
+
+**Data model (WP1):**
+- `audit_event` gains `row_hash CHAR(64)` and `prev_hash CHAR(64)` (both
+  `DEFAULT ''` = *unsealed*). They are populated **at checkpoint time** by the
+  builder, not at insert — the writer's append path is unchanged.
+- `audit_checkpoint` seals contiguous segments: `segment_start_id`/`segment_end_id`,
+  `row_count`, `segment_hash` (digest over the segment's `row_hash`es),
+  `prev_checkpoint_hash` (chains checkpoints), `checkpoint_hash`
+  (`AuditCheckpointHasher::checkpointHash()` over the segment fields +
+  `prev_checkpoint_hash`), `signature` (deferred), `hash_version`, `is_genesis`.
+  It is itself **append-only** (`AppendOnlyAuditDatabase::APPEND_ONLY_TABLES`).
+- **Canonicalization** is pinned + versioned in `AuditEventCanonicalizer`
+  (`HASH_VERSION = 'v1'`): fixed column order, explicit NULL sentinel,
+  length-prefixed so no field value can forge a delimiter. `row_hash =
+  sha256(canonical(content) || prev_hash)`.
+- **Genesis anchor:** on first `ensureSchema()`, one `is_genesis=1` checkpoint is
+  written over the current `MAX(id)` with `prev_checkpoint_hash = segment_hash =
+  GENESIS_HASH` (64 zeros). Pre-migration rows are **not** back-chained — they
+  are attested as "predates chaining", never given false assurance. Idempotent
+  (guarded on a zero-rows check).
+
+**Checkpoint builder (WP2):** `AuditCheckpointBuilder` seals all currently-unsealed
+rows (`id > MAX(segment_end_id)`) into one new checkpoint via the **raw**
+`DatabaseInterface` (it writes `row_hash`/`prev_hash` and inserts the checkpoint —
+both forbidden through the decorator, exactly like `audit:prune`). It builds a
+*continuous* row chain (the first unsealed row's `prev_hash` = the prior segment's
+`segment_hash`, anchored at `GENESIS_HASH` for the first real segment), sets
+`segment_hash` = the last `row_hash` (chain head), and chains checkpoints via
+`prev_checkpoint_hash`. A partial seal interrupted by a crash is **idempotently
+re-derived** next run (the high-water mark comes from the last *checkpoint*, not
+from row state). It runs on a schedule (`AuditCheckpointScheduleEntries`, default
+`*/15 * * * *`) and on demand via `bin/waaseyaa audit:checkpoint`. Each sealed
+checkpoint is exported through a pluggable **`CheckpointSink`** — the
+**load-bearing anchor**. The default `FileCheckpointSink` appends NDJSON locally
+(+ optional stdout), but this is only as trustworthy as the host: **real
+tamper-evidence requires configuring an off-box / WORM / external append-only
+sink** (a host able to edit `audit_event` can also edit a local file). Optional
+HMAC over `checkpoint_hash` is mandatory in kernel-wired operation. Its raw
+32-byte key is HKDF-SHA-256-derived from `WAASEYAA_APP_SECRET` with purpose
+`waaseyaa.audit.checkpoint-hmac.v1`; the stored form is
+`hmac-sha256.hkdf-v1:<64 lowercase hex>`. When a derived key is configured, the
+verifier requires and constant-time verifies that envelope on **every** checkpoint,
+including genesis; empty/bare legacy values never count as authenticated history.
+Existing chains are upgraded only by the explicit, transactional
+`audit:migrate-checkpoint-signatures --confirm` command after the operator has
+established trust in a backup. It refuses malformed, mixed, or hash-chain-broken
+history and strict-verifies the result before commit. Ordinary verification never
+performs migration writes. Asymmetric/KMS signing is deferred.
+
+**Verification — `audit:verify` (WP3):** `AuditChainVerifier::verify()` walks every
+sealed segment and returns an `AuditVerificationResult` (`ok`, `firstBrokenId`,
+`failureKind`, counts). Per checkpoint it checks: the checkpoint chains to its
+predecessor (`prev_checkpoint_hash`), the present row count equals `row_count`,
+each row's `prev_hash` links to the previous row's `row_hash` (first row → prior
+`segment_hash`), each row's content recomputes to its stored `row_hash`
+(`AuditEventCanonicalizer`), the last `row_hash` equals the checkpoint's
+`segment_hash`, and the checkpoint's `checkpoint_hash` recomputes. It STOPS at the
+first break with a machine-readable `failureKind` ∈ {`genesis`, `checkpoint_signature`, `checkpoint_chain`,
+`row_count`, `chain_link`, `row_content`, `segment_hash`, `checkpoint_hash`}. Rows
+`id ≤ genesis.segment_end_id` (predates chaining) and rows past the last checkpoint
+(unsealed/pending) are not failures. `bin/waaseyaa audit:verify [--json]` exits 0
+when intact and non-zero on tamper, and emits an `audit.verify` self-audit event
+(outcome `allowed`/`denied`). This detects content edits, row deletions, gaps, and
+forged checkpoints — what the append-only decorator cannot *prevent* against a
+party with raw DB access.
+
+**Prune reconciliation — checkpoint-aware `audit:prune` (WP4):** retention pruning
+must not look like tampering. `audit_checkpoint` gains a `pruned` flag. `audit:prune`
+deletes in two disjoint populations: **sealed** rows (covered by a non-genesis
+checkpoint) are pruned only at WHOLE checkpoint-segment boundaries — it computes a
+`horizon` = the highest `segment_end_id` whose entire segment is older than the
+cutoff, deletes `audit_event WHERE id <= horizon`, and marks those checkpoints
+`pruned=1` (`--kind` does NOT apply to sealed rows; whole-segment deletion is
+required for chain integrity); **unsealed-tail** rows (`id > MAX(segment_end_id)`)
+keep the legacy `created_at`(+`--kind`) deletion (no chain yet). The
+`audit.retention_pruned` self-audit records `sealed_pruned_through_id`,
+`pruned_checkpoint_hash`, and `unsealed_deleted_count`. Its `deleted_count`
+equals the real sealed-plus-unsealed total (what the two delete paths above
+are about to remove: the record is written before the deletes execute, so it
+reflects intent, not observed outcome), not a kind-filtered match count:
+since sealed rows are
+pruned whole regardless of `--kind`, a kind-filtered count can undercount the
+real deletion when `--kind` is set (audit A7, F10). The confirmation prompt
+(refusal without `--confirm`) reports that same real total. The superseded
+kind-filtered number is kept separately under `kind_filtered_match_count` for
+anyone inspecting the self-audit trail. `audit:verify` treats a
+`pruned=1` checkpoint as a valid anchor: it still verifies the checkpoint's chain
+link **and recomputes its `checkpoint_hash`** (a forged pruned checkpoint is still
+caught), but skips the row-level checks (the rows are legitimately gone) and
+advances the chain from the retained `segment_hash`, so the surviving chain still
+validates across the prune boundary. A row deleted from a sealed segment **without**
+the `pruned` flag still fails verification (`row_count`/`chain_link`) — that is what
+distinguishes a sanctioned prune from a malicious gap.
+
+**v1 complete.** Remaining hardening is tracked separately: the external-sink
+cross-check at verify time.
+
+**Fail-open write-path hardening (WP4, #1792, design §10.4):** implemented. On
+any audit INSERT failure `AuditEventWriter` now:
+1. Calls the `AuditWriteFailureObserver` L1 seam
+   (`Waaseyaa\Audit\Contract\AuditWriteFailureObserver`) — a loud metric/alert
+   hook intended for higher-layer wiring (Prometheus/Telescope at L6; the default
+   is `NullAuditWriteFailureObserver`, a no-op). Operators bind a real
+   implementation in their service provider.
+2. Attempts one best-effort marker INSERT of kind `AuditEventKind::AuditWriteDegraded`
+   (`audit.write_degraded`) whose attributes carry the `dropped_kind`, `error_class`,
+   and `error_message`. This turns a silently dropped event into an attested
+   degraded window visible to `audit:verify` and operator dashboards.
+3. If the marker ALSO fails, just logs — no recursion, no re-entry into `record()`,
+   no exception escaping to the caller (FR-005/NFR-001 best-effort contract is
+   preserved). The approach is marker + metric, NOT hard fail-closed.
+
+---
+
 ## Event-Kind Taxonomy
 
-`AuditEventKind` is a backed string enum with 19 cases (additive — cases are
+`AuditEventKind` is a backed string enum with 23 cases (additive — cases are
 never removed per the out-of-band downstream-amendment principle):
 
 | Case | Value | Description |
@@ -163,6 +290,10 @@ never removed per the out-of-band downstream-amendment principle):
 | `MediaVersionDedupHit` | `media.version.dedup_hit` | Added by `versioned-blob-media-abstraction` |
 | `RevisionPublish` | `revision.publish` | Published-revision pointer moved (added by `revision-audit-provenance`) |
 | `RevisionRevert` | `revision.revert` | Current-revision pointer moved back to a prior revision (added by `revision-audit-provenance`) |
+| `AuditVerified` | `audit.verify` | `audit:verify` ran and checked the hash chain + checkpoints (added WP3) |
+| `AuditWriteDegraded` | `audit.write_degraded` | Sentinel written when a primary audit INSERT fails; attributes carry `dropped_kind`, `error_class`, `error_message` (added WP4 #1792, design §10.4) |
+| `WorkflowTransition` | `workflow.transition` | Workflow transition fired (allowed) or attempted and refused (denied) via `TransitionService`/the save-path guard (added CW-v1 WP-1, #1920, `docs/specs/content-workflow.md`) |
+| `RevisionRollback` | `revision.rollback` | `EntityRepository::rollback()` recorded by `RollbackAuditListener` — distinct from `RevisionRevert` (a revert moves the pointer to an EXISTING revision; a rollback creates a brand-new one) (added CW-v1 WP-2 task 2.5, #1920, `docs/specs/content-workflow.md`) |
 
 Extension policy: new cases MUST be additive only. Removal requires a
 deprecation period and a major-version bump.
@@ -171,7 +302,7 @@ deprecation period and a major-version bump.
 
 ## Listener Catalogue
 
-All six listeners have **best-effort write semantics** — they wrap
+All seven listeners have **best-effort write semantics** — they wrap
 `$writer->record(...)` in a try-catch to prevent audit failures from
 crashing primary requests (NFR-001).
 
@@ -183,6 +314,7 @@ crashing primary requests (NFR-001).
 | `McpDispatchAuditListener` | `McpEvents::DISPATCH` | `mcp.dispatch` |
 | `BroadcastAuditListener` | `BroadcastEvents::PUBLISH` | `broadcast.publish` |
 | `PublishPointerAuditListener` | `RevisionPointerMovedEvent::class` (typed FQCN subscription — audit requires entity-storage, L1→L1) | `revision.publish`, `revision.revert` |
+| `RollbackAuditListener` | `BeforeRevisionPointerMoveEvent::class` (arms on `operation === 'rollback'`) + `EntityEvents::REVISION_REVERTED->value` (consumes the armed slot) | `revision.rollback` |
 
 ### Per-listener actor source
 
@@ -196,6 +328,7 @@ preserves null distinctly from 0:
 | API request | `ApiRequestAuditListener` | The `_account` request attribute (unchanged — this was already correct) | same |
 | Agent tool execute | `AgentToolAuditListener` | The event's additive `?int $accountId` property (the run initiator, populated by `AgentExecutor` on both the success and threw dispatch paths; `0` is a real value — the anonymous initiator) → `AccountContextInterface` fallback → null. Duck-read: legacy event shapes lacking the property still record via the fallback | hardcoded `0` |
 | Publish/revert pointer | `PublishPointerAuditListener` (**new**) | The event's `actorUid` (resolved by `EntityRepository` at dispatch time; preferred when non-null) → `AccountContextInterface` fallback → null | no row at all (pointer moves were audit-invisible) |
+| Rollback | `RollbackAuditListener` (**new**, CW-v1 WP-2 task 2.5) | The pre-event's `actorUid` (armed at `rollback()`'s dispatch time; preferred when non-null) → `AccountContextInterface` fallback → null — same three-state contract as `PublishPointerAuditListener` | no row at all (`rollback()` was invisible to both audit listeners: it never dispatches `RevisionPointerMovedEvent`) |
 | MCP dispatch | `McpDispatchAuditListener` | The event's `accountUid` (?int, the bearer-auth account), preserved verbatim — a null or absent value stays null, never coerced to 0 | event never fired; listener cast absent → 0 |
 | Broadcast publish | `BroadcastAuditListener` | unchanged | same |
 
@@ -207,6 +340,26 @@ the pointer transaction commits — a rolled-back move produces no row;
 /entities/<type>/<id>`, outcome `allowed`, severity `notice`, attributes
 `{entity_id, operation, from_revision_id, to_revision_id}`. See
 `docs/specs/revision-system-unified.md` §4a for the event contract.
+
+`RollbackAuditListener` closes the gap `PublishPointerAuditListener` leaves for
+`EntityRepository::rollback()` (it copies a prior revision forward as a
+brand-new one — unlike a revert, it never dispatches
+`RevisionPointerMovedEvent`, which is reserved for pointer moves WITHOUT a new
+revision). It ARMS on `Waaseyaa\EntityStorage\Event\BeforeRevisionPointerMoveEvent`
+with `operation === 'rollback'` — dispatched pre-write by exactly one code
+path, `rollback()` itself, so the arm signal is unambiguous by construction —
+and consumes the armed slot on the following `EntityEvents::REVISION_REVERTED`
+for the same entity. Every pointer operation's pre-event re-arms or clears the
+single-slot state (armed only for `rollback`, cleared otherwise), so an
+aborted rollback's stale arm cannot survive to correlate with a later
+unrelated publish/revert, and an ordinary save followed by a legitimate
+`setPublishedRevision()` of that same revision (the forward-draft publish
+flow) records nothing here. Row shape: `subject_uri = /entities/<type>/<id>`,
+outcome `allowed`, severity `notice`, attributes `{entity_id, operation:
+'rollback', from_revision_id, to_revision_id}` (the last known only post-write
+— rollback's pre-event `toRevisionId` is always null, the id is
+writer-assigned). See `docs/specs/content-workflow.md` "Pointer-move guard"
+for the full arm/consume design and the rejected identity-pairing alternative.
 
 The `AccountContextInterface`-reading listeners receive the kernel's shared
 acting-account holder via the kernel-services bus (`AuditServiceProvider`
@@ -310,19 +463,38 @@ bin/waaseyaa audit:prune --older-than=<ISO-8601-duration> [--kind=<glob>] [--dry
   `entity.*` = all entity.* cases; literal = single exact kind.
 - `--dry-run`: Print the count; do not delete.
 
-**Algorithm:**
+**Algorithm** (see "Prune reconciliation" above for the sealed/unsealed split):
 
 1. Validate `--older-than` via `new \DateInterval(...)`.
 2. Compute `cutoff = now() - interval`.
-3. Build `AuditQuery` with `to = $cutoff` and kind filter.
-4. `$count = $query->count($auditQuery)`.
-5. If `--dry-run`: print count and exit 0.
-6. Write self-audit event via `$writer->record(AuditEventDescriptor{kind: AuditRetentionPruned, attributes: {kind_pattern, older_than, deleted_count: $count, cutoff}})`.
-7. Execute `$db->delete('audit_event')->condition('created_at', $cutoff, '<')->...->execute()`.
-8. Print confirmation and exit 0.
+3. Compute the sealed horizon, the sealed count (`countSealedRowsUpTo`, 0 when
+   horizon is 0), and the kind-filtered unsealed-tail count. `real_total =
+   sealed_count + unsealed_count`: this is what the two delete paths below
+   are about to remove. A legacy kind-filtered `AuditQuery` count is also
+   computed and kept as `kind_filtered_match_count`, but it is not used as
+   `deleted_count` (audit A7, F10: sealed segments are pruned whole regardless
+   of `--kind`, so a kind-filtered count can undercount what Path A deletes).
+4. If `--dry-run`: print the sealed/unsealed breakdown and exit 0 (no delete,
+   no self-audit event).
+5. Without `--confirm`: print `real_total` (with the sealed/unsealed
+   breakdown) and refuse; exit 0 (no delete, no self-audit event).
+6. Write self-audit event via `$writer->record(AuditEventDescriptor{kind:
+   AuditRetentionPruned, attributes: {kind_pattern, older_than, deleted_count:
+   real_total, kind_filtered_match_count, cutoff, sealed_pruned_through_id,
+   pruned_checkpoint_hash, unsealed_deleted_count}})`.
+7. Execute Path A (`audit_event WHERE id <= horizon`, kind-agnostic) when
+   `horizon > 0`, marking covered checkpoints `pruned=1`; then execute Path B
+   (`created_at < cutoff` plus optional `--kind` filter, applied to the
+   unsealed tail: `id > MAX(segment_end_id)` over ALL checkpoints, genesis
+   included).
+8. Print confirmation (`real_total`) and exit 0.
 
 Self-audit semantics (FR-012): the `audit.retention_pruned` event is recorded
-BEFORE the delete so its `deleted_count` reflects the pre-deletion count.
+BEFORE the delete so its `deleted_count` reflects the pre-deletion count
+(intent, not observed outcome: a mid-delete failure leaves the record
+overstating what was removed). Since the audit A7, F10 fix, `deleted_count`
+equals the real sealed-plus-unsealed total that the two delete paths are
+about to remove, not the kind-filtered match count alone.
 
 ---
 
@@ -366,12 +538,27 @@ to satisfy this budget on SQLite and MySQL/PostgreSQL.
 - **Raw SQL through the decorator is guarded too** (FR-008 of mission
   `revision-audit-provenance-01KTWY5V`, #1648 — previously `query()` passed
   raw SQL through unguarded). `AppendOnlyAuditDatabase::query()` performs a
-  token-level check, not a SQL parse: single-/double-quoted string literals
-  and SQL comments (`--`, `/* */`) are stripped, then a word-boundary
-  mutation verb (`UPDATE` / `DELETE` / `DROP` / `ALTER` / `TRUNCATE`)
-  co-occurring with a word-boundary append-only table name (`audit_event`)
-  throws the **same** `\LogicException` as the builder-level guard (shared
-  message factory).
+  token-level check, not a SQL parse: **single-quoted** string literals and
+  SQL comments (`--`, `/* */`) are removed, and **identifier quotes are
+  UNQUOTED** — the delimiters of `"…"`, `` `…` `` and `[…]` (the three forms
+  SQLite accepts) are dropped while the inner name is kept — then a
+  word-boundary mutation verb (`UPDATE` / `DELETE` / `DROP` / `ALTER` /
+  `TRUNCATE`) co-occurring with a word-boundary append-only table name
+  (`audit_event`) throws the **same** `\LogicException` as the builder-level
+  guard (shared message factory).
+  - **Identifier-quoting bypass closed (#1648, 2026-06-21):** the earlier
+    implementation stripped **double-quoted** spans as if they were string
+    literals, so `DELETE FROM "audit_event"` (and the `` `audit_event` `` /
+    `[audit_event]` / `main."audit_event"` forms) deleted the table name from
+    the guard's view and the raw mutation reached the inner database. Unquoting
+    rather than stripping identifier delimiters keeps the table name visible to
+    the check. Acceptance: `AppendOnlyAuditDatabaseTest::blockedRawSql` now
+    includes every quoting form, proven to reach the inner DB before the fix.
+  - **Why a decorator and not a database trigger:** the sole sanctioned
+    deletion — `audit:prune` — runs through the **raw** `DatabaseInterface`
+    builder, so a blanket `BEFORE DELETE` trigger would block retention too.
+    Caller discrimination (writer ⇒ decorator ⇒ blocked; prune ⇒ raw ⇒
+    allowed) can only live at the decorator layer.
   - **What passes:** `SELECT`s over `audit_event` — including ones whose
     string literals merely *contain* mutation verbs, e.g.
     `WHERE attributes LIKE '%delete%'` (`attributes` is a JSON TEXT column,
@@ -398,7 +585,6 @@ to satisfy this budget on SQLite and MySQL/PostgreSQL.
 ## Cross-References
 
 - `docs/specs/api-layer.md` — JSON:API endpoint patterns, router shape.
-- `docs/specs/codified-context-integration.md` §"OCAP Audit Log Read-Contract Pattern" — L0↔L4 adapter pattern.
 - `docs/specs/access-control.md` — `_role: admin` route option, `AccessChecker`.
 - `packages/audit/src/AuditServiceProvider.php` — container bindings.
 - `packages/api/src/ApiServiceProvider.php` — L4 binding + `resolveOptional` wiring.
@@ -406,3 +592,4 @@ to satisfy this budget on SQLite and MySQL/PostgreSQL.
 <!-- Spec written 2026-05-25 - mission ocap-audit-log-substrate-01KSEFTF WP03: JSON:API audit endpoint + audit:prune CLI + integration tests. Refs gap-matrix-A3, DIR-004. -->
 <!-- Spec reviewed 2026-06-09 - alpha.202: audit_event/audit_retention_policy de-registered as content entities (now raw OCAP log tables + typed read models); append-only enforcement moved from the dormant AppendOnlyDriverGuard to the active AppendOnlyAuditDatabase DatabaseInterface decorator; writer migrated to insert-only raw INSERT. Refs #1625. -->
 <!-- Spec reviewed 2026-06-12 - mission revision-audit-provenance-01KTWY5V WP05: actor_uid authoritative three-state column (+index, guarded ALTER migration; account_uid retained as legacy actor??0); AuditEventDescriptor::$accountUid widened to ?int; AuditEvent::getActorUid(); taxonomy 17→19 (revision.publish / revision.revert); listener catalogue gains PublishPointerAuditListener + per-listener actor-source table (entity lifecycle no longer reads the entity's uid field; agent tools no longer hardcode 0); AppendOnlyAuditDatabase::query() raw-SQL guard documented (literal/comment stripping, conjunctive verb+table match, fail-closed residuals, structural NFR-003 argument). Refs #1645, #1648. -->
+<!-- Spec reviewed 2026-06-21 - #1648 identifier-quoting bypass closed: AppendOnlyAuditDatabase::query() previously stripped DOUBLE-quoted spans as string literals, so `DELETE FROM "audit_event"` (and the backtick/bracket/schema-qualified forms SQLite accepts) erased the table name from the guard's view and the raw mutation reached the inner DB (proven: those statements raise TableNotFoundException from the engine, not LogicException, under the old code). Fixed by `normalizeSqlForGuard()` — single-quoted literals + comments are removed, but identifier quotes (`"…"`, backtick, `[…]`) are UNQUOTED (delimiters dropped, inner name kept) so a quoted append-only table name is still matched. The decorator remains the enforcement layer by design (a blanket DB trigger would also block the raw-connection `audit:prune` retention path). Acceptance: AppendOnlyAuditDatabaseTest (every quoting form in blockedRawSql; a quoted-name SELECT stays in allowedRawSql to prove no false positive). -->

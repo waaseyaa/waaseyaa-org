@@ -1,5 +1,9 @@
 # Middleware Pipeline
 
+<!-- Spec reviewed 2026-07-17 - #2064 WP2 production-wires FieldReadContextMiddleware at priority 15 through the audit provider. It runs after bearer/session identity (40/30) and before route authorization (10), installs a strictly audited immutable principal, restores the fiber-local scope in finally, and wraps deferred streamed-response callbacks with the same bounded principal. Field enforcement remains dormant. -->
+
+<!-- Spec reviewed 2026-06-19 - classic-FrankenPHP fallback in the front controller: `frankenphp_handle_request()` is defined under BOTH worker mode AND classic FrankenPHP (`php-server`) / FPM, where *calling* it throws "called while not in worker mode" — so branching on `function_exists()` alone mis-detected classic mode and `frankenphp php-server --root public` 500'd on every request (alpha.225 only had a worker-mode harness; no native binary tested classic mode). The worker loop now attempts the loop and, if the FIRST call throws before any request is handled, falls through to the single synchronous `$handler()` path (classic FrankenPHP, `php -S`, FPM); worker mode is unchanged. Verified against a real FrankenPHP 1.12 binary (classic `php-server` → 200; worker mode → 200 on repeated warm requests). Applied identically across all four front-controller copies (repo `public/index.php`, `skeleton/public/index.php`, the `make:public` stub, and the `golden-public-index.php` drift reference) so the byte-for-byte convergence audit (`waaseyaa-audit-site`) still holds; locked by `tests/Architecture/FrontControllerRuntimeDispatchTest.php`. The skeleton also adds a `composer serve:franken` script (classic `php-server` on `127.0.0.1:8080`, loopback + non-privileged → no privileged-port/auto-TLS prompt). -->
+<!-- Spec reviewed 2026-06-19 - runtime-agnostic dev-serve refactor: the FrankenPHP worker-mode adapter is now identical across all three front controllers (repo `public/index.php`, the `make:public` template stub, and `skeleton/public/index.php`), so `public/index.php` is the single source of runtime awareness. The concurrent runtime is launched by the NATIVE `frankenphp` command + a committed `config/frankenphp/Caddyfile` (worker mode) — the framework no longer wraps it in a `serve` subcommand (`serve` is now ONLY plain single-worker `php -S`). The three runtimes and the SessionMiddleware -> AuthorizationMiddleware pipeline below are otherwise unchanged. -->
 <!-- Spec reviewed 2026-06-04 - PR #1614: the front controller (`public/index.php`) now supports three runtimes ahead of the same authorization pipeline: (1) FrankenPHP worker mode — boot once then loop on `frankenphp_handle_request()` so the app stays warm and requests are served concurrently across threads (a long-lived SSE `/api/broadcast` stream pins one thread while the rest stay responsive); (2) FrankenPHP/FPM classic — one request per invocation; (3) `php -S` cli-server — single request with static-file passthrough. The middleware pipeline (SessionMiddleware -> AuthorizationMiddleware) and its onion/attribute model are unchanged; only the request-loop wrapper differs by runtime. -->
 <!-- Spec reviewed 2026-04-22 - public/index.php: optional Dotenv loadEnv(..., APP_ENV, production), REQUEST_URI ?? '/' in cli-server guard, outer Throwable catch JSON:API 500 -->
 
@@ -10,7 +14,8 @@ Waaseyaa implements typed middleware pipelines for two execution contexts: HTTP 
 | Package | Role | Key files |
 |---------|------|-----------|
 | `packages/foundation/` | Interfaces, pipeline classes, `AsMiddleware` attribute, `PackageManifestCompiler` | `src/Middleware/`, `src/Attribute/AsMiddleware.php`, `src/Discovery/` |
-| `packages/routing/` | `AccessChecker`, `RouteBuilder` (route option helpers) | `src/AccessChecker.php`, `src/RouteBuilder.php` |
+| `packages/routing/` | `RouteBuilder` (route option helpers) | `src/RouteBuilder.php` |
+| `packages/access/` | `AccessChecker` (reads route access options) | `src/AccessChecker.php` |
 | `packages/user/` | `SessionMiddleware` (resolves `_account` from PHP session) | `src/Middleware/SessionMiddleware.php` |
 | `packages/access/` | `AuthorizationMiddleware` (enforces route-level access) | `src/Middleware/AuthorizationMiddleware.php` |
 
@@ -141,11 +146,17 @@ A middleware can short-circuit by returning a response without calling `$next->h
 
 ## HTTP Pipeline Chain
 
-The production HTTP pipeline in `HttpKernel::serveHttpRequest()` wires middleware in priority order:
+The production HTTP pipeline in `HttpKernel::serveHttpRequest()` wires middleware in priority order around the real dispatch handler:
 
 ```
-SessionMiddleware -> AuthorizationMiddleware -> final handler
+SecurityHeadersMiddleware -> SessionMiddleware -> CsrfMiddleware -> AuthorizationMiddleware -> provider middleware -> controller/domain-router dispatch
 ```
+
+### Pre-boot maintenance gate (outside this pipeline)
+
+`MaintenanceModeMiddleware` (`waaseyaa/foundation`) is the one HTTP middleware NOT wired into the pipeline above. It is invoked once, explicitly, at the very top of `HttpKernel::handle()` — **before** `boot()` — via `maintenanceGate()`. This is deliberate: `boot()` runs migrations and schema validation against the database, so a maintenance 503 has to be decided before any DB work to survive a database that is mid-swap (the SFN live-SQLite-swap incident, #2122). Because the branded 503 short-circuits before the pipeline exists, the middleware applies its own security headers via `SecurityHeadersMiddleware::applyResponseDefaults()`.
+
+To keep exactly one invocation path, `MaintenanceModeMiddleware` deliberately carries **no** `#[AsMiddleware]` attribute, so `PackageManifestCompiler` never discovers it into any pipeline stack — it cannot run twice per request. See `docs/specs/operations-playbooks.md` "Playbook I: Maintenance Mode (quiesce for deploys / DB swaps)".
 
 ### Wiring code (from HttpKernel::serveHttpRequest())
 
@@ -155,15 +166,18 @@ foreach ($middlewares as $middleware) {
     $pipeline = $pipeline->withMiddleware($middleware);
 }
 
-$authResponse = $pipeline->handle(
+$response = $pipeline->handle(
     $httpRequest,
-    new class implements HttpHandlerInterface {
-        public function handle(HttpRequest $request): HttpResponse {
-            return new HttpResponse('', 200);
-        }
-    },
+    $dispatchHandler,
 );
 ```
+
+The terminal handler performs the real controller/domain-router dispatch. The
+same onion pass therefore supports both request-side checks and response-side
+work: middleware enters before dispatch, may short-circuit by returning its own
+response, and otherwise unwinds over the final response. Provider middleware
+contributed through `HasMiddlewareInterface::middleware()` has this same
+contract; no separate app response hook is required.
 
 `public/index.php` is a thin entry point that boots the kernel and sends the returned response. Production apps typically load `.env` **before** constructing `HttpKernel` via Symfony `Dotenv::loadEnv($projectRoot . '/.env', 'APP_ENV', 'production')` when the file exists — the third argument defaults missing `APP_ENV` to **`production`**, not Symfony's implicit **`dev`**. The monorepo entry wraps malformed `.env` in try/catch; skeleton / `make:public` stub match Minoo's optional-load + outer `Throwable` catch returning JSON:API 500. The file also contains a `cli-server` guard (see [cli-server static file guard](#cli-server-static-file-guard)) so static assets are served directly by the built-in server without passing through `HttpKernel`:
 
@@ -187,7 +201,7 @@ $response->send();
 Behavior:
 1. If `session.cookie` options are configured (see `HttpKernel` / `config/waaseyaa.php`), applies matching `ini_set` calls for `session.cookie_*` and `session.use_strict_mode` **before** `session_start()`. Supported keys: `httponly` (bool), `secure` (bool or `'auto'` to enable only when the request is HTTPS or `X-Forwarded-Proto: https`), `samesite` (string), `use_strict_mode` (bool).
 2. Reads `$_SESSION['waaseyaa_uid']` (or `$request->attributes->get('_session')` for testability).
-3. Loads `User` entity via `EntityStorageInterface::load($uid)`.
+3. Loads `User` entity via `EntityRepositoryInterface::find($uid)`.
 4. Falls back to `AnonymousUser` if uid is null, user not found, or storage throws.
 5. Sets `AccountInterface` instance on `$request->attributes->set('_account', $account)`.
 6. Calls `$next->handle($request)`.
@@ -277,6 +291,8 @@ Routes declare access requirements via Symfony Route options. `AccessChecker` re
 | Option | Type | Meaning |
 |--------|------|---------|
 | `_public` | `bool` | If `true`, skip all access checks. Anyone can access. |
+| `_authenticated` | `bool` | If `true`, require a non-anonymous account; otherwise `AccessChecker` denies (401-class) before other checks. |
+| `_session` | `bool` \| `list<string>` | Require an active session; a list restricts to the named session scopes. |
 | `_permission` | `string` | Require `$account->hasPermission($permission)` to return `true`. |
 | `_role` | `string` | Comma-separated role list. Account must have at least one. |
 | `_gate` | `array{ability: string, subject?: mixed}` | Delegates to `GateInterface::allows()`. |
@@ -290,6 +306,8 @@ Routes declare access requirements via Symfony Route options. `AccessChecker` re
 ```php
 // File: packages/routing/src/RouteBuilder.php
 RouteBuilder::create('/api/nodes')
+    ->requireAuthentication()              // sets _authenticated = true
+    ->requireSession()                     // sets _session option
     ->requirePermission('access content')  // sets _permission option
     ->requireRole('editor')                // sets _role option
     ->allowAll()                           // sets _public = true
@@ -315,15 +333,16 @@ All HTTP middleware implement `HttpMiddlewareInterface` and use `#[AsMiddleware(
 
 | Priority | Class | Package | Purpose |
 |----------|-------|---------|---------|
-| 100 | `SecurityHeadersMiddleware` | foundation | CSP, X-Frame-Options, HSTS. Constructor: `(string $csp, bool $hstsEnabled, int $hstsMaxAge)` |
+| 100 | `SecurityHeadersMiddleware` | foundation | Runtime-safe defaults (`X-Frame-Options: SAMEORIGIN` + `nosniff`) around the final response; CSP and HSTS remain opt-in. Constructor: `(?string $csp, bool $hstsEnabled, int $hstsMaxAge, string $frameOptions)`. Explicit construction retains the historical CSP/HSTS-on defaults; `HttpKernel` passes `null`/`false` for those deployment-sensitive headers. |
 | 90 | `CompressionMiddleware` | foundation | gzip compression for responses above minimum size. Constructor: `(int $minimumSize = 1024)` |
 | 80 | `RateLimitMiddleware` | foundation | IP-based rate limiting via `RateLimiterInterface`. Constructor: `(RateLimiterInterface, int $maxAttempts = 60, int $windowSeconds = 60)` |
 | 70 | `BodySizeLimitMiddleware` | foundation | Rejects payloads over max bytes (413). Constructor: `(int $maxBytes = 1_048_576)` |
 | 60 | `RequestLoggingMiddleware` | foundation | Logs method, URI, status, duration. Constructor: `(?Closure $logger = null)` |
 | 50 | `ETagMiddleware` | foundation | ETag generation + 304 Not Modified for GET/HEAD |
-| 40 | `BearerAuthMiddleware` | user | JWT and API key auth via Bearer header. Constructor: `(EntityStorageInterface, string $jwtSecret, array $apiKeys, ?LoggerInterface)` |
-| — | `SessionMiddleware` | user | Resolves `AccountInterface` from session |
-| — | `AuthorizationMiddleware` | access | Route-level access enforcement via `AccessChecker` |
+| 40 | `BearerAuthMiddleware` | user | JWT and API key auth via Bearer header. Constructor: `(EntityRepositoryInterface, string $jwtSecret, array $apiKeys, ?LoggerInterface)` |
+| 30 | `SessionMiddleware` | user | Resolves `AccountInterface` from session |
+| 20 | `CsrfMiddleware` | user | Double-submit / header CSRF validation for state-changing non-JSON requests |
+| 10 | `AuthorizationMiddleware` | access | Route-level access enforcement via `AccessChecker` |
 
 ## File Reference
 
@@ -358,12 +377,12 @@ All HTTP middleware implement `HttpMiddlewareInterface` and use `#[AsMiddleware(
 | `packages/user/src/Middleware/SessionMiddleware.php` | `SessionMiddleware` | HTTP |
 | `packages/access/src/Middleware/AuthorizationMiddleware.php` | `AuthorizationMiddleware` | HTTP |
 
-### Access checking (packages/routing/)
+### Access checking
 
 | File | Class |
 |------|-------|
-| `src/AccessChecker.php` | `AccessChecker` -- reads `_public`, `_permission`, `_role`, `_gate` from Route options |
-| `src/RouteBuilder.php` | `RouteBuilder` -- fluent API with `requirePermission()`, `requireRole()`, `allowAll()` |
+| `packages/access/src/AccessChecker.php` | `AccessChecker` -- reads `_public`, `_authenticated`, `_session`, `_permission`, `_role`, `_gate` from Route options |
+| `packages/routing/src/RouteBuilder.php` | `RouteBuilder` -- fluent API with `requirePermission()`, `requireRole()`, `requireAuthentication()`, `requireSession()`, `allowAll()` |
 
 ### Front controller
 

@@ -1,3 +1,4 @@
+<!-- Spec reviewed 2026-07-19 - Sheguiandah gap batch: media's entity-gated download now reads only Protected source_uri through a typed audited capability seam, and upload/download roots recognize canonical files_dir with legacy files_root precedence. These changes do not activate or alter the parked MediaVersion/CAS subsystem or either revision/translation axis described historically below; canonical read-boundary and configuration contracts live in entity-field-read-boundary.md and infrastructure.md. -->
 <!-- Spec reviewed 2026-05-20 - M-006 translation-hardening: added §11 translation access-gate convention -->
 <!-- Spec reviewed 2026-06-09 - alpha.201 doc-drift: this spec describes the RETIRED M-004 vid stack (never kernel-wired, removed alpha.196). Added a SUPERSEDED banner pointing to revision-system-unified.md (the live revision_id model). The vid/SaveContext::withTranslations content below is retained for historical/audit context only. -->
 # Entity Storage — Two-Axis (Revisionable × Translatable)
@@ -350,6 +351,8 @@ preserved in the factory message so contract tests continue to pass.
 
 ## Related: Versioned blob media abstraction (DIR-005)
 
+**PARKED / internal (#1742).** The Version namespace and its API/admin read surfaces are not supported extension points. Reactivation requires a boundary test proving that real upload bytes survive the production request boundary and are durably persisted to CAS before a `media_version` row is exposed. The #1951 early-return guard in `MediaVersionStorageDriver` remains mandatory while parked.
+
 `MediaVersion` (mission `versioned-blob-media-abstraction-01KSEFTJ`) is a
 **non-revisioned, non-translatable** entity that sits alongside the two-axis
 storage shape rather than inside it. Each `MediaVersion` row represents one
@@ -357,6 +360,23 @@ immutable CAS blob pointer (`blob_uri`, `sha256`) for a parent `media` entity.
 Version identity is a monotonic `vid` integer scoped to the parent UUID rather
 than the core-entity revision integer, deliberately avoiding the translatable ×
 revisioning lifecycle so the CAS lineage remains append-only and auditable.
+
+**vid allocation is race-safe since 2026-07-01 (audit-remediation WP5),
+mirroring the core revision-id pattern (#1706):** `MediaVersionRepository::nextVid()`
+is a MAX(vid)+1 read that now THROWS on query failure (historically a
+broken schema was swallowed and vid 1 returned — silently colliding with /
+rewriting version history); `MediaVersionStorageDriver::createVersion()`
+pairs it with the `UNIQUE (media_uuid, vid)` index and a bounded
+retry-on-`UniqueConstraintViolationException` (≤5 attempts, fresh MAX
+re-read per attempt). The unique index ships as the additive idempotent
+migration `packages/media/migrations/2026_07_01_000001_add_media_version_vid_unique_index.php`;
+`packages/media/composer.json` now declares `extra.waaseyaa.migrations`
+(previously the media migrations were undiscoverable). The migration is
+shape-guarded: the generic kernel-boot `SqlSchemaHandler` table (no
+`media_uuid`/`vid` columns — typed values live in `_data`) is skipped
+without error; on that shape `nextVid()` throws and the driver's
+best-effort boundary logs a warning instead of writing colliding vid=1
+rows. The subsystem remains disconnected from the upload route and its pending hand-off is in-memory; see issue #1742.
 
 See `docs/specs/` for the versioned-blob-media spec (to be created in a
 follow-up spec pass) and `packages/media/src/Version/MediaVersionRepository.php`

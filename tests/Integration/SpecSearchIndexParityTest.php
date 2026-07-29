@@ -36,12 +36,15 @@ final class SpecSearchIndexParityTest extends TestCase
     #[Test]
     public function indexed_search_returns_the_same_match_set_as_corpus_order_search(): void
     {
-        // The two queries the review proved regressed: "EntityRepository"
+        // The two regression classes the review proved: a CamelCase identifier
         // (porter tokenization hides the substring from the FTS ranker) and
-        // "set(" (a spec ranked past the per-keyword window). Both have well
-        // under MAX_LIMIT total matches, so any difference is a dropped match,
-        // not limit truncation (which would reorder a >100-match result set).
-        foreach (['EntityRepository', 'set('] as $query) {
+        // "set(" (a spec ranked past the per-keyword window). Both must have
+        // well under MAX_LIMIT total matches in the current corpus, so any
+        // difference is a dropped match, not limit truncation (which would
+        // reorder a >100-match result set). "EntityRepository" outgrew that
+        // bound as the corpus expanded; "SqlSchemaHandler" exercises the same
+        // tokenization class at a rarer frequency.
+        foreach (['SqlSchemaHandler', 'set('] as $query) {
             $plainMatches = $this->plain->search($query, SpecSearch::MAX_LIMIT);
             $indexedMatches = $this->indexed->search($query, SpecSearch::MAX_LIMIT);
 

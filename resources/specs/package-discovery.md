@@ -1,5 +1,7 @@
 # Package Discovery
 
+<!-- Spec reviewed 2026-07-21 - #2091 modularity: Composer installation is the activation boundary; optional routes, admin navigation, entity/catalogue definitions, and conditional agent tools are absent until their owning or required package is installed. -->
+<!-- Spec reviewed 2026-07-14 - #2020 security: attribute discovery unions Composer's classmap with every eligible PSR-4 namespace, so optimization cannot change enforcement or catalogues. Installed packages declare their access-policy inventory in extra.waaseyaa.policies; a missing declared class or manifest entry is a hard boot failure. -->
 <!-- Spec reviewed 2026-05-01 - extra.waaseyaa is the authoritative registration path for providers, commands, and routes. waaseyaa/cli, waaseyaa/api, waaseyaa/graphql, waaseyaa/mcp, waaseyaa/telescope all declare their service providers via extra.waaseyaa.providers; root composer.json reserves extra.waaseyaa.providers as an extension point for app-level providers. ConsoleKernel must not introduce new string-literal command lists; commands belong in the owning package's HasCommandsInterface implementation (mission #824 WP08 surface A, closes #854) -->
 
 Specification for how Waaseyaa packages are discovered, registered, booted, and compiled into optimized artifacts.
@@ -9,9 +11,11 @@ Specification for how Waaseyaa packages are discovered, registered, booted, and 
 Waaseyaa uses a two-phase discovery system:
 
 1. **Coarse-grained**: Composer `extra.waaseyaa` in each package's `composer.json` declares providers, commands, routes, migrations, and permissions.
-2. **Fine-grained**: PHP 8 attributes on classes (`#[AsFieldType]`, `#[Listener]`, `#[AsMiddleware]`, `PolicyAttribute`) are scanned at compile time from Composer's autoload classmap, with PSR-4 directory scanning as fallback.
+2. **Fine-grained**: PHP 8 attributes on classes (`#[AsFieldType]`, `#[Listener]`, `#[AsMiddleware]`, `PolicyAttribute`) are scanned at compile time from the union of Composer's autoload classmap and all eligible PSR-4 directories. PSR-4 is never conditional on the classmap being empty: an ordinary non-optimized install has a valid partial classmap.
 
 Both are unified by `PackageManifestCompiler` into a single cached artifact at `storage/framework/packages.php`.
+
+The cache fingerprint includes `composer.json`, `installed.json`, `autoload_classmap.php`, and `autoload_psr4.php`. Changing autoload optimization therefore invalidates and recompiles the artifact; a cached policy set is also checked against the independent `extra.waaseyaa.policies` inventory before it can boot.
 
 ## ServiceProvider Lifecycle
 
@@ -49,7 +53,7 @@ abstract class ServiceProvider implements ServiceProviderInterface
     protected function bind(string $abstract, string|callable $concrete): void;
     protected function tag(string $abstract, string $tag): void;
 
-    // Introspection (used by ContainerCompiler)
+    // Introspection (binding/tag reflection)
     public function getBindings(): array;   // ['abstract' => ['concrete' => ..., 'shared' => bool]]
     public function getTags(): array;       // ['tag' => ['service1', 'service2']]
 }
@@ -88,39 +92,31 @@ public function provides(): array
 }
 ```
 
-### ContainerCompiler
-
-File: `packages/foundation/src/ServiceProvider/ContainerCompiler.php`
-
-Orchestrates the two-phase lifecycle and wires bindings into Symfony's `ContainerBuilder`:
-
-```php
-final class ContainerCompiler
-{
-    public function compile(array $providers, ContainerBuilder $container): void
-    {
-        // Phase 1: register all bindings
-        foreach ($providers as $provider) {
-            $provider->register();
-            // Map getBindings() -> ContainerBuilder definitions
-            // Map getTags() -> ContainerBuilder tags
-        }
-
-        // Phase 2: boot all providers
-        foreach ($providers as $provider) {
-            $provider->boot();
-        }
-    }
-}
-```
-
-Binding properties:
-- `shared: true` (from `singleton()`) -> `Definition::setShared(true)`
-- `shared: false` (from `bind()`) -> `Definition::setShared(false)`
-- Callable concrete values -> `Definition::setFactory($concrete)`
-- All definitions are set to `public: true`
-
 ## Composer Manifest
+
+### Default composition and opt-in domains
+
+Composer installation is the activation boundary for domain packages. The root
+`waaseyaa/framework` package and the curated `core`, `cms`, and `full`
+metapackages must not select genealogy, AI-agent execution, OIDC issuer, MCP
+endpoint, Wayfinding, messaging, or social engagement. Applications install
+those packages explicitly by name. `suggest` entries may advertise a compatible
+integration, but must not change the solved package graph.
+
+Provider, entity-type, route, command, and attribute discovery operates only on
+packages present in Composer's `installed.json`. Source availability in the
+monorepo and a path-repository declaration are not activation. The monorepo may
+retain opt-in domains in its root `require-dev` so their package suites run;
+Composer does not propagate a dependency package's development requirements to
+consumers, so this does not activate them in a scratch framework install.
+
+This boundary is installation-level only. Per-site API exposure overrides are a
+separate concern and cannot make an uninstalled package discoverable.
+
+Fine-grained agent tools may declare `requiresPackage` on `#[AsAgentTool]` when
+the tool is an integration with another opt-in domain. The compiler includes
+that tool only when the named Composer package is present in `installed.json`;
+ordinary tools omit the argument and retain unconditional discovery.
 
 ### Package composer.json format
 
@@ -134,6 +130,7 @@ Each package declares its registration metadata in `extra.waaseyaa`:
     "extra": {
         "waaseyaa": {
             "providers": ["Waaseyaa\\Node\\NodeServiceProvider"],
+            "policies": ["Waaseyaa\\Node\\NodeAccessPolicy"],
             "commands": ["Waaseyaa\\Node\\Command\\NodeCreateCommand"],
             "routes": ["Waaseyaa\\Node\\NodeRouteProvider"],
             "migrations": "migrations/",
@@ -153,6 +150,7 @@ Supported keys:
 | Key | Type | Purpose |
 |-----|------|---------|
 | `providers` | `string[]` | ServiceProvider FQCNs |
+| `policies` | `string[]` | Complete package-owned `#[PolicyAttribute]` class inventory; missing entries/classes fail boot |
 | `commands` | `string[]` | CLI command FQCNs |
 | `routes` | `string[]` | Route provider FQCNs |
 | `migrations` | `string` | Path to migrations directory (relative to package) |
@@ -269,8 +267,9 @@ final class PackageManifestCompiler
 1. Read `vendor/composer/installed.json` for coarse-grained manifest data (providers, commands, routes, migrations, permissions)
 2. Scan for Waaseyaa-namespaced classes using a two-tier strategy (see below)
 3. Reflect each class, checking for discovery attributes
-4. Sort middleware and listeners by priority (descending -- highest priority first)
-5. Produce `PackageManifest` instance
+4. Discover `ScheduleEntriesInterface` implementors (a filter over the same scanned-class set, not a second scan — see "Single-scan memoization" below)
+5. Sort middleware and listeners by priority (descending -- highest priority first)
+6. Produce `PackageManifest` instance
 
 **Class scanning strategy (step 2):**
 
@@ -279,7 +278,11 @@ The compiler uses a classmap-first approach with PSR-4 fallback:
 1. **Classmap (preferred):** Read `vendor/composer/autoload_classmap.php` and filter to `Waaseyaa\` entries. This is populated by `composer dump-autoload --optimize` and is the fastest, most reliable path.
 2. **PSR-4 fallback:** If the classmap has no `Waaseyaa\` entries (default `composer install` only includes Composer internals and polyfill stubs), fall back to reading `vendor/composer/autoload_psr4.php`. For each `Waaseyaa\` namespace (excluding `Tests\` namespaces), recursively scan directories for `.php` files and derive class names from namespace prefix + relative path.
 
-The fallback logs a warning via `error_log()` recommending `composer dump-autoload --optimize`. The PSR-4 path is protected by try-catch for corrupt map files.
+The fallback logs a warning via the injected `LoggerInterface` (not `error_log()`) recommending `composer dump-autoload --optimize`. The PSR-4 path is protected by try-catch for corrupt map files.
+
+**Single-scan memoization (WP7 audit remediation):** `scanClasses()` is memoized per `PackageManifestCompiler` instance (`private ?array $scannedClasses`). Without memoization, `compile()` ran the full classmap/PSR-4 scan and per-class `ReflectionClass` construction TWICE — once directly for the attribute-scan loop, once indirectly via `scanScheduleEntryClasses()` for the schedule-entries pass, since `filterDiscoveryClasses()` already admits `ScheduleEntriesInterface` implementors into the same discovery-class set the attribute loop iterates. `scanScheduleEntryClasses()` remains a separate logical pass over that shared set (a deliberate decision, not an oversight) — with `scanClasses()` memoized, it is a cheap in-memory `foreach`/`class_implements()` filter, not a second reflective scan. Compiler instances are created fresh per boot (one instance per request/CLI invocation), so the memo has no cross-request staleness window: it lives exactly as long as the one compile it serves.
+
+**Corrupt-cache self-heal logging:** `load()`'s corrupt-cache recovery path (a cache file that throws on `require`, e.g. `<?php throw new \RuntimeException(...)`) logs a `warning()` naming the cache path, the exception class, and the exception message before falling through to recompile — an operator can see WHY a recompile happened instead of it being silent. A cache file that returns a wrong-shaped value without throwing (e.g. `<?php return "not an array";`) is a different code path (`is_array($data)` is simply false) and still self-heals without a warning, since no exception was thrown to log.
 
 **Attribute scanning details:**
 
@@ -290,7 +293,8 @@ The compiler scans `Waaseyaa\` classes (from either classmap or PSR-4 fallback).
 | `AsFieldType` | Field type plugins | `$instance->id` => class name |
 | `Listener` | Event listeners | Reads `__invoke()` parameter type to determine event class; `$instance->priority` for ordering |
 | `AsMiddleware` | Middleware | `$instance->pipeline` (http/event/job) + `$instance->priority` |
-| `AsEntityType` | Entity types | Currently tracked via providers (no-op in compiler) |
+| `ContentEntityType` | Content entity types | Compiled to `attributeEntityTypes`, hydrated through `EntityType::fromClass()` when auto-registration is enabled |
+| `AsEntityType` | Legacy entity factories | Deprecated compatibility path for `DefinesEntityType` implementations |
 | `PolicyAttribute` | Access policies | `$instance->entityType` => class name |
 
 **Cache output**: `storage/framework/packages.php`
@@ -451,6 +455,8 @@ foreach ($ref->getAttributes(self::POLICY_ATTRIBUTE) as $attr) {
 
 `ReflectionClass::getAttributes()` accepts string class names, so no import is needed. This preserves strict layer discipline.
 
+The same technique applies beyond attribute scanning wherever `PackageManifestCompiler` needs to test a class against a higher-layer type — e.g. `ENTITY_TYPE_DEFINITION_INTERFACE = 'Waaseyaa\\Entity\\DefinesEntityType'` (L1), used with `interface_exists()` / `is_subclass_of()` in `compile()`'s `AsEntityType` handling instead of an inline `\Waaseyaa\Entity\DefinesEntityType::class` reference. `::class` on an unimported FQCN is a compile-time string literal (PHP never autoloads to resolve it), so the string-constant form is behaviourally identical — it exists purely for convention consistency and to keep `bin/check-package-layers`' PL008 scan (see the infrastructure spec) from having to allowlist an inline `::class` token instead of a named constant.
+
 ## Layer Discipline
 
 ### Import rules
@@ -562,7 +568,6 @@ Plugin classes extend `PluginBase` and receive their ID, definition, and configu
 ServiceProviderInterface.php    -- register/boot/provides/isDeferred contract
 ServiceProvider.php             -- abstract base with singleton/bind/tag + getBindings/getTags
 ProviderDiscovery.php           -- reads extra.waaseyaa.providers from installed.json
-ContainerCompiler.php           -- two-phase compile into Symfony ContainerBuilder
 ```
 
 ### packages/foundation/src/Discovery/

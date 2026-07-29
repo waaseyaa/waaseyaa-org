@@ -16,7 +16,8 @@ Attack surfaces:
 
 | Threat | Mitigation |
 |--------|-----------|
-| Secret committed to `defaults/` | `bin/check-no-secrets` (CI gate) + `DefaultsSecretsIntegrationTest` (structural) |
+| Secret committed anywhere in repository source | Repository-wide `bin/check-no-secrets` CI gate; generated dependency/build trees are excluded |
+| Secret embedded structurally in `defaults/` | `DefaultsSecretsIntegrationTest` structural value scan |
 | Manifest referencing external endpoint | YAML manifests are governance docs, not runtime config |
 | Anonymous write to entity API | Route-level `_authenticated` option on POST/PATCH/DELETE |
 
@@ -62,14 +63,16 @@ Access enforcement happens at the resolver level via `GraphQlAccessGuard`. Mutat
 
 ### HTTP response security headers
 
-`SecurityHeadersMiddleware` (priority 100, outermost layer) adds security headers to all responses:
+`HttpKernel` wires `SecurityHeadersMiddleware` around real controller/domain-router dispatch, so framing / MIME-sniffing headers reach **every dispatched response** during the pipeline's response phase:
 
-| Header | Default |
-|--------|---------|
-| `Content-Security-Policy` | `default-src 'self'` |
-| `X-Frame-Options` | `DENY` |
-| `X-Content-Type-Options` | `nosniff` |
-| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains` (when `hstsEnabled`) |
+| Header | Default | Notes |
+|--------|---------|-------|
+| `X-Frame-Options` | `SAMEORIGIN` | Blocks cross-origin framing (clickjacking) while preserving same-origin inline previews. Configurable via `security_headers.frame_options`. **Omitted** when the matched route set the `_frame_exempt` request attribute (`SecurityHeadersMiddleware::FRAME_EXEMPT_ATTRIBUTE`) — the per-route opt-out for content meant to be framed cross-origin. |
+| `X-Content-Type-Options` | `nosniff` | Always applied. |
+
+Provider-contributed HTTP middleware uses the same onion response phase: code after `$next->handle()` receives the final response. This is the supported app hook for response headers, cookies, compression, and equivalent response decoration. See [middleware-pipeline.md](middleware-pipeline.md).
+
+`Content-Security-Policy` and `Strict-Transport-Security` are **opt-in**, NOT applied by the kernel defaults: `default-src 'self'` would break consumer SPAs and same-origin inline previews, and HSTS needs HTTPS certainty. A deployment that wants them contributes an explicitly configured `SecurityHeadersMiddleware($csp, $hstsEnabled, $hstsMaxAge)` from its provider (the constructor defaults remain `default-src 'self'` / `X-Frame-Options: DENY` / HSTS-on for that explicit path).
 
 ### Rate limiting
 
@@ -102,9 +105,9 @@ When field-level encryption is implemented:
 
 ## Secrets Handling
 
-### Invariant: no secrets in manifests
+### Invariant: no secrets in repository source
 
-`defaults/*.yaml` and `defaults/*.schema.json` are version-controlled and must **never** contain credentials, tokens, or connection strings. All secrets enter the application exclusively via environment variables.
+Version-controlled source — including `defaults/`, packages, scripts, documentation, and workflows — must **never** contain credentials, tokens, or connection strings. All secrets enter the application exclusively via environment variables. `bin/check-no-secrets` scans the repository root and excludes only generated or dependency trees (`.git`, `.worktrees`, `vendor`, `node_modules`, `dist`, `build`, and `tmp`). Test fixtures assemble secret-shaped dummy values from fragments so the repository contains no static token-like payload.
 
 ### Environment variable contract
 
@@ -124,7 +127,7 @@ Full listing: `.env.example`.
 
 | Check | Type | Location |
 |-------|------|----------|
-| `bin/check-no-secrets` | Shell grep for token patterns | CI: `security-defaults` job |
+| `bin/check-no-secrets` | Repository-wide shell scan for token patterns | CI: `security-defaults` job |
 | `DefaultsSecretsIntegrationTest` | Structural YAML/JSON value scanning | CI: PHPUnit `--filter Phase22` |
 
 Patterns checked: `sk-*` (OpenAI), `ghp_*` (GitHub), `xox[bp]-*` (Slack), `ya29.*` (Google OAuth), `AIza*` (Google API), PEM private keys, DSN with embedded credentials.

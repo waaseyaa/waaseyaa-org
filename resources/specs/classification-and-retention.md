@@ -45,6 +45,18 @@ supplies the label and `classification_inherited_from = parent_uuid` is recorded
 Cascade is re-evaluate-on-next-write (no eager downward cascade — bounded scope,
 C-003). Every effective-label change writes a `classification.change` audit event.
 
+> **Wiring note (fixed in WP4, audit-remediation batch 2026-07-01/02):**
+> `FieldServiceProvider::boot()` resolved the event dispatcher under the
+> foundation `Waaseyaa\Foundation\Event\EventDispatcherInterface` FQCN, which
+> the production kernel-services bus (`ProviderRegistryKernelServices::get()`)
+> never serves — only `Symfony\Contracts\EventDispatcher\EventDispatcherInterface`
+> is served. `resolveOptional()` therefore returned null and
+> `EntityLifecycleSubscriber` never actually registered in a real kernel boot,
+> so the "on every save" behavior described above was **not happening** for
+> any deployed application until this fix (same bug class as #1852). `boot()`
+> now resolves the served key; see `FieldServiceProviderClassificationWiringTest`
+> for the production-mirroring wiring test.
+
 ## Access (`ClassificationFieldAccessPolicy`)
 
 Registered cross-cutting via `#[PolicyAttribute(entityType: '*')]` (the kernel
@@ -86,6 +98,12 @@ e.g. `nation-*`), `action` (`purge` | `redact` | `hold-flag`), `trigger_kind`
 `exemptions` (JSON array of `entity_type:uuid`). Sibling of `AuditRetentionPolicy`
 (audit-log retention) — split deliberately.
 
+All retention-rule values are Protected governance configuration. Exact V2
+entity and field policies permit reads to `governance-viewer` and administrator
+principals and mutations only to administrators. Scheduled jobs do not acquire
+an ambient user principal: they consume a closed, fixed-shape
+`RetentionPolicyMaintenanceView` containing only the seven rule values.
+
 ### Scheduled jobs
 
 `ClassificationRetentionScheduleEntries` registers three tasks (auto-discovered):
@@ -98,6 +116,28 @@ e.g. `nation-*`), `action` (`purge` | `redact` | `hold-flag`), `trigger_kind`
 
 All jobs are best-effort per policy iteration (NFR-004): a single failing policy
 never aborts the sweep. System sweeps query with `accessCheck(false)`.
+
+**Scan scale (L1-field.md M1).** The retention sweeps run on a cron over the whole
+site, so they must not load every labelled row into memory. Two parts:
+
+1. **Index.** The `classification_label` column is indexed (migration
+   `2026_05_25_000005_index_classification_label`, which adds `CREATE INDEX IF NOT EXISTS`
+   on every table that has the column — additive, idempotent; it covers tables present
+   when it runs, not entity tables created later by runtime schema sync).
+
+2. **Bounded keyset scan (`RetentionScanner`).** All three jobs iterate candidates
+   through `Classification\Job\RetentionScanner`, which pages by **ascending id with
+   `id > lastId`** (keyset, not offset — robust under `PurgeJob`'s in-loop deletes, which
+   would make offset paging skip rows) and never hydrates more than `batchSize` (default
+   500) rows per round-trip. The scanner pushes the age cutoff (`created_at <`) and, when
+   a policy reduces to a **single** `applies_to` pattern, the label predicate into SQL — a
+   literal → `=`, a `prefix*` glob → `STARTS_WITH`; a bare `*`, empty prefix, or multiple
+   patterns keep `exists('classification_label')` with no label narrowing. The SQL pushdown
+   is only a *sound narrowing*: each job's `matchesLabel()` / hold-`*` guard / exemption /
+   PII-discovery logic is unchanged and does the exact matching, so behaviour is identical
+   to the prior unbounded `loadMultiple()` — only peak memory is now O(batch), not
+   O(all-labelled-rows). `HoldScanJob` uses no label narrowing (a hold-vs-purge conflict
+   needs ANY hold match AND ANY purge match, which is not one AND-able predicate).
 
 ## JSON:API + admin
 

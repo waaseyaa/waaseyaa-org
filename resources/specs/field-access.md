@@ -1,5 +1,16 @@
 # Field-Level Access
 
+<!-- Spec reviewed 2026-07-24 - #2064 activation follow-up: the deployment classification artifact is authoritative for a live application-owned field even when restricted bootstrap cannot reconstruct that field's runtime definition. The preflight records the artifact level for that exact live key; registered definitions and framework defaults still undergo the existing equality/conflict checks. Runtime/artifact parity for consumer fields remains an application test obligation. -->
+<!-- Spec reviewed 2026-07-24 - #2064 framework-owned field defaults: one shared default-classification source is consumed by both sealed runtime layout compilation and activation preflight. It covers universal structural selectors plus the exact first-party config labels, relationship infrastructure, parked media-version internals, and legacy User account-infrastructure fields listed below. Explicit metadata that disagrees with a framework default is a hard conflict. Application bundle fields and directory-exposure policy remain consumer-owned. -->
+<!-- Spec reviewed 2026-07-21 - #2064 media hotfix: Media Protected fields now compose with the complete hydrated entity-view decision. Application contextual grants can release bundle-defined Protected media metadata, application Forbidden results still win, and a missing/mismatched hydrated entity fails closed. This does not change legacy open-by-default FieldAccessPolicyInterface filtering or Internal-field sealing. -->
+<!-- Spec reviewed 2026-07-19 - #2064 alpha.270 boolean-field hotfix: resolved boolean/bool field definitions now canonicalize values to native PHP bool while the private entity value container is sealed and on every write. Closed validation, persistence extraction, guarded reads, and public projections observe that same type. Protected/Internal sealing and missing-context denial are unchanged. -->
+
+<!-- Spec reviewed 2026-07-17 - #2064 WP1 adds dormant entity-boundary field-read contracts. The existing FieldAccessPolicyInterface remains unchanged and open-by-default for surface/edit filtering. ProtectedFieldReadPolicyInterface is a separate future fail-closed read seam over an immutable principal and structural subject view. No accessor or output behavior changes in WP1. Canonical contract: entity-field-read-boundary.md. -->
+
+<!-- Spec reviewed 2026-07-04 - audit-remediation batch R7 WP1 (entity label/title field-access channel): the entity LABEL/TITLE (`EntityInterface::label()`) is not part of the `fields` bag `filterFields()`/`checkFieldAccess()` gate here — SSR's `<title>`, the schema.org JSON-LD `name`, and the Markdown H1 all read `label()` directly, bypassing this mechanism entirely. A viewable entity (entity-level access Allowed) whose label-key field was Forbidden still leaked the real label through all three. New `EntityAccessHandler::viewableLabel(EntityInterface, AccountInterface, EntityTypeManagerInterface): ?string` resolves the entity type's `label` entity-key field name and runs it through the SAME `checkFieldAccess()` this doc describes — open-by-default, `null` on Forbidden — so callers gate the label identically to any other field. `SsrPageHandler::handleRenderPage()` resolves it once and threads the result into the Twig `title` context var and `EntitySchemaOrgMapper::map()`'s `$labelOverride`; `EntityMarkdownPresenter::present()` calls it directly for the H1. All three fail closed to the entity type id (never the raw label) when Forbidden or when no access handler is wired. `RenderCache::SCHEMA_VERSION` bumped v3->v4 to invalidate pre-fix cached HTML. See CHANGELOG "Security". -->
+<!-- Spec reviewed 2026-07-02 - audit-remediation batch R2 WP3 (api M3, schema field-access fails open on exception): GET /api/schema/{entity_type} builds a value-less prototype entity so SchemaPresenter can run field-access checks against it; SchemaPresenter skips its entire field-filtering block when the entity is null, so a prototype-construction exception (caught and swallowed) previously emitted a 200 with an UNFILTERED schema, over-disclosing restricted field definitions. Fixed in SchemaController::show(): the prototype is now seeded with a non-null placeholder for every declared field and entity key so constructor-strict types (UserBlock, engagement Comment/Reaction/Follow, messaging threads) construct and are filtered normally; and if construction STILL throws after seeding, it fails CLOSED with a 500 (no schema body) rather than emitting an unfiltered one. The open-by-default field-access mechanism documented here is unchanged; this only closes the schema surface's null-entity fail-open. Substantive contract in api-layer.md. -->
+<!-- Spec reviewed 2026-06-23 - schema-surface auth (audit): no field-access semantics change. The REST schema surface that RENDERS field-access decisions — GET /api/schema/{entity_type} (and /api/openapi.json) — now requires authentication (BuiltinRouteRegistrar requireAuthentication()), because it computed field visibility against a value-less prototype entity and over-disclosed instance-state-gated field DEFINITIONS to anonymous (no row values; the JSON:API serializer still enforces per-record field access). The open-by-default field-access mechanism documented here is unchanged. Substantive contract: docs/specs/api-layer.md "Schema self-description surface requires authentication". -->
+
 Field-level access control allows policies to restrict which fields a user can view or edit on entities. It is a companion to entity-level access, sharing the same handler and discovery infrastructure but with intentionally different semantics.
 
 ## Overview
@@ -74,6 +85,70 @@ When `EntityAccessHandler::checkFieldAccess()` runs:
 
 When no policy implements `FieldAccessPolicyInterface` for the entity type, the result is Neutral. Neutral is not Forbidden, so all fields pass through. This ensures zero behavioral change when no field policies exist.
 
+This legacy presentation/edit filtering is distinct from accessor-level Protected reads. A first-party `ProtectedFieldReadPolicyInterface` may implement the internal `EntityViewProtectedFieldReadPolicyInterface` marker. At that point the handler requires the exact hydrated entity and composes the field opinion with the complete entity-level `view` decision. Field Forbidden and any entity Forbidden remain deny-overrides-allow; Neutral is released only by an Allowed entity view. Without the matching entity the read is denied. Media uses this mechanism for core and application-defined Protected fields, allowing a contextual consumer media policy to govern serialized API/admin metadata consistently with downloads and other entity-level views.
+
+## Framework-owned default classifications
+
+Applications classify fields they add. They do not repeat classifications for
+storage and account infrastructure defined by first-party framework packages.
+`FrameworkFieldReadDefaults` is the single source consumed by both
+`EntityReadRuntime` and `FieldAccessPreflightScanner`; a green preflight can
+therefore never describe a different level than sealed runtime compilation.
+An explicit definition or application artifact may restate a default only at
+the same level. A disagreement is a hard conflict.
+
+For application-owned fields, the deployment classification artifact is also
+the restricted-bootstrap source of truth. If a field key is live in storage
+but its definition cannot be reconstructed in restricted bootstrap, an exact
+artifact entry still classifies that key at the declared level. This is not a
+runtime bypass: activated boot still seals the runtime definitions, and the
+consumer must test that every artifact entry equals the application's runtime
+classification. Registered definitions and framework defaults continue to
+conflict on any unequal artifact level.
+
+All registered entity types receive Public `bundle`, `langcode`, and
+`default_langcode` structural defaults, matching the runtime's existing
+structural treatment. The remaining exact defaults are:
+
+| Entity fields | Default | Newly readable channel and role | Safety basis |
+|---|---|---|---|
+| Config labels: `classification_label_definition.display_name`, `group_type.label`, `group.name`, `media_type.label`, `menu.label` | Public | Ordinary entity/API presentation after entity-level view succeeds | These are the framework-defined human labels used to identify already-viewable configuration or groups; they contain no credential, membership, or storage authority. |
+| `retention_policy.name` | Protected | Only a principal admitted by the classification-retention governance policy | Even its operator-facing label identifies governance configuration, so the default preserves the field's existing Protected level instead of broadening it. |
+| `relationship.{confidence,directionality,end_date,from_entity_id,from_entity_type,notes,source_ref,start_date,status,to_entity_id,to_entity_type,weight}` | Protected | Only an account allowed by the relationship Protected-read policy and entity view | These values describe relationship topology and lifecycle. They are never anonymous-by-default and remain subject to endpoint/entity visibility. |
+| `media_version.{blob_uri,created_at,created_by,label,media_uuid,mime,sha256,size,vid}` | Internal | No account-facing role or channel | Parked content-addressed storage metadata is available only to typed, audited system/admin infrastructure; ordinary and administrator API reads cannot release it. |
+| `user.password_hash`, `user.role` | Internal | No account-facing role or channel | Credential and authorization material never enters an outward projection. `password_hash` is also covered by serializer/schema deny floors, including administrator requests. |
+| `user.{consent_date,consent_on_file,must_reset_password,disabled}` | Protected | Authenticated principals with `administer users`, after User entity view | These are administrative account-state facts. The exact User policy rejects every other role and any unexpected policy-subject input. |
+
+User `display_name`, `first_name`, `last_name`, and
+`member_directory_visible` intentionally have no framework default. Directory
+exposure is application policy. The canonical framework login identifier
+`name` retains its existing Protected profile policy; it is not a consumer
+directory-field default and is not widened by this table.
+
+## Legacy entity-data payload upgrade
+
+Entity storage requires `_data` to be a JSON object. Historical config rows may
+instead contain the empty JSON list `[]`; preflight reports each such row as an
+`entity-data` legacy payload blocker.
+
+`field-access:upgrade-legacy-entity-data` is the idempotent one-shot migration
+for Stage-1 and operator use. It runs through the restricted field-access
+bootstrap so a blocker-bearing database can be repaired before normal
+production boot. For registered entity tables that contain `_data`, it:
+
+1. reads the stored payload as a string;
+2. rewrites it to `{}` only when optional JSON whitespace surrounds exactly
+   the empty list `[]`;
+3. includes the original byte string in the update predicate, so a concurrent
+   change is not overwritten; and
+4. reports scanned and changed row counts without creating or writing a
+   readiness artifact.
+
+The command deliberately preserves existing `{}` objects, non-empty arrays,
+JSON scalars, malformed JSON, and null/empty values. A second run changes zero
+rows. This is a payload-shape migration, not field-access activation, and it
+never force-activates the boundary.
+
 ```php
 // EntityAccessHandler::checkFieldAccess() excerpt:
 $result = AccessResult::neutral('No field access policy provided an opinion.');
@@ -137,6 +212,16 @@ final class NodeAccessPolicy implements AccessPolicyInterface, FieldAccessPolicy
 ```
 
 The `appliesTo()` method from `AccessPolicyInterface` scopes both entity-level and field-level access to the same entity types. For multi-bundle entity types, policies may additionally narrow scope to specific bundles via the `#[AccessPolicy(bundles: [...])]` attribute parameter; see [`bundle-scoped-fields.md`](./bundle-scoped-fields.md#access).
+
+### Real-world example: ownership-field locks
+
+`NodeAccessPolicy` (`packages/node/src/NodeAccessPolicy.php`) forbids edit of `uid`/`type`/`created`/`changed` on an *existing* node for non-admins, closing a mass-assignment path where an author with `edit own {type} content` could reassign authorship, change the bundle, or forge timestamps via `PATCH`. Those fields stay settable at create time (`uid`/`created` are part of authoring a new node).
+
+`EngagementAccessPolicy` (`packages/engagement/src/EngagementAccessPolicy.php`) applies the same pattern to `user_id` on `reaction`/`comment`/`follow` entities, but stricter: `user_id` is server-authoritative and never client-reassignable. On an *existing* entity it is edit-Forbidden outright — ownership is immutable after creation, not just admin-only-editable. On *create* it is edit-Forbidden unless the submitted `user_id` equals the caller's own account id. This closes an anonymous-ownership hole: `EngagementAccessPolicy` had no field policy at all, so any authenticated account could `POST` a comment with `user_id: 0` (or another account's id), minting a row "owned" by the anonymous account — which, combined with a missing `isAuthenticated()` guard in the entity-level `isOwner()` check, let every anonymous visitor `DELETE` or view-as-owner any row with `user_id === 0` (`AnonymousUser::id()` also returns `0`).
+
+### Real-world example: permission-gated publication (CW-v1 WP-0)
+
+`NodeAccessPolicy::fieldAccess()` also edit-Forbids `status`/`workflow_state` for any account lacking `NodeAccessPolicy::PUBLISH_PERMISSION` (`'use editorial transition publish'`) — a different shape than the ownership-field lock above: it applies on create AND update alike (no `isNew()` carve-out, since the concern is "may this account publish at all", not "may this account rewrite history"). See `docs/specs/api-layer.md`'s CW-v1 WP-0 entry for the companion `JsonApiController::store()` unpublished-floor that keeps a born-published entity constructor default (e.g. `Node`) from bypassing this gate on create.
 
 ## View vs Edit Denial
 
@@ -300,7 +385,7 @@ packages/access/src/
     FieldAccessPolicyInterface.php   - Field access policy contract
     AccessPolicyInterface.php        - Entity access policy contract (companion)
     AccessResult.php                 - Tri-state value object
-    EntityAccessHandler.php          - checkFieldAccess(), filterFields()
+    EntityAccessHandler.php          - checkFieldAccess(), filterFields(), viewableLabel()
 
 packages/api/src/
     ResourceSerializer.php           - Omits view-denied fields

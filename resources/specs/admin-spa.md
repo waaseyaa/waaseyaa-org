@@ -1,11 +1,51 @@
 # Admin SPA
 
+<!-- Spec reviewed 2026-07-22 - #2108 browser-channel follow-up: the GenericAdminSurfaceHost itself owns the shipped node.source_status/wp_status form-visibility floor, so application-owned routes that construct the host directly receive the same exclusion as provider-owned routes. Host-declared additions remain supported. The broader JSON:API metadata convergence is tracked in #2113. -->
+<!-- Spec reviewed 2026-07-22 - #2108 WP-2: schema metadata can declare an editable slug widget with x-source-field; the widget requests the host's generate-slug action, which delegates to Foundation SlugGenerator so Indigenous orthography is preserved. Integer fields with subtype=timestamp project as string/date-time + datetime widgets. GenericAdminSurfaceHost accepts host-declared per-type internal form fields (the shipped host hides migrated node.wp_status). Failed create validation retains bundle state, and entity detail uses the standard confirmation modal for capability-gated deletion. -->
+<!-- Spec reviewed 2026-07-22 - #2108 WP-1: the legacy bundled-list path now emits the same closed {operator,value} filter condition consumed by AdminSurfaceTransportAdapter as host-declared x-list controls. Node lists default to created DESC, retain offset/limit on every request, and therefore keep new content on page 1 while pagination and bundle totals reflect distinct server results. Browser-shaped coverage uses migrated UUID/data-shaped rows. -->
+<!-- Spec reviewed 2026-07-21 - #2101 WP-3: taxonomy_vocabulary is the first explicitly mutable generic config-row surface. Its catalog advertises edit/delete (but not create), and mutable list rows retain the delete affordance so state-dependent refusals can surface an operator-readable message at the authoritative action boundary. The schema declares vid/name so saved titles render. Empty vocabulary rows may be deleted; a vocabulary referenced by any taxonomy_term is Forbidden and protected by a restrictive storage foreign key. Other config entity types retain their read-only generic catalog posture. -->
+<!-- Spec reviewed 2026-07-21 - #2101 minor sweep: create forms honor declared boolean defaults, including menu_link enabled=true; relationship empty lists span the exact rendered header count. The R2 JSON:API structural filter allowlist remains unchanged and rejects undeclared keys with 400. -->
+
+<!-- Spec reviewed 2026-07-20 - #2088: destructive SPA actions use the reusable accessible ConfirmDialog instead of browser-native confirm; config-entity listings use bounded hydrated access so persisted content-type rows remain visible on the dashboard. -->
+
+<!-- Spec reviewed 2026-07-16 - #2052: optional validated x-list metadata declares inert columns, closed framework formatters, labelled search/filters, and allowed/default sort pairs. Hosts enforce caller filters/operators/sorts server-side through SurfaceQueryPolicy before delegation. Generic list resources expose access-derived view/edit/delete booleans without policy reasons and mutations remain authoritatively checked. SchemaList protects against stale responses, synchronizes declared query state with the URL, resets pagination on control changes, and keeps legacy x-list-display behavior only when x-list is absent. Session UI navigationMode defaults to full; catalog-only suppresses static operational/governance links as presentation only. -->
+
+<!-- Spec reviewed 2026-07-16 - #2053: one --admin-target-size token gives ordinary authenticated-admin links, buttons, inputs, selects, date controls, autocomplete controls/options, rich-text controls, toggle labels, disclosures, actions, and pagination effective 44 by 44 CSS-pixel targets. Autocomplete clear is an adjacent non-overlapping control; the toggle label owns the effective target while focus and state remain on its native checkbox. Geometry is pinned at 360/768/1024/1440 and 200% text enlargement. -->
+<!-- Spec reviewed 2026-07-16 - #2051: schema listings retain one semantic table/action set, adapt that markup to labelled cards below 600px, contain wider tables in a named scroll region, and use bounded semantic pagination. Generic ordinary controls use 44px targets. Closed mobile navigation is inert/aria-hidden/pointer-disabled; open navigation manages focus, Escape, scroll, backdrop, route, and breakpoint cleanup. Shell boundaries shrink/wrap long content without document overflow. -->
+
+<!-- Spec reviewed 2026-07-15 - #2050: schema fields share stable label/help/error IDs and required/invalid semantics; submission failures use a focused assertive summary, structured-error mapping and single-flight guard. RichText preserves untouched canonical HTML behind an inert visual projection plus explicit source mode. Date-only fields use ISO YYYY-MM-DD without timezone conversion and enforce authoritative x-min/x-max bounds. -->
+
+<!-- Spec reviewed 2026-07-15 - #2048: mounted admin workflow/API transport now keeps the Nuxt app base (`/admin/`) separate from the canonical JSON API base (`/`). The admin SPA catch-all excludes both `_surface` and `api` path segments, so missing `/admin/api/*` requests remain non-success API-looking misses rather than `200 text/html`. Workflow discovery validates the response shape and models loading, bound/no-transition, 403, 404, malformed, network, and server failures explicitly; transition submission is single-flight and errors are announced. GenericAdminSurfaceHost resolves bundle-specific workflow binding metadata as `x-workflow` and removes raw `workflow_state` and `status` properties only from bound schemas; unbound schemas preserve their prior fields. -->
+
+<!-- Spec reviewed 2026-07-15 - #2047: generic bundled create is a two-stage schema flow. The mounted provider supplies SchemaPresenter's field registry; base schemas advertise the schema-declared bundle key plus registered enum, create-mode SchemaForm requests an explicit bundle scope, drops stale prior-bundle values, and submits the selected key/value. Schema transport/cache scopes are typed as {id?, bundle?}; unbundled creation remains one-stage. -->
+
+<!-- Spec reviewed 2026-07-14 - R21 WP4 (#2010): GenericAdminSurfaceHost now enforces configured readOnlyTypes at the server write boundary for create/update/delete, not only as catalogue UI capabilities. list() pushes filters, sort, pagination, and access-bound candidate selection through EntityQueryInterface instead of unconditionally hydrating the whole table with findBy([]). For a requested filter/sort, it resolves per-entity field access first and, when a filter field is Forbidden on some entities, constrains both page and count queries to the resulting ID scope before caller conditions/range run; fully viewable filters retain the unscoped SQL fast path. A dynamically Forbidden filter field therefore excludes that entity without consuming the visible page, and a dynamic Forbidden sort is rejected with 400 value-independently. Access-checked count() returns [survivorCount], which the host consumes as a scalar rather than misreading it as entity IDs. -->
+
+<!-- Spec reviewed 2026-07-13 - CW-v1 WP-5 WP1 (#1920): deleted the retired read-only workflow
+     dry-run/guards admin UI — `TransitionDryRunForm.vue`, `WorkflowGuardsTable.vue`,
+     `useWorkflowGuards.ts`, their usage on `/workflows/{id}`, and the orphaned `workflow_guards_*`
+     / `dry_run_*` i18n keys (en + fr). `useWorkflowDefinitions`'s `dryRun()` method and its
+     `DryRunRequest`/`DryRunResult` types are also removed. File-map table entries for the deleted
+     files are dropped. -->
+<!-- Spec reviewed 2026-07-13 - CW-v1 option-1 PR-3 (#1920, design §4): GenericAdminSurfaceHost::get()
+     now serves the entity's WORKING COPY, unconditionally, to any account with entity UPDATE access
+     (view-only accounts keep seeing the published/find() entity) — see "useEntity" below (new note).
+     handleUpdate()/action('update', ...) needed no code change: it already delegates entirely to
+     JsonApiController::update(), whose PATCH target is now the working copy too (#1920 PR-3). No SPA
+     (TypeScript) code change — the transport contract (AdminSurfaceTransportAdapter::get()) is
+     unchanged; the server decides transparently. Full contract: docs/specs/api-layer.md "GET single"/
+     "PATCH - update", docs/specs/content-workflow.md "Deferred: forward drafts on the shipped workflow"
+     (Read-side pointer awareness, now fully CLOSED). -->
+<!-- Spec reviewed 2026-07-05 - R13 WP1 (audit A11, admin-surface list filter/sort field-access oracle): GenericAdminSurfaceHost::list() previously applied caller-supplied filter/sort field names to the raw entity value with no field-level access check, so a low-tier account (e.g. holding only "access user profiles") could filter the auto-cataloged `user` list on a Forbidden credential field (`pass`, or the 2FA fields) and read per-row presence/absence as a one-bit oracle. Fixed with two layers, matching the REST `JsonApiController::validateQueryFields` gate ("audit R2 WP1"): (a) a structural allowlist (`validateSurfaceQueryFields()`) that rejects a filter/sort field which is not a declared field or entity key, is in the mirrored `ALWAYS_INTERNAL_FIELDS` list, or carries the `internal` field-setting (returns a 400 `AdminSurfaceResultData::error()`); (b) per-entity `EntityAccessHandler::checkFieldAccess()` enforcement inside `applyFilter()` and the sort comparator, needed because a field can be Forbidden only for some entities of the type (e.g. classification/clearance-gated fields), which a static allowlist cannot express (a Forbidden field never matches a filter, entity excluded, and never drives sort order, neutral placeholder). Legitimate filters/sorts are unaffected. No public admin-surface contract change. -->
+<!-- Spec reviewed 2026-06-20 - list-view column policy (UX-1, mission admin-list-column-policy-01KVH8MT): SchemaList no longer dumps full long-text / rich-text bodies into table columns. `columns` now applies a framework-wide policy: rich-text / text-format fields (x-widget 'richtext', from the 'text_long' field type) are dropped from the DEFAULT column set entirely (they stay on SchemaView/SchemaForm, which select fields independently); an explicit `x-list-display:true` opt-in still wins. Every text cell is collapsed to one line and truncated to a 120-char snippet (truncateSnippet) regardless of widget, and a CSS max-width on `.entity-table td:not(.actions)` bounds column width as defense-in-depth. New subsection "List-View Column Policy" under Schema-Driven Forms. Acceptance: SchemaListColumnPolicy.test.ts. Dist rebuilt (freshness gate). No public admin surface contract change. -->
+<!-- Spec reviewed 2026-06-19 - Wayfinding Phase 3 (mission wayfinding-01KVGH5X): the flagship beacon overlay. New global component app/components/wayfinding/WayfindingOverlay.vue mounted in app.vue as a persistent sibling of the layout. New composable app/composables/useBeacons.ts builds a live trail from `wayfinding.beacon` SSE events (delivered on this connection's own per-session channel from Phase 2) — useRealtime.ts now also listens for the 'wayfinding.beacon' event. The overlay renders the active beacon as an aria-live role="status" region (built on the alpha.226 busy-region primitive): fully keyboard-navigable (←/→ or ↑/↓ move, Esc dismisses; nav buttons reuse t('previous'/'next'/'dismiss')), it spotlights the declared data-anchor element (adds a global .wf-anchored outline ring, scrolls it into view, and moves focus to it WITHOUT trapping — non-focusable anchors get a transient tabindex=-1), is dismissable at any time (a new beacon re-shows a dismissed overlay), and honours prefers-reduced-motion (no transitions / instant scroll). No new i18n keys; no public admin surface contract change. The overlay ships in the prebuilt bundle (dist rebuilt; freshness gate + served-bundle 'wf-beacon' assertion). -->
+<!-- Spec reviewed 2026-06-19 - admin CRUD correctness + Wayfinding Phase-1 groundwork (missions admin-crud-correctness-01KVGEPD, wayfinding-01KVGH5X). (1) Delete UX: a failed delete in SchemaList no longer blanks the table with a misleading list-level error — `deleteError` is now a separate ref from `listError`, rendered as a non-blocking inline notice (`.error--inline`, role="alert") ABOVE the table and framed as a delete failure (t('error_deleting') + detail) rather than echoing the raw backend title. (The coupled backend fix — GenericAdminSurfaceHost::handleDelete resolving by UUID like get() so the SPA's UUID-keyed delete actually persists — lives in packages/admin-surface, see docs/specs/access-control.md-adjacent host behavior.) (2) Wayfinding Phase-1 anchor groundwork: SchemaList/SchemaView/SchemaForm emit stable, inert `data-anchor` IDs derived from schema field identity — see the new "Element anchors" subsection under Schema-Driven Forms. No public admin surface contract change. -->
+<!-- Spec reviewed 2026-06-19 - entity-editor open feedback (clicking a list "Edit" was a silent ~6s wait): app.vue adds a route-level <NuxtLoadingIndicator> for immediate navigation feedback; SchemaList's Edit link goes aria-busy + disabled with an "Opening…" label the instant it's activated and swallows repeat-activation (no double-navigation); SchemaView/SchemaForm now render one accessible busy region (role="status", aria-busy) spanning the WHOLE load instead of going blank in the gap between the schema and entity fetches. Latency reduction: SchemaView/SchemaForm fetch schema + entity CONCURRENTLY (Promise.allSettled) rather than sequentially, and AdminSurfaceTransportAdapter.get() now dedupes concurrent identical in-flight GETs (in-flight only, cleared on settle — no persistent cache, so a read after a save still hits the server) so the viewer and the <WorkflowTransitionHistoryTimeline> widget share a single entity read instead of issuing duplicate GETs. New i18n key `opening` (en/fr). Public admin surface contract unchanged. -->
 <!-- Spec reviewed 2026-05-24 - #1576 queue dashboard now shows queued + in-flight jobs in addition to failed. `TransportInterface::listJobs(int $limit, int $offset = 0, ?string $status = null): array` was added (M4B follow-up, mandatory on implementors) with two impls: `DbalTransport::listJobs()` issues a COUNT + SELECT against `waaseyaa_queue_jobs` with `reserved_at IS NULL` (queued) / `IS NOT NULL` (in_progress) / no filter (both); `InMemoryTransport::listJobs()` merges `$queues` + `$reserved` sorted by id. Abstract `Waaseyaa\Queue\Tests\Contract\TransportContractTest` (registered under the Unit suite via phpunit.xml.dist) verifies both backends in lockstep — covers empty, all-queued, queued+in_progress mix, status filter, limit/offset pagination, zero-limit, invalid-status. `GET /api/queue/jobs` now reads optional `?status=failed|queued|in_progress|all` (default `failed` — NFR-001 M4B backward compat preserved; meta envelope unchanged at `{page, per_page, total}` so M4B integration assertions pass UNCHANGED). Failed branch keeps the existing FailedJobRepository path; queued/in_progress branches call `TransportInterface::listJobs()`; `all` merges failed-first-then-transport on a single page. When `TransportInterface` is unbound (slimmed-down install), all non-failed statuses fall back to the failed shape. `ApiServiceProvider` extends the queue `resolveOptional()` block to also resolve `TransportInterface` (optional). `QueueController` constructor gains `?TransportInterface $transport = null` as the third arg. Frontend: `useQueueJobs()` returns `status` (`Ref<'failed'|'queued'|'in_progress'|'all'>`) and `fetchJobs(page, perPage, status)` accepts the third arg (default `'failed'`); response row type is now the union `QueueJob = FailedJob | TransportJob` with the `isFailedJob()` guard. `pages/queue/index.vue` adds a chip filter row above the table; failed chip keeps the M4B full-detail columns + retry/discard buttons, the live chips render a lean (id, queue, status pill, attempts, age-seconds) table with NO retry/discard buttons (C-001 — retry/discard remain failed-only). New i18n keys: queue_status_failed, queue_status_queued, queue_status_in_progress, queue_status_all, queue_age_seconds, queue_column_status, queue_column_age. queue_title flipped from "Failed jobs" to "Queue jobs" and queue_empty from "No failed jobs." to "No jobs in this view." to reflect the broader surface. -->
 <!-- Spec reviewed 2026-05-24 - M4C WP01 (#1472) admin notifications dashboard at /notifications: new NotificationController + NotificationAdminApiRouter, both gated by `_role: admin` via BuiltinRouteRegistrar. `GET /api/notification/channels` returns `{data: [{type, class}, ...]}` from `NotificationDispatcher::channels()` (new accessor — read-only view of the constructor-supplied channel map; no other dispatcher state touched). `POST /api/notification/channels/{type}/test` looks up the channel by type, builds anonymous `TestRecipient` (reads `_account` from the request, routes mail→email, database→account id) + `TestNotification` (subject `[Waaseyaa test]`, body explains "no action required"; returns a real `Waaseyaa\Mail\Envelope` from `toMail()` so `MailChannel` doesn't crash), and calls `ChannelInterface::send()` inside try/catch. 200 with `{type, status: "success", message: "Test sent."}` on success; 404 JSON:API error envelope on unknown type; 500 with `{type, status: "failed", message, exception_class}` on `\Throwable` — the controller never serialises a throwable directly (FR-010, M4B precedent). `ApiServiceProvider` gains a third `resolveOptional()` block for `NotificationDispatcher` after the queue + scheduler blocks; skips cleanly if absent (slimmed-down install). `packages/api/composer.json` adds `../notification` path repo + `waaseyaa/notification: ^0.1.0-alpha.188` require (L4 → L3, layer-clean). SPA route inventory: `/notifications` Nuxt page mirrors `/queue` shape; columns are channel type, implementation FQCN (truncated short class + tooltip with full FQCN), and a Send-test action. After a test send the page renders either a success chip or a failure card; failure card includes `exception_class` when present. New i18n keys: notifications_title, notifications_empty, notifications_column_type, notifications_column_class, notifications_column_action, notifications_action_test, notifications_confirm_test_title, notifications_confirm_test_body, notifications_status_success, notifications_status_failure, notifications_help. New composable useNotificationChannels (`{channels, loading, error, lastTestResult, fetchChannels, testChannel}`), new component NotificationChannelRow, new page pages/notifications/index.vue. NavBuilder gains a `/notifications` link in the Operations section right after `/scheduler`; NavBuilder test updated to assert 5 nav items + the new `[data-testid=nav-notifications]` link on an empty catalog. Delivery log + per-channel enable/disable are deferred — the notification package does not yet carry the persistence; the follow-up issue tracks adding a `delivery_log` table, a `ChannelConfig` model, an enable/disable flag, and a second tab to `/notifications`. Closes audit C-L3-02 + C-L0-03. -->
 <!-- Spec reviewed 2026-05-24 - M4B WP02 (#1471) admin scheduler dashboard at /scheduler: new SchedulerController + SchedulerAdminApiRouter, both gated by `_role: admin` via BuiltinRouteRegistrar. `GET /api/scheduler/tasks` returns `{data: [{name, description, expression, timezone, last_run_at, last_status, next_run_at}, ...]}` — `last_run_at`/`last_status` are nullable (no row in `waaseyaa_schedule_state` yet), `next_run_at` always set. `POST /api/scheduler/tasks/{name}/trigger` calls `ScheduleRunner::runOne()` (new public method that bypasses the cron check, honours the overlap lock, and records run state); 200 with `{status, message, exception_class?}` on success/failure, 404 on unknown task. `ScheduleRunResult` extended with optional `status`/`message`/`exceptionClass` fields so the controller never serialises a `\Throwable` (FR-010). `SchedulerServiceProvider` now binds `ScheduleStateRepository` as a container singleton (database driver only) so the L4 API provider can `resolveOptional()` it. M4B WP01 admin queue routes (landed 2026-05-23) likewise admin-only: `GET /api/queue/jobs` (paginated failed jobs), `POST /api/queue/jobs/{id}/retry`, `POST /api/queue/jobs/{id}/discard`. SPA route inventory under the always-present "Operations" sidebar section: `/queue` (failed jobs) and `/scheduler` (scheduled tasks) — both Nuxt pages at top-level paths, no `/admin/` prefix (matches the existing /workflows, /telescope convention). New i18n keys: scheduler_title, scheduler_empty, scheduler_column_*, scheduler_action_trigger, scheduler_confirm_trigger_*, scheduler_status_*. New composable useScheduledTasks, new component SchedulerTaskRow, new page pages/scheduler/index.vue. NavBuilder test asserts the /scheduler link renders alongside /queue under the Operations heading even with an empty catalog. -->
 <!-- Spec reviewed 2026-05-20 - SSE history-replay defense: BroadcastMessage interface in composables/useRealtime.ts now matches what the server actually emits (id: number, created_at: number) — the never-emitted `timestamp` field was removed. SchemaList watch(messages, …) now skips any event whose created_at predates the component's setup-time mountedAtSec; a defensive second line if the server-side cursor ever regresses to history replay. SchemaList's realtimeEnabled check hardened to String(config.public.enableRealtime) === '1' since Nuxt's runtime-config serializer coerces digit-string env vars to numbers, which silently disabled SSE in some builds. Public admin surface contract unchanged. -->
 <!-- Spec reviewed 2026-05-20 - local-dev hardening: bump Nuxt 4.4.4 → 4.4.6 (latest 4.4.x patch); add vite.optimizeDeps.include for @vue/devtools-core and @vue/devtools-kit so Vite pre-bundles them at startup rather than discovering them mid-request and restarting the dev server (which kills the vite-node IPC socket and surfaces as "Vite Node IPC socket path not configured" 500 on the first /admin/ request). No runtime behaviour, public contract, or admin surface API change. -->
-<!-- Spec reviewed 2026-05-11 - M4A-4 dry-run UI: new TransitionDryRunForm component on /admin/workflows/[id] (third section below transitions matrix); dryRun() method added to useWorkflowDefinitions composable (POST /api/workflow-definitions/dry-run); 18 new i18n keys in en/fr; result rendered inline with allowed/forbidden/neutral states using brand CSS tokens. -->
 <!-- Spec reviewed 2026-05-11 - M4A-3 (#1432 / umbrella #1414) per-entity transition-history widget on entity detail pages: new <WorkflowTransitionHistoryTimeline /> component reads `workflow_audit` from the entity's attributes (already surfaced by ResourceSerializer via _data JSON blob round-trip — no backend change), renders reverse-chronological timeline with transition chip / from→to states / uid / timestamp. Wired into pages/[entityType]/[id].vue below SchemaView/SchemaForm. Renders nothing when audit empty. 4 new i18n strings; M4A-4/5 deferred -->
 <!-- Spec reviewed 2026-05-11 - M4A-2 (#1430 / umbrella #1414) workflow detail page at /admin/workflows/[id]: states grid (id/label/weight/metadata) + transitions matrix (from×to grid with cell-level transition listing); new findById helper on useWorkflowDefinitions; WorkflowState TS interface gains `metadata: Record<string, unknown>`; backend serializer extended to include `metadata` per state (3-line additive change in WorkflowDefinitionsController); 10 new i18n strings; closes C-L3-01 detail-view portion; M4A-3/4/5 still deferred -->
 <!-- Spec reviewed 2026-05-11 - M4A-1 (#1428 / umbrella #1414) workflows list page: new GET /api/workflow-definitions endpoint (admin-role-gated, returns `{data: WorkflowDefinition[]}` shape) wired via WorkflowDefinitionsController (packages/api/src/Workflow/) + WorkflowDefinitionsApiRouter (kernel-adjacent, exempted in bin/check-package-layers); new useWorkflowDefinitions composable + /admin/workflows page list editorial workflow with state/transition counts; api/composer.json now requires waaseyaa/workflows; 7 new i18n strings; closes C-L3-01 list-view portion; detail page / history / dry-run / guard editing deferred to M4A-2..M4A-5 -->
@@ -20,7 +60,6 @@
 <!-- Spec reviewed 2026-05-10 - Nuxt 4.4.5 dev-server regression (#1419): pinned `"nuxt": "4.4.4"` exact in packages/admin/package.json; Tech Stack table version unchanged; rationale and unpin condition in CHANGELOG -->
 <!-- Spec reviewed 2026-05-10 - M1B (#1411) @nuxt/eslint adoption: nuxt.config.ts gains modules and eslint config; new packages/admin/eslint.config.mjs imports `.nuxt/eslint.config.mjs`; lint/lint:fix scripts wired; @typescript-eslint/no-explicit-any et al. set to warn (61 deferred baseline warnings); admin contracts unchanged -->
 <!-- Spec reviewed 2026-05-10 - M1A (#1411) dep bumps: Tech Stack table refreshed to nuxt ^4.4.4, vue ^3.5.34, vue-router ^5.0.6, typescript ^6.0.3, @types/node ^25.6.2; admin contracts unchanged -->
-<!-- Spec reviewed 2026-04-24 - useCodifiedContext + E2E: `/api/telescope/agent-context/…` (legacy HTTP alias on server); Nuxt routes still `/telescope/codified-context/*`; cross-link telescope-agent-context-telemetry.md -->
 <!-- Spec reviewed 2026-04-21 - IngestSummaryWidget: NC sync status from `/api/staff/nc-sync-status`; dashboard link `/staff/ingestion` (staff surface, not admin SPA catch-all) -->
 <!-- Spec reviewed 2026-04-08 - normalizeAppBaseURL (ufo cleanDoubleSlashes + joinURL): shared by admin plugin and auth.global so adminPathBase matches normalized base; surface $fetch uses joinURL paths; packages/admin/app/runtime/normalizeAppBaseURL.ts -->
 <!-- Spec reviewed 2026-04-08 - Admin fetch baseURL: useRuntimeConfig().app.baseURL (trailing slash) for $fetch/apiFetch and auth.global navigateTo; plugins/admin tests stub app.baseURL (#814); ufo joinURL for path joins -->
@@ -42,7 +81,7 @@ The framework's committed workspace UI surface is the standalone Nuxt 3 + Vue 3 
 
 `packages/inertia` is the alternative protocol adapter, retained as **optional / experimental**. Distributions that prefer server-driven UI (e.g., for large permission trees, classification rule editors, or multi-tenant policy UI) may install `waaseyaa/inertia` explicitly. It is not bundled by `waaseyaa/full`. See `packages/inertia/README.md` for the Inertia entrypoint and `packages/admin/README.md` for the Nuxt entrypoint.
 
-Changes to this commitment require a charter amendment (per `## Amendment Process` in `.kittify/charter/charter.md`), not just a spec edit.
+Changes to this commitment require a charter amendment (per `## Amendment Process` in `docs/governance/charter.md`), not just a spec edit.
 
 ## Authority
 
@@ -82,6 +121,8 @@ The `waaseyaa/admin-surface` Composer package ships pre-built Nuxt SPA assets in
 Static assets (`_nuxt/*.js`, `_nuxt/*.css`, fonts, images) are served from the same two-tier lookup with explicit MIME types via `serveStaticFile()`, since PHP's built-in server defaults to `text/html` for all routed responses.
 
 **CI automation:** The `.github/workflows/admin-dist.yml` workflow runs `nuxt generate` when `packages/admin/` changes on `main`, commits the output to `packages/admin-surface/dist/`, and opens a PR. After merge, the next tag distributes the assets via the splitsh-lite pipeline to Packagist.
+
+**Freshness gate (blocking):** `bin/check-admin-dist-fresh` (D6) compares a line-ending-normalised content signature of the admin SPA source set (`packages/admin/app/**`, plus `package.json`, `package-lock.json`, `nuxt.config.ts`, `app.config.ts`) against the committed `packages/admin-surface/dist.signature`, written by `bin/build-admin-dist` whenever the bundle is rebuilt. It fails when the source advanced without a rebuild — including a dependabot bump to the admin lockfile — so a stale committed bundle can never be tagged into a release. The gate runs in `composer verify` **and** in the blocking `ci/verify-gates` CI job, so staleness fails the PR rather than depending on the out-of-band `admin-dist.yml` fix-up workflow to catch it after merge. Rebuild + re-sign with `bin/build-admin-dist` and commit `packages/admin-surface/dist/` together with `packages/admin-surface/dist.signature`.
 
 ### Dev fallback account (auto-login for local development)
 
@@ -148,6 +189,14 @@ Presentation map (server): `EntityValues::toCastAwareMap` → `ResourceSerialize
 ### Base URL
 
 The admin SPA is served under the `/admin/` subpath, configured via `app.baseURL: '/admin/'` in nuxt.config.ts. Playwright E2E tests also use `http://localhost:3000/admin` as the base URL.
+
+The app mount is not an API prefix. Framework JSON API routes remain rooted at
+`/api/*`, so `useApi()` always supplies `baseURL: '/'`. The PHP admin SPA
+catch-all accepts ordinary client-side routes below `/admin/*` but excludes the
+first path segments `_surface` and `api`. Consequently an unknown
+`/admin/api/*` path cannot be converted into a successful HTML shell response;
+the router's normal non-success missing-route response remains visible, including
+its actual content type.
 
 ### Runtime Config
 
@@ -216,8 +265,10 @@ interface JsonApiDocument {
 ```
 
 - `list()` uses offset-based pagination: `page[offset]`, `page[limit]`
-- `search()` uses `filter[{labelField}][operator]=STARTS_WITH` with 250ms debounce on the widget side. Minimum 2 characters required.
+- `search()` uses catalog `reference.search` and optional `reference.sort` metadata with 250ms debounce on the widget side. The generic canonical operator is `STARTS_WITH`; missing or malformed metadata disables the search. Minimum 2 characters required.
 - All methods should use `apiFetch` from `useApi()` for imperative data fetching (ensures correct `baseURL` and `credentials`).
+- **`get()` serves the working copy to editors (CW-v1 option-1, #1920 PR-3).** Both `SchemaView` (the entity page's "view" sub-mode) and `SchemaForm` (its "edit" sub-mode) call the SAME `useEntity().get()` — there is no client-side signal distinguishing them, and `AdminSurfaceTransportAdapter.get()`'s request shape/URL is unchanged. The server (`GenericAdminSurfaceHost::get()`) decides transparently: an account with entity UPDATE access receives the entity's working copy (the tip revision — draft content, if a forward draft is in flight); a view-only account keeps receiving the published (`find()`) entity. This is a deliberate deviation from JSON:API's `?workingCopy=1` opt-in param — documented as "unconditional for editors" — because the admin surface's single GET call backs both sub-modes, so a param would need a signal the transport does not carry. `update()`/`SchemaForm`'s save round trip needs no change either: it already delegates through `JsonApiController::update()`, whose PATCH target is now the working copy too. Full contract: `docs/specs/api-layer.md` "GET single"/"PATCH — update" (`?workingCopy=1`, the JSON:API-surface equivalent).
+- **Workflow authority reaches the working copy (#2081).** The shared entity-view policy admits a node only when the authenticated principal has a permission- and group-valid transition outgoing from that node's current working-copy state. Generic detail, access-checked list/count, edit-load, and workflow discovery/execution therefore agree without an admin-host bypass. Existing update permission is still required to edit; the workflow rule grants no create/update/delete operation. Sealed fields remain filtered by the existing node field policy, and ordinary published content remains visible through `access content` even when the principal has no outgoing workflow authority.
 
 ### useSchema (`packages/admin/app/composables/useSchema.ts`)
 
@@ -226,7 +277,8 @@ Fetches and caches JSON Schema for an entity type. Drives all form rendering.
 ```ts
 function useSchema(entityType: string): {
   schema: Ref<EntitySchema | null>; loading: Ref<boolean>; error: Ref<string | null>
-  fetch(scopeId?: string): Promise<void>; invalidate(scopeId?: string): void
+  fetch(scope?: { id?: string; bundle?: string }): Promise<void>
+  invalidate(scope?: { id?: string; bundle?: string }): void
   sortedProperties(editable?: boolean): [string, SchemaProperty][]
 }
 ```
@@ -238,28 +290,50 @@ interface SchemaProperty {
   enum?: string[]; minimum?: number; maximum?: number; maxLength?: number
   'x-widget'?: string; 'x-label'?: string; 'x-description'?: string
   'x-weight'?: number; 'x-required'?: boolean; 'x-enum-labels'?: Record<string, string>
-  'x-target-type'?: string; 'x-access-restricted'?: boolean
+  'x-target-type'?: string; 'x-access-restricted'?: boolean; 'x-cardinality'?: number
 }
 interface EntitySchema {
   $schema: string; title: string; description: string; type: string
   'x-entity-type': string; 'x-translatable': boolean; 'x-revisionable': boolean
+  'x-workflow'?: { bound: boolean; id: string | null }
   properties: Record<string, SchemaProperty>; required?: string[]
 }
 ```
 
 - Endpoint: `GET /api/schema/{entityType}` returns `{ meta: { schema: EntitySchema } }`
-- **Bundle-aware fetch:** `fetch(scopeId?)` passes the scoping entity id through the
-  transport (`transport.schema(type, id?)`) so the backend can scope the schema to
-  that entity's bundle and include its per-bundle fields. A node of bundle `page`
-  thus exposes `body`/`blocks` in the form, not only the shared core fields
-  (title, slug, published). The backend resolution lives in
-  `GenericAdminSurfaceHost::handleSchema` (an explicit `bundle` in the payload
-  wins, else the bundle is read from the entity named by `id`); non-bundled types
-  and a missing id keep the base schema. `SchemaForm`/`SchemaView` pass the record
-  id; lists and create forms call `fetch()` with no id and get the base schema.
-- Module-level `Map<string, EntitySchema>` cache keyed by `type:scopeId` (so a
-  bundled record's field set never collides with the bare type's). Call
-  `invalidate(scopeId?)` to clear a single key.
+- **Bundle-aware fetch:** `fetch(scope?)` accepts either `{ id }` for an existing
+  record or `{ bundle }` for the second stage of create. The backend resolution
+  lives in `GenericAdminSurfaceHost::handleSchema`: explicit `bundle` wins, else
+  the bundle is read from the entity named by `id`. The base create schema exposes
+  `x-bundle-key` plus a required select whose enum is the registry's bundle roster
+  filtered through `checkCreateAccess(entityType, bundle, account)`. Selecting a value requests `{ bundle }`, replaces the schema with its
+  bundle-specific fields, preserves shared values/the selected bundle, and drops
+  fields belonging only to a previously selected bundle before submission. A
+  rejected scope replaces the form with its clear transport error. Types without
+  a non-empty bundle enum retain the existing one-stage create behavior.
+- The generic host validates a bundled create against that same authoritative
+  roster before repository creation: missing, empty, or unknown values under the
+  entity type's actual bundle key return 422. An explicit create-schema request
+  (`bundle` with no `id`) rechecks bundle-aware `checkCreateAccess()` before the
+  selected bundle's fields are presented and returns a generic 403 with no bundle
+  or field detail when denied; persistence checks the same boundary again. When no bundle is authorized, the base
+  schema retains the structural bundle key but hides and locks its property rather
+  than exposing an empty or free-text selector. An explicitly requested bundle
+  can also scope an edit schema, so that path validates structural membership but
+  does not require create permission. For id-scoped schemas the stored entity
+  bundle is authoritative over any caller-supplied bundle hint, preventing an
+  edit request from being redirected into another bundle's schema.
+- **Workflow-owned fields:** when the workflows binding resolver is available,
+  a scoped schema includes `x-workflow: { bound, id }`. A bound schema omits
+  `workflow_state` and `status` from `properties`: state and publication are
+  changed only through server-returned transitions, never a free-text field or
+  unrelated checkbox. An unbound schema reports `bound: false` and preserves
+  those ordinary fields exactly. Exact bundle bindings use the explicit/edit
+  bundle scope; the base schema can identify wildcard bindings without guessing
+  an exact bundle.
+- Module-level `Map<string, EntitySchema>` cache keys include entity type, id, and
+  bundle independently, so base, edit, and per-bundle schemas cannot collide.
+  `invalidate(scope?)` clears the matching scoped key.
 - `sortedProperties(true)` filters out system `readOnly` fields (id, uuid) and hidden widgets, but keeps `x-access-restricted` fields (rendered as disabled inputs). Sorted by `x-weight` ascending.
 - `sortedProperties(false)` returns all properties sorted by weight.
 
@@ -276,11 +350,18 @@ The root Nuxt plugin is the authoritative bootstrap for `$admin`. On non-public 
 
 **Session UI customization (PHP → SPA):** Hosts extend `GenericAdminSurfaceHost` and override `buildAdminUi(AccountInterface): ?AdminSurfaceUiPayload` to attach non-empty `AdminSurfaceUiPayload` to `AdminSurfaceSessionData`. JSON includes a top-level `ui` object only when the payload has at least one valid header link or sidebar item. Sidebar `group` values that look like i18n keys (`nav_*`) are passed through `t()` in `NavBuilder`; an empty/missing `group` uses `nav_group_custom` (“Shortcuts”). External targets use `external: true` or absolute URLs (`http(s):`, `//`, `mailto:`, `tel:`) and render as `<a target="_blank" rel="noopener noreferrer">`.
 
+The same payload accepts the closed optional `navigationMode`. Missing or `full`
+preserves the static MCP, Operations, and Governance sections. `catalog-only`
+renders dashboard/custom/catalog navigation plus shell-owned session, locale, and
+logout controls, but omits those static sections. Unknown values normalize to
+`full`. This changes presentation only: route access and every controller policy
+remain unchanged.
+
 **Host extension typing (mission #824 WP04 surface C).** `GenericAdminSurfaceHost` and `AdminSurfaceServiceProvider::routes()` accept `Waaseyaa\Entity\EntityTypeManagerInterface`, never the concrete `EntityTypeManager`. Subclasses extending the host receive the interface and must not narrow that parameter. The acceptance gate is `grep -rn 'EntityTypeManager[^I]' packages/admin*` returning no results — re-run it whenever you touch admin-surface code or its tests.
 
 This plugin is the source of truth for `$admin` injection and for composables that call `useAdmin()`.
 
-`runtime.catalog` preserves each `AdminSurfaceCatalogEntry` field and action declaration and carries the admin-facing metadata used by the SPA (`description`, `disabled`). Components that need action-aware UI state must derive it from the injected catalog rather than by issuing mount-time transport requests to discover whether an action exists. For contract builds, the admin package maintains a local TypeScript mirror of the admin-surface payload shape under `app/contracts/` so generated declarations do not import files from outside `packages/admin/app`.
+`runtime.catalog` preserves each `AdminSurfaceCatalogEntry` field and action declaration and carries the admin-facing metadata used by the SPA (`description`, `disabled`). The optional `reference` member is the authoritative entity-reference presentation/query contract: `labelField` names the display attribute, while nullable `search` (`field`, canonical `STARTS_WITH` operator) and `sort` (`field`, direction) members explicitly enable those operations. Missing or malformed metadata disables lookup; clients must never guess `title`, retry an unfiltered list, or fall back to an ID-derived catalogue. The generic host derives safe metadata from `EntityTypeInterface::getKeys()['label']`, omits malformed/internal/credential label keys, and leaves entity/field authorization to the existing server list boundary. Components that need action-aware UI state must derive it from the injected catalog rather than by issuing mount-time transport requests to discover whether an action exists. For contract builds, the admin package maintains a local TypeScript mirror of the admin-surface payload shape under `app/contracts/` so generated declarations do not import files from outside `packages/admin/app`.
 
 #### Admin Runtime Availability Contract
 
@@ -327,12 +408,13 @@ function useLanguage(): {
 Server-Sent Events connection for real-time entity updates.
 
 ```ts
-function useRealtime(channels?: string[]): {
+function useRealtime(channels?: string[], options?: { autoConnect?: boolean }): {
   messages: Ref<BroadcastMessage[]>; connected: Ref<boolean>; error: Ref<string | null>
-  disconnect(): void; reconnect(): void
+  sessionToken: Ref<string | null>
+  connect(): void; disconnect(): void; reconnect(): void
 }
 interface BroadcastMessage {
-  channel: string; event: string; data: Record<string, unknown>; timestamp: number
+  id: number; channel: string; event: string; data: Record<string, unknown>; created_at: number
 }
 ```
 
@@ -341,10 +423,20 @@ interface BroadcastMessage {
 - Runtime constants:
   - `REALTIME_ENDPOINT_PATH = '/api/broadcast'`
   - `DEFAULT_REALTIME_CHANNELS = ['admin']`
-- Auto-connects on instantiation; auto-disconnects on `onUnmounted`
+- **Shared connection (one per channel set).** Consumers asking for the same
+  channel set share a single, module-level `EventSource` and the same
+  `messages`/`connected`/`sessionToken` refs (`wayfinding-showcase-hardening`,
+  P0-1). The admin SPA mounts several consumers at once — the persistent
+  `WayfindingOverlay` (via `useBeacons`) plus each `SchemaList` — and an
+  EventSource pins a FrankenPHP worker for the life of the stream; one connection
+  per consumer multiplied worker pressure into a hydration "reconnect storm".
+  Sharing is ref-counted: the connection is torn down only when its LAST consumer
+  unmounts, so a `SchemaList` leaving on navigation never kills the overlay's
+  stream. `connect()` is idempotent. `__resetRealtime()` is a test-only reset.
 - Exponential backoff reconnect: delay = `min(3000 * 2^(retryCount-1), 30000)`, max 10 retries
 - Message buffer: last 100 messages (ring buffer via `slice(-99)`)
-- Event types: `entity.saved`, `entity.deleted` (used by SchemaList for auto-refresh)
+- Event types: `entity.saved`, `entity.deleted` (used by SchemaList for auto-refresh), `wayfinding.beacon` (consumed by `useBeacons`; the server replays still-active beacons on (re)connect, so a beacon survives reconnects/reloads)
+- **Session pairing token (Wayfinding presenter pairing):** the `connected` SSE frame carries this connection's own non-secret `sessionToken` (`substr(sha256(session_id), 0, 32)`, server-derived). `useRealtime` captures it into the `sessionToken` ref; `useBeacons` re-exposes it. The **supported, race-free read path** (no SSE interception) is **`GET /api/wayfinding/session`** → `{ data: { sessionToken, channel } }`, surfaced in-page as **`data-wf-session`** on the document root (`plugins/wayfindingSession.client.ts`). A presenter-pairing UI / guiding agent reads either to target this exact session's beacon channel via `POST /api/wayfinding/beacons` — see [wayfinding.md](wayfinding.md). (alpha.234 exposed it in the composable, mission `wayfinding-stress-remediation-01KVGK4Q`; the supported handle was added by `wayfinding-showcase-hardening`, P0-2.)
 - Invariant: the SPA realtime client targets the canonical backend broadcast SSE endpoint and default admin channel; this contract is asserted in unit tests.
 
 ## Schema-Driven Forms
@@ -355,6 +447,127 @@ The form rendering pipeline:
 2. `sortedProperties(true)` returns editable fields sorted by `x-weight`
 3. For each field, `SchemaField` resolves the widget component from `x-widget`
 4. Each widget receives `modelValue`, `label`, `description`, `required`, `disabled`, `schema`
+
+### List-View Column Policy (`packages/admin/app/components/schema/SchemaList.vue`)
+
+Destructive actions open the application-owned `ConfirmDialog` alert dialog.
+The dialog provides explicit confirm/cancel controls, initial safe focus, Escape
+and backdrop cancellation, and dangerous-action styling. Native
+`window.confirm()` is not part of the admin interaction contract.
+
+#### Host-declared `x-list`
+
+A schema may add an optional validated `x-list` object. Its closed shape is:
+
+- `columns[]`: `field`, non-empty plain-text `label`, `sortable`, formatter ID
+  `text|date|datetime|boolean/status|enum`, and optional string `valueLabels`;
+- `search`: one `field`, existing `SurfaceFilterOperator`, label, and optional
+  accessible description;
+- `filters[]`: `field`, one existing operator, label, optional finite inert
+  `{value,label}` options, and optional scalar default;
+- `sorts[]`: explicit field/direction (`ASC|DESC`) pairs and human labels, plus
+  an optional `defaultSort` that must match a declared pair.
+
+Unknown keys, formatter IDs, operators, directions, callbacks, templates, URLs,
+format strings, or malformed structures invalidate the whole declaration. The
+client renders all labels with Vue text interpolation and never uses metadata as
+HTML. A present but invalid `x-list` does not fall back to unrestricted declared
+controls. When `x-list` is absent, the existing `x-list-display`/first-six column
+policy and bundle filter remain unchanged.
+
+The declaring host passes the parsed `SurfaceQuery` and validated `ListMetadata`
+to `SurfaceQueryPolicy::validate()` before adding internal scope filters or
+delegating. Any undeclared filter field/operator or sort field/direction returns
+the same generic 400 response. Client visibility is never the enforcement layer.
+
+Declared control changes reset the page offset, issue one request, and synchronize
+the supported filter/sort/page query keys with the current URL. A monotonically
+increasing request ID prevents a late response from overwriting newer results.
+Loading/result changes are announced and controls remain keyboard-operable with
+44 px targets.
+
+Each generic list row contains `capabilities: {view, edit, delete}`. `view` reuses
+the authoritative decision that admitted the row; `edit` and `delete` are derived
+from update/delete access after hydration. Only booleans are serialized—never
+policy reasons. Under `x-list`, row actions render solely from this object. Legacy
+hosts without `x-list` retain catalog-level action presentation. Every direct
+mutation still repeats server authorization.
+
+The list table (`SchemaList`) is schema-driven: by default it renders the first six
+non-hidden fields as columns. Without a bound, a content type with a long-text /
+rich-text body (the `text` / `text_long` field types) dumps the whole body into a
+cell, blowing out row height and making the list nearly unusable (UX-1). The
+column policy bounds the table framework-wide for every content type:
+
+- **Rich-text / text-format columns are dropped from the default set.** Fields
+  with `x-widget: 'richtext'` (from the `text_long` field type) are excluded from
+  the default `columns`. They are **not** removed from the data — `SchemaView`
+  (detail) and `SchemaForm` (edit) select their own fields via
+  `sortedProperties()` and are unaffected, so the body stays fully viewable and
+  editable.
+- **An explicit `x-list-display: true` opt-in still wins.** When any field
+  declares it, exactly those fields are the columns (the author chose them) —
+  including a rich-text field if they opt it back in. Cells are still truncated.
+- **Every text cell is truncated to a snippet.** `formatCellValue` routes string
+  values through `truncateSnippet`, which collapses internal whitespace/newlines
+  to one line and caps the length at `SNIPPET_MAX_CHARS` (120) with an ellipsis.
+  This bounds a long plain-text field (`x-widget: 'textarea'`) that remains a
+  column, and any opted-in rich-text column. Boolean (`✓`/`—`) and `date-time`
+  cells are already short and return before truncation.
+- **CSS defense-in-depth.** `.entity-table td:not(.actions)` carries a `max-width`
+  with `overflow: hidden; text-overflow: ellipsis` so column width stays bounded
+  even if a value ever slips past `truncateSnippet`; the actions column is exempt
+  so its buttons stay on one line.
+
+Acceptance: `tests/components/schema/SchemaListColumnPolicy.test.ts` proves a
+long-text/rich-text content type renders bounded columns — the rich-text column
+is absent and the long-text cell is a truncated snippet, never the full body.
+
+### Responsive list and pagination contract
+
+`SchemaList` renders one semantic table and one action group per row at every
+breakpoint. At widths through 600px, CSS adapts those same rows into cards: the
+table header remains available to assistive technology and each cell repeats its
+authoritative header through `data-label`. No duplicate mobile action copy is
+rendered. Above that breakpoint, or whenever arbitrary columns still need more
+room, the table is contained by a named, keyboard-focusable horizontal-scroll
+region; it must never expand the document.
+
+The list region owns populated, empty, loading, and failure states. Long and
+unbroken values wrap or remain clipped inside their cell/card; row identity and
+the single labelled action group stay explicit. Pagination renders labelled
+previous/next controls, a bounded boundary/current/neighbour page window,
+non-interactive ellipses, and `aria-current="page"`. Navigation restores focus
+to the newly current page control. All ordinary list and pagination controls
+meet the shared 44 by 44 CSS-pixel target contract.
+
+### Element anchors (Wayfinding Phase-1 groundwork)
+
+The schema-driven components emit stable, **inert** `data-anchor` attributes derived
+from schema field identity, seeding the future Wayfinding anchor catalog (mission
+`wayfinding-01KVGH5X`, FR-006/FR-007). They have no behaviour in the admin SPA today —
+they are a published targeting contract for element-anchored *beacons*. The scheme:
+
+| Component | Element | `data-anchor` |
+|-----------|---------|---------------|
+| `[entityType]/index` (list page) | Create-new button | `action:{entityType}:create` |
+| `SchemaList` | container | `list:{entityType}` |
+| `SchemaList` | column header | `list-field:{entityType}:{fieldName}` |
+| `SchemaList` | Edit / Delete action | `action:{entityType}:edit` / `action:{entityType}:delete` |
+| `SchemaView` | container | `view:{entityType}` |
+| `SchemaView` | field row | `field:{entityType}:{fieldName}` |
+| `SchemaForm` | container | `form:{entityType}` |
+| `SchemaForm` | field wrapper | `field:{entityType}:{fieldName}` |
+| `SchemaForm` | submit action | `action:{entityType}:submit` |
+
+These are now validated against the published Wayfinding anchor catalog
+(`/.well-known/waaseyaa-anchors.json`, `AnchorRegistry`); an emit referencing an
+anchor not in the catalog is rejected (FR-005). The list-level
+`action:{entityType}:create` row was added so a presenter can beacon the
+"Create new" control directly (`wayfinding-showcase-hardening`, P1-3) — it
+mirrors the per-row `action:*:edit`/`:delete` scheme. The shipped bundle is
+asserted to contain `data-anchor` by `AdminDistContentTest` (see "Pre-built SPA
+distribution").
 
 ### Widget Resolution (`packages/admin/app/components/schema/SchemaField.vue`)
 
@@ -372,6 +585,8 @@ The form rendering pipeline:
 | `boolean`            | `WidgetsToggle`            | `<input type="checkbox">` |
 | `select`             | `WidgetsSelect`            | `<select>`           |
 | `datetime`           | `WidgetsDateTimeInput`     | `<input type="datetime-local">` |
+| `slug`               | `WidgetsSlugInput`         | `<input type="text">` |
+| `date`               | `WidgetsDateInput`         | `<input type="date">` |
 | `entity_autocomplete`| `WidgetsEntityAutocomplete`| `<input type="text">` + dropdown |
 | `hidden`             | `WidgetsHiddenField`       | (renders nothing)    |
 | `image`, `file`      | `WidgetsTextInput`         | `<input type="text">` |
@@ -384,27 +599,49 @@ When the PHP `SchemaPresenter` marks a field with `readOnly: true` + `x-access-r
 - The `@update:model-value` handler guards: `if (!fieldSchema['x-access-restricted']) formData[fieldName] = val`
 - Result: field is visible but not editable in the UI
 
-### RichText Sanitization
+### Rich-text preservation and editing
 
-`WidgetsRichText` (`packages/admin/app/components/widgets/RichText.vue`) sanitizes HTML client-side using DOMParser. Allowed tags: `P, BR, B, I, U, STRONG, EM, A, UL, OL, LI, H1-H6, BLOCKQUOTE, PRE, CODE, SUB, SUP, HR`. Links restricted to `http://`, `https://`, or `/` prefixes.
+`WidgetsRichText` keeps a canonical source string separate from its visual
+editing projection. Mounting, rerendering, or switching to source mode emits
+nothing, so untouched migrated HTML remains byte-for-byte identical, including
+images, supported embeds, and unfamiliar valid attributes. Empty and null inputs
+render empty without placeholder markup. No editor dependency is added.
 
-The contenteditable is driven **imperatively**, not via a reactive `v-html`
-binding: `innerHTML` is set on mount and only when the model changes from outside
-the component, and the component skips the reactive echo of its own `@input`
-emit. Binding `v-html` to a contenteditable re-renders it on every keystroke,
-resetting the caret to the start and scrambling typed text; the imperative
-approach preserves the caret. Because the editor emits sanitized semantic HTML,
-editing the body of content migrated as page-builder markup (e.g. a `pb-band`
-hero) simplifies that markup to clean prose; structured (blocks) editing that
-preserves rich layouts is a separate, future surface.
+The visual projection is parsed in an inert `<template>` and replaces scripts,
+remote-fetching media/embed elements, and form controls before inserting markup
+into the contenteditable; it is an editor, never an executable preview. A user
+who edits visually accepts deterministic projection HTML as the new value.
+Explicit HTML source mode preserves and emits the exact edited string and is
+reachable by button or Ctrl+Shift+S. Both modes share field label/help/error/
+required associations and visible focus treatment. Server-side rich-text
+sanitization at the read/render boundary remains authoritative for content
+delivered to clients.
+
+### Field validation and date-only values
+
+`SchemaForm` renders with `novalidate` so browser bubbles are not the sole
+feedback. It maps client and structured transport failures to associated field
+messages plus an assertive, programmatically focused summary. Unknown/malformed,
+forbidden, network, and server failures use safe global messages. Corrections,
+bundle changes, and reloads clear stale errors; a synchronous latch prevents
+duplicate submission. Requiredness comes only from `x-required` or the schema
+`required` roster.
+
+Date widgets transport a real date as ISO `YYYY-MM-DD`, preserve an untouched
+null in form data, emit null when cleared, and perform no timezone conversion.
+Calendar syntax plus `x-min`/`x-max` bounds are validated into the same associated
+error contract. Ordinary strings and `date-time` widgets are not reclassified.
 
 ### EntityAutocomplete Widget
 
 `WidgetsEntityAutocomplete` (`packages/admin/app/components/widgets/EntityAutocomplete.vue`):
 - Uses `x-target-type` from schema to determine which entity type to search
-- Calls `useEntity().search(targetType, 'title', query)` with 250ms debounce
+- Resolves display, search, and sort fields from the target type's catalog `reference` metadata; it never assumes `title` or requests an unfiltered fallback list
 - Keyboard navigation: ArrowUp/ArrowDown/Enter/Escape
 - ARIA: `role="combobox"`, `aria-expanded`, `aria-autocomplete="list"`, dropdown has `role="listbox"`, items have `role="option"`
+- The combobox and each option use the shared 44 px target floor. A present clear
+  button is an adjacent flex item with its own 44 px target, so its rectangle
+  never overlaps the combobox, obscures entered text, or steals result selection.
 
 ## SSE Integration
 
@@ -444,7 +681,6 @@ Key categories:
 - Entity type labels: `entity_type_user`, `entity_type_node`, `entity_type_node_type`, `entity_type_taxonomy_term`, etc.
 - Field labels: `field_title`, `field_machine_name`, `field_published`, `field_description`, `field_weight`, `field_email`, etc.
 - Parameterized: `create_entity`, `edit_entity` (with `{type}` token)
-- Telescope: `telescope_codified_context`, `telescope_cc_sessions`, `telescope_cc_drift_score`, etc. Session telemetry API calls use **`/api/telescope/agent-context/…`** (`useCodifiedContext.ts`); see **`docs/specs/telescope-agent-context-telemetry.md`**.
 
 Token replacement pattern: `t('key', { token: 'value' })` replaces `{token}` in the string.
 
@@ -479,11 +715,6 @@ packages/admin/app/
       HiddenField.vue              # Renders nothing (excluded from editable forms)
       MachineNameInput.vue         # Machine-readable name generator from label
       FileUpload.vue               # File upload input
-    telescope/
-      ContextHeatmap.vue           # Heatmap visualization of codified context events
-      DriftScoreChart.vue          # Drift score indicator (0–100 with color intensity)
-      EventStreamViewer.vue        # Expandable event log with collapsible rows
-      ValidationReportCard.vue     # Validation report display with severity styling
     auth/
       LoginForm.vue                # Username/password form with error/loading props
       RegisterForm.vue             # Name/email/password/confirm form
@@ -502,7 +733,6 @@ packages/admin/app/
   composables/
     useAdmin.ts                    # Admin panel context & utilities
     useAuth.ts                     # Authentication state & login/logout
-    useCodifiedContext.ts          # Codified context session/event tracking
     useEntity.ts                   # JSON:API CRUD + search
     useSchema.ts                   # Schema fetch/cache/sort
     useLanguage.ts                 # i18n
@@ -559,6 +789,15 @@ Error handling uses `TransportError` from `~/contracts/transport` to distinguish
 - Pipeline visibility is deterministic and must remain a pure function of `runtime.catalog`.
 - Navigation components must not call `runAction(type, 'board-config')` or rely on request failures to infer whether pipeline navigation should be shown.
 - User-facing navigation labels in `AdminShell` and `NavBuilder` route through `useLanguage()`, including the skip link and pipeline suffix.
+- `ui.navigationMode === 'catalog-only'` suppresses the static MCP, Operations,
+  and Governance sections. Missing/invalid/`full` keeps them, preserving legacy
+  hosts. This condition is not consulted by routing or authorization.
+- Below 768px the closed sidebar is `inert`, `aria-hidden`, translated off-canvas,
+  pointer-disabled, and absent from sequential focus. The toggle exposes
+  `aria-controls`/`aria-expanded`. Opening locks page scroll and focuses the
+  in-panel close control; Tab remains in the panel, Escape/backdrop/close return
+  focus to the opener, and route or desktop-breakpoint changes clear open and
+  scroll-lock state. Desktop navigation remains persistently available.
 
 ## SchemaForm / MachineNameInput Contract
 
@@ -703,8 +942,31 @@ That means `useAuth()` does not establish an independent session source of truth
 - Autocomplete: full `combobox` pattern with `listbox`/`option` roles
 - Delete buttons include entity label in `aria-label`
 - Live region: `<div role="status" aria-live="polite">` announces pagination changes
+- Workflow discovery announces loading and a bound no-transition state through
+  polite status regions. Fetch/apply failures use assertive alert regions;
+  native transition buttons retain keyboard activation and explicit accessible
+  names, and all controls are disabled behind a same-tick single-flight guard
+  during submission.
 - Screen-reader-only class: `.sr-only` for visually hidden announcements
+- Every schema control has a stable unique ID, associated label, help/error
+  `aria-describedby` chain, semantic required state, and `aria-invalid` only
+  while invalid. Error text includes a non-color cue.
+- Form failures use an assertive focused validation summary; focus indicators use
+  a solid high-contrast outline, and form help/error tokens meet normal-text AA
+  contrast on their framework backgrounds.
 - Responsive: sidebar collapses to off-canvas drawer below 768px with overlay
+- Ordinary authenticated-admin links, buttons, inputs, selects, date controls,
+  autocomplete controls/options, rich-text controls, toggle labels,
+  disclosures, row/workflow actions, pagination, menu/close, and navigation
+  controls consume `--admin-target-size` and use at least a 44 by 44 CSS-pixel
+  effective target with a visible focus outline. Native checkbox/radio glyphs
+  may remain visually smaller inside their associated 44 px label target; label
+  whitespace activates the native control, which retains focus and state.
+  Disabled and read-only controls retain the same geometry and native semantics.
+  Generic content and action containers may shrink; long identifiers, URLs, alerts,
+  breadcrumbs, tables, and preformatted output are contained rather than
+  widening the document. At 200% text enlargement, targets may grow but must not
+  overlap or create document-level horizontal overflow.
 
 ## Build & Testing
 
@@ -799,7 +1061,6 @@ Real-time SSE monitor for the Mercure broadcasting layer (gap-matrix C-L0-04, mi
 | `packages/admin/app/layouts/default.vue` | Default layout (AdminShell wrapper) |
 | `packages/admin/app/composables/useAdmin.ts` | Admin panel context & utilities |
 | `packages/admin/app/composables/useAuth.ts` | Authentication state & login/logout |
-| `packages/admin/app/composables/useCodifiedContext.ts` | Codified context session/event tracking |
 | `packages/admin/app/composables/useEntity.ts` | JSON:API CRUD composable |
 | `packages/admin/app/composables/useSchema.ts` | Schema fetching and caching |
 | `packages/admin/app/composables/useLanguage.ts` | i18n composable |
@@ -845,11 +1106,9 @@ Real-time SSE monitor for the Mercure broadcasting layer (gap-matrix C-L0-04, mi
 | `packages/admin/app/i18n/en.json` | English translation strings |
 | `packages/admin/app/i18n/fr.json` | French translation strings |
 | `packages/admin/playwright.config.ts` | Playwright E2E test configuration |
-| `packages/admin/app/composables/useWorkflowGuards.ts` | Fetches `/api/workflow-definitions/{id}/guards` (M4A-5 Phase 1, #1470) |
-| `packages/admin/app/components/workflow/WorkflowGuardsTable.vue` | Read-only guards matrix section embedded on `/workflows/{id}` (M4A-5 Phase 1, #1470) |
-| `packages/admin/app/composables/useMediaVersions.ts` | Fetches `/api/media/{uuid}/versions` (DIR-005, versioned-blob-media-abstraction-01KSEFTJ WP04) |
-| `packages/admin/app/components/media/MediaVersionBrowser.vue` | Read-only version table rendered at `/media/{uuid}/versions` (DIR-005 WP04) |
-| `packages/admin/app/pages/media/[uuid]/versions.vue` | Media version browser page (DIR-005 WP04) |
+| `packages/admin/app/composables/useMediaVersions.ts` | Internal parked media-version reader; reactivate only after #1742's byte-persistence boundary test |
+| `packages/admin/app/components/media/MediaVersionBrowser.vue` | Internal parked media-version table |
+| `packages/admin/app/pages/media/[uuid]/versions.vue` | Internal parked media-version page |
 
 ## MCP admin
 
@@ -886,3 +1145,4 @@ Read-only admin surface for the MCP endpoint. Three pages under `/mcp/`, accessi
 <!-- Spec reviewed 2026-05-24 - workflow guards read-only matrix section on /workflows/{id} (M4A-5 Phase 1, #1470) -->
 <!-- Spec reviewed 2026-05-25 - inertia-demotion-nuxt-standardisation-01KSEFTS - WP03 - SPA bet section added per DIR-007 -->
 <!-- Spec reviewed 2026-05-25 - media version browser page /media/{uuid}/versions (DIR-005 versioned-blob-media-abstraction-01KSEFTJ WP04) -->
+<!-- Spec reviewed 2026-07-10 - CW-v1 WP-4 (#1920): workflow transition UI. New useWorkflowTransitions composable (apiFetch over GET /api/{type}/{id}/workflow/transitions + POST .../workflow/transition; a GET 404 is absorbed into an empty list per the R8 oracle contract — missing/unviewable renders no buttons, not an error). New components/workflow/TransitionControls.vue (<WorkflowTransitionControls>, nested-dir prefix) mounted in pages/[entityType]/[id].vue page-header-actions: one button per available transition, pending-disable, inline errors[0].detail on denial, emits `transitioned` (page re-fetches SchemaView via a refresh key + success message). SchemaList renders workflow_state as a status-pill badge (inside the schema column, or a synthetic trailing column when entities carry the attribute but the schema column set omits it). i18n keys workflow_transitioned / workflow_transition_error_generic / workflow_state_column_label in en+fr. -->

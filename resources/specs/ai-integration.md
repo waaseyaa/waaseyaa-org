@@ -1,8 +1,17 @@
 # AI Integration
 
+<!-- Spec reviewed 2026-07-13 - R18 M6 (#1975): the outbound MCP subsystem is active production wiring, not parked scaffolding. `Waaseyaa\AI\Agent\Mcp\McpServiceProvider` is declared in `packages/ai-agent/composer.json` under `extra.waaseyaa.providers`, so normal package-manifest compilation boots remote tool discovery. Its existing fail-closed contract is unchanged: no host tool registry/config means no remote tools, and an unavailable server cannot abort kernel boot. Acceptance: McpServiceProviderManifestTest. -->
+<!-- Spec reviewed 2026-07-13 - CW-v1 option-1 PR-4 (#1920, security): EntityKeyGuard's LITERAL_FLOOR gains `revision_id`/`published_revision_id` — a collateral finding while adding the JSON:API write-side field allowlist (`docs/specs/api-layer.md` "Write-side field allowlist"): `published_revision_id` was NOT already refused by this guard (empirically confirmed red, no entity-key kind names it), so `entity.update`/`entity.create` could silently write it despite the class-level "identity fields cannot be written through this tool" contract. See updated "Refusal set" below. -->
+<!-- Spec reviewed 2026-07-06 - audit-remediation batch B3 (ai-vector unbound provider): packages/ai-vector shipped NO ServiceProvider and its composer.json extra had no waaseyaa key, so EmbeddingStorageInterface was unbound. The semantic:warm / semantic:refresh CLI handlers (each taking SemanticIndexWarmer) were autowired by KernelHandlerContainer, hit the interface param, and threw No binding for "Waaseyaa\AI\Vector\EmbeddingStorageInterface", crashing both documented commands. Fixed by a new AiVectorServiceProvider (registered via extra.waaseyaa.providers) binding EmbeddingStorageInterface -> SqliteEmbeddingStorage (\PDO from the kernel bus, table embeddings) and SemanticIndexWarmer DIRECTLY (its nullable ?EmbeddingProviderInterface cannot be reflection-autowired); with no ai.embedding_provider configured the warmer reports skipped_no_provider (graceful degrade). EmbeddingProviderInterface is bound only when configured (fromConfig returns null otherwise), which also lets a host-wired vector.search tool resolve a real provider off the bus (the tool in waaseyaa/ai-tools duck-types these interfaces via \Closure resolvers by design; binding the interfaces is the ai-vector-side enablement, closure-wiring stays a host concern). Separately, EntityEmbedder::searchSimilar() now REQUIRES an AccountInterface and filters fail-closed (load-then-check view via EntityAccessHandler), closing a dormant access-unfiltered leak (zero production callers; SearchController and VectorSearchTool both bypass EntityEmbedder). See the EntityEmbedder section for the updated signature. Pinned by AiVectorServiceProviderTest, EntityEmbedderTest, VectorSearchIntegrationTest. -->
+<!-- Spec reviewed 2026-07-05 - audit-remediation batch R8 WP2 (security, audit R8-c): `RelationshipTraverseTool` (`relationship.traverse`, `packages/ai-tools/src/Relationship/RelationshipTraverseTool.php`) gated only the edge row (`canViewEntity($row)`) and the FAR endpoint (`canViewEndpoint()` on `to_entity_type`/`to_entity_id`) but NEVER the SOURCE entity's own view access — a code comment rationalized "the source is the caller's own query input, so its visibility is implied", the confused-deputy/existence-oracle pattern. `tool.relationship.traverse` is on `PublicAnonymousAuth::DEFAULT_READ_CAPABILITIES`, so an anonymous MCP caller could supply `source_id` = a restricted node and, if it had any published edge to a viewable entity, receive a non-empty `edges` array echoing the restricted source id — confirming the entity exists and has that relationship (the same disclosure the HTTP `DiscoveryRouter` hub/cluster/timeline gate closes; see docs/specs/api-layer.md). Fixed with a new fail-closed `RelationshipTraverseTool::canViewSource()` (mirrors the existing `canViewEndpoint()`: unknown type / unloadable / policy-denied → not viewable; capability-only mode allows, enforced-with-no-handler fails closed) run BEFORE querying edges; when the source is not viewable the tool returns an EMPTY result (`edges: [], count: 0`) via `emptyTraversalResult()`, INDISTINGUISHABLE from "source has no relationships" / "source absent". The stale endpoint-gate comment was updated to state the source is now gated up front. Acceptance: `RelationshipTraverseAccessFilterTest::traverse_returns_empty_when_the_source_entity_is_view_forbidden`, `::forbidden_source_is_indistinguishable_from_an_absent_source`, `::traverse_returns_the_edge_when_the_source_entity_is_viewable` (positive control); the three pre-existing edge/endpoint tests now seed a viewable source so they exercise the filter they are about. This closes the source-existence-oracle class on the MCP surface, completing the HTTP-surface fix in the same batch. ALSO in this batch, the absent-vs-forbidden form of the same oracle was closed on `EntityReadTool` (`entity.read`) and `EntityListRevisionsTool` (`entity.list_revisions`) — both on the anonymous read tier via `tool.entity.read`. They returned a distinguishable "not permitted to view" (from `requireEntityAccess()`) for an existing-but-forbidden id vs "not found" for an absent id; both now collapse the absent and view-forbidden outcomes into the IDENTICAL `... not found` error via `$entity === null || !$this->canViewEntity($entity, $account)` (the shared `requireEntityAccess()` is UNCHANGED — the destructive write tools off the anonymous tier keep their 'forbidden' message). A viewable entity still returns its data/revisions. Acceptance: `EntityReadOracleClosureTest`. With this, the anonymous MCP read tier (`entity.read`, `entity.search`, `relationship.traverse`, `bimaaji.read`) is free of entity-existence oracles — `entity.search` already filters forbidden hits silently, `bimaaji.read` is not id-scoped. -->
+<!-- Spec reviewed 2026-07-03 - audit-remediation batch R4 PR3 (ai-agent M1): closed a cross-account trail-overwrite hole in the Wayfinding write tools. `EditTrailTool` (packages/ai-agent/src/Tool/Wayfinding/EditTrailTool.php:90, `TrailStore::editAsHuman()`) and `ReRecordTrailTool` (ReRecordTrailTool.php:~87, `TrailStore::reRecord()`) gated only the coarse `present guided content` capability before writing to whatever `trail_id` was supplied — but `TrailAccessPolicy::access()` (packages/wayfinding/src/Access/TrailAccessPolicy.php) routes `update` owner-only, so any capability holder could edit or re-record ANOTHER account's trail, bypassing that owner-only policy entirely. Fixed by a shared `AbstractTrailTool::requireTrailUpdateAccess()` helper that loads the trail (mirroring `TrailStore::resolveOwner()`'s language-then-default fallback) and calls `requireEntityAccess($trail, 'update', $account)` (fail-closed) BEFORE the store() write, in both tools' `execute()`. `RecordTrailTool` (creates a trail self-attributing ownership to the caller) and `GetTrailTool` (view policy is owner-OR-capability-holder, matching its existing capability-only gate) were swept and confirmed already correct — no change needed. Acceptance: `WayfindingTrailToolsTest::edit_is_forbidden_for_a_non_owner_even_with_the_capability`, `::rerecord_is_forbidden_for_a_non_owner_even_with_the_capability`, `::edit_and_rerecord_still_work_for_the_owner_with_a_real_handler_attached`. -->
+<!-- Spec reviewed 2026-06-21 - M77 flagship (#1705 / CL-8): ai-agent gains a FIFTH `#[AsAgentTool]` Wayfinding adapter `wayfinding_edit_trail` (packages/ai-agent/src/Tool/Wayfinding/EditTrailTool.php), destructive:true + `present guided content` capability, mirroring ReRecordTrailTool but routing to `TrailStore::editAsHuman()` (advances the live value AND latches origin=human). This is the authenticated app surface that was missing: editAsHuman() previously had no MCP/HTTP/admin/CLI caller, so the flagship "human edits are never overwritten" guarantee (SC-005) was demonstrable only from a unit test reaching around the tool layer. Attribute-discovered (no service-provider wiring). Acceptance: WayfindingTrailToolsTest::editing_as_human_via_the_tool_latches_origin_and_survives_rerecord (SC-005 end-to-end through tools only) + edit_is_forbidden_without_the_capability. Full surface in wayfinding.md. -->
+<!-- Spec reviewed 2026-06-23 - post-C-24 residual security sweep: RelationshipTraverseTool (relationship.traverse) now applies the same per-entity 'view' gate + field-access filter the other stock read tools apply (Tool Safety property 7). It previously checked only the tool.relationship.traverse capability, then findBy()'d and emitted every row's full values — and that capability is in PublicAnonymousAuth::DEFAULT_READ_CAPABILITIES, so an anonymous /mcp caller could enumerate unpublished/forbidden relationship rows. It now filters each row through canViewEntity() (fail-closed) + applyFieldAccessFilter(). Acceptance: RelationshipTraverseAccessFilterTest. Separate, recorded-not-fixed: `relationship` is registered in group:'content', so PublishedContentAccessPolicy makes published relationships anon-viewable — a model decision tracked in the residual-findings audit, not changed here. -->
+<!-- Spec reviewed 2026-06-23 - post-C-24 residual security sweep: VectorSearchTool (vector.search) now applies the same per-entity 'view' gate + field-access filter the other stock read tools apply (Tool Safety property 7). It previously checked only tool.vector.search, then echoed EmbeddingStorageInterface::search()'s raw rows (entity id + metadata + embedding vector). Unlike relationship.traverse this capability is NOT in PublicAnonymousAuth::DEFAULT_READ_CAPABILITIES, so the exposure is to an authenticated initiator granted tool.vector.search without view on the matched entities. A vector hit carries only a type+id, so the tool now takes an injected EntityTypeManagerInterface, loads each hit's backing entity, drops it unless canViewEntity() allows (fail-closed when the entity can't be loaded under enforcement), filters surviving metadata through applyFieldAccessFilter(), and reshapes output to {entity_type,id,score,metadata} (the raw vector is no longer echoed). AbstractAgentTool gains isAccessEnforced() so load-then-gate enumeration tools can choose the fail-closed branch. Acceptance: VectorSearchAccessFilterTest. -->
+<!-- Spec reviewed 2026-06-21 - M79 clean-before-beta (#1638, #1637): the stock entity write tools (entity.create / entity.update) now enforce per-field FieldAccessPolicy for the `edit` operation on every submitted field via AbstractAgentTool::requireFieldEditAccess() — same open-by-default semantics as the REST/GraphQL write paths, run after the identity-key refusal and before any set(), whole-write rejection on Forbidden. Closes the asymmetry where an agent with entity-level update/create could set a policy-forbidden field (e.g. roles/status). "Relation to scoped writes" section reworked into "Per-field edit access" (configurable per-type allowlists remain future). Tool Safety audit-trail property notes argumentsForAudit() now redacts arbitrarily-keyed (list) payloads without throwing on integer keys (#1637). Acceptance: EntityWriteFieldAccessTest, AbstractAgentToolArgumentsForAuditTest, AgentExecutorEventDispatchTest::listValuedToolArgumentsAreAuditedAndDoNotCrashTheRun. -->
+<!-- Spec reviewed 2026-06-19 - Wayfinding Phase 5 (wayfinding-01KVGH5X): ai-agent gains four `#[AsAgentTool]` Wayfinding write tools in `packages/ai-agent/src/Tool/Wayfinding/` (new ai-agent → wayfinding L5→L4 dep): `wayfinding_record_trail`, `wayfinding_rerecord_trail`, `wayfinding_get_trail` (extend `AbstractTrailTool`, which resolves the `wayfinding_trail` two-axis EntityRepository → `TrailStore`), and `wayfinding_emit_beacon` (validates the anchor via `AnchorRegistry` and pushes a `wayfinding.beacon` to a session channel via `BroadcastStorage`). All carry `capability: 'present guided content'` and `requireCapability` fail-closed (FR-003/NFR-002); the write/record/emit ones are `destructive: true` (so the public read-only `/mcp` hides them — C-001). They surface only on the authenticated MCP write tier (`/mcp/write`, see mcp-endpoint.md). Acceptance: `WayfindingTrailToolsTest` + `EmitBeaconToolTest`. -->
 <!-- Spec reviewed 2026-06-12 - mission optimistic-locking-01KTXCHY WP03 (#1647): new "Optimistic Locking on the Stock Entity Tools" section — entity.update gains the optional top-level expected_revision_id argument (integer, minimum 1; an argument, never a writable value — values.revision_id stays key-guard-refused); stale expectation → structured two-block revision_conflict error (expected + current, machine-correctable: re-read/re-diff/retry); unsupported paths (storage LogicException matrix, non-concrete repository) → distinct revision_expectation_unsupported (do not retry); dry-run with an expectation reports the byte-identical conflict payload (shared builder); success payloads carry the post-save revision_id; entity.read/entity.list expose a top-level revision_id member on revisionable entities (omitted = no expectation formable); SC-002 approve-time staleness recipe pointer to the mission quickstart as the canonical consumer pattern. No-expectation calls byte-identical. -->
 <!-- Spec reviewed 2026-06-12 - mission live-entity-validation-key-protection-01KTWQT3 (#1646, alpha.204): new "Identity-Key Write Protection" section — the stock entity agent tools (entity.create / entity.update in packages/ai-tools) refuse identity-key writes whole-write via EntityKeyGuard, and surface save-time EntityValidationException as the structured validation_failed error. label/bundle never refused; revision_log stays writable via its dedicated argument; #1638 scoped writes noted as the separate broader mechanism. -->
-<!-- Spec reviewed 2026-04-09k - `EmbeddingPipeline`, `McpToolExecutor`, and `SearchController` read entity fields through `EntityValues::toCastAwareMap()` / `WorkflowVisibility::isNodePublicForEntity()` (#1181 ST-8) -->
 <!-- Spec reviewed 2026-04-09 ST-9 - embedding text extraction vs EntityEmbedder; MCP cast-aware payloads (#1181) -->
 <!-- Spec reviewed 2026-04-09 ST-10 - EntityEmbedder / EntityEmbeddingListener / SemanticIndexWarmer use EntityValues + WorkflowVisibility::isNodePublicForEntity (#1181) -->
 
@@ -14,7 +23,7 @@ Waaseyaa's AI layer (architecture layer 5) provides four packages that enable AI
 |---------|-----------|------|---------|
 | ai-schema | `Waaseyaa\AI\Schema\` | `packages/ai-schema/src/` | JSON Schema generation, MCP tool definitions, tool execution |
 | ai-agent | `Waaseyaa\AI\Agent\` | `packages/ai-agent/src/` | Agent executor, audit logging, MCP server adapter |
-| ai-pipeline | `Waaseyaa\AI\Pipeline\` | `packages/ai-pipeline/src/` | Processing pipelines, step orchestration, async dispatch |
+| ai-pipeline | `Waaseyaa\AI\Pipeline\` | `packages/ai-pipeline/src/` | Pipeline configuration entity; no execution or queue surface |
 | ai-vector | `Waaseyaa\AI\Vector\` | `packages/ai-vector/src/` | Vector embeddings, similarity search, distance metrics |
 
 ### Package Dependencies
@@ -465,79 +474,6 @@ final readonly class PipelineStepConfig
 }
 ```
 
-### PipelineStepInterface
-
-**File:** `packages/ai-pipeline/src/PipelineStepInterface.php`
-
-```php
-interface PipelineStepInterface
-{
-    public function process(array $input, PipelineContext $context): StepResult;
-    public function describe(): string;
-}
-```
-
-Steps receive input from the previous step (or the pipeline trigger) and return a `StepResult`. The `PipelineContext` carries shared state across all steps.
-
-### StepResult
-
-**File:** `packages/ai-pipeline/src/StepResult.php`
-
-Three factory methods control pipeline flow:
-
-- `StepResult::success(array $output, string $message)` -- Continue to next step.
-- `StepResult::failure(string $message, array $output)` -- Stop pipeline, mark as failed.
-- `StepResult::halt(string $message, array $output)` -- Stop pipeline, mark as succeeded.
-
-The `$stopPipeline` flag (set by `halt()`) triggers early exit without failure.
-
-### PipelineExecutor
-
-**File:** `packages/ai-pipeline/src/PipelineExecutor.php`
-**Class:** `Waaseyaa\AI\Pipeline\PipelineExecutor`
-
-Synchronous executor. Takes a map of `PipelineStepInterface` implementations keyed by plugin ID.
-
-```php
-public function __construct(private readonly array $stepPlugins = [])
-public function execute(Pipeline $pipeline, array $input = []): PipelineResult
-```
-
-Execution flow:
-1. Gets steps from the pipeline (sorted by weight).
-2. Creates a `PipelineContext` with the pipeline ID and start timestamp.
-3. Iterates steps in weight order. Each step's `$output` becomes the next step's `$input`.
-4. Before each step, sets `_step_configuration` in the context.
-5. Stops on: step failure, step halt, or missing plugin ID.
-6. Returns `PipelineResult` with timing info (`hrtime(true)` for nanosecond precision).
-
-### PipelineDispatcher (Async)
-
-**File:** `packages/ai-pipeline/src/PipelineDispatcher.php`
-
-Fire-and-forget async dispatch via `QueueInterface`:
-
-```php
-public function dispatch(Pipeline $pipeline, array $input = []): PipelineQueueMessage
-```
-
-Creates a `PipelineQueueMessage` with the pipeline ID, input data, and creation timestamp, then pushes it to the queue.
-
-### PipelineResult
-
-**File:** `packages/ai-pipeline/src/PipelineResult.php`
-
-```php
-final readonly class PipelineResult
-{
-    public bool $success;
-    public array $stepResults;    // StepResult[]
-    public array $finalOutput;    // output from last successful step
-    public string $message;
-    public float $durationMs;     // total execution time
-}
-```
-
 ## Vector Storage and Embeddings
 
 ### EmbeddingInterface
@@ -635,15 +571,15 @@ High-level service that composes `EmbeddingInterface` and `VectorStoreInterface`
 
 ```php
 public function embedEntity(EntityInterface $entity): EntityEmbedding;
-public function searchSimilar(string $query, int $limit = 10, ?string $entityTypeId = null): array;
+public function searchSimilar(string $query, AccountInterface $account, int $limit = 10, ?string $entityTypeId = null): array;
 public function removeEntity(string $entityTypeId, int|string $entityId): void;
 ```
 
+`searchSimilar()` REQUIRES an `AccountInterface` and filters fail-closed (B3, audit-remediation): each `SimilarityResult` is loaded through its entity type's repository and dropped unless the entity exists and `EntityAccessHandler::check($entity, 'view', $account)->isAllowed()`, mirroring `SearchController`'s gate. An unregistered entity type or a deleted entity is dropped. `EntityEmbedder`'s constructor therefore also takes an `EntityAccessHandler` and an `EntityTypeManagerInterface`. This closes what was a dormant access-unfiltered leak (zero production callers; both live search surfaces, `SearchController` and `VectorSearchTool`, already bypass `EntityEmbedder`).
+
 `embedEntity()` uses `buildEntityText()`: **`$entity->label() . ' ' . json_encode(EntityValues::toJsonReadyMap($entity), JSON_THROW_ON_ERROR)`** — cast-aware keys with JSON-safe scalars (backed enums → backing value, `DateTimeInterface` → ISO-8601 ATOM, nested arrays normalized). Same layering rule as JSON:API attributes (`ResourceSerializer` delegates recursive normalization to **`EntityValues::normalizeValueForJson()`**).
 
-**`EmbeddingPipeline` (field-focused extraction):** `packages/ai-pipeline/src/EmbeddingPipeline.php` builds text from **`EntityValues::toCastAwareMap($entity)`** and configurable field lists (`ai.embedding_fields`), concatenating string/int/float parts only. Use this pipeline when only specific fields should contribute to the embedding string.
-
-**`EntityEmbeddingListener`:** node publish checks use **`WorkflowVisibility::isNodePublicForEntity()`**; embedding text uses **`EntityValues::toCastAwareMap()`** with the same scalar fragment rules as `EmbeddingPipeline` for `title` / `name` / `body` / `description`.
+**`EntityEmbeddingListener`:** node publish checks use **`WorkflowVisibility::isNodePublicForEntity()`**; embedding text uses **`EntityValues::toCastAwareMap()`** for `title` / `name` / `body` / `description`.
 
 **`SemanticIndexWarmer`:** node gating uses **`isNodePublicForEntity()`** (not raw `toArray()`).
 
@@ -652,10 +588,6 @@ flowchart LR
   subgraph embedder["EntityEmbedder"]
     L[label] --> T1["toJsonReadyMap JSON"]
     T1 --> E1[embed]
-  end
-  subgraph pipeline["EmbeddingPipeline"]
-    M[EntityValues::toCastAwareMap] --> F[configured fields]
-    F --> E2[embed]
   end
 ```
 
@@ -802,11 +734,12 @@ AI search/indexing surfaces use `Waaseyaa\Workflows\WorkflowVisibility` as the c
 MCP tool execution has the following safety properties:
 
 1. **Exception isolation:** `AgentExecutor` wraps all execution paths in try/catch. Exceptions never propagate to the caller; they are converted to failure results and logged.
-2. **Audit trail:** Every agent execution, dry-run, and tool call is recorded in `AgentAuditLog` with the agent ID, account ID, action type, success status, message, and timestamp.
+2. **Audit trail:** Every agent execution, dry-run, and tool call is recorded in `AgentAuditLog` with the agent ID, account ID, action type, success status, message, and timestamp. Tool arguments are redacted for the audit row via `AbstractAgentTool::argumentsForAudit()`, which recurses over arbitrarily-keyed payloads — list-valued arguments (integer keys, e.g. an `entity.create` `values.blocks`/`tags`) are preserved without error and never matched against credential names. The redaction runs on raw model-controlled input at the audit step, outside the `execute()` try/catch, so it must never raise (#1637).
 3. **User context:** Agents always execute as a specific `AccountInterface`. The account ID is logged in every audit entry.
 4. **Dry-run support:** All agents must implement `dryRun()` to preview changes without mutations.
-5. **Query access bypass:** `McpToolExecutor` sets `accessCheck(false)` on entity queries. Access control for MCP tool calls is expected to be enforced at the agent/endpoint level, not the individual query level.
+5. **Query access bypass (legacy `McpToolExecutor` path only):** `McpToolExecutor` (`packages/ai-schema/`) sets `accessCheck(false)` on entity queries; access control on *that* path is enforced at the agent/endpoint level, not the individual query level. This bypass does **not** apply to the stock `ai-tools` entity tools (`entity.read/list/search/create/update/delete`), which enforce the per-entity AccessPolicy directly — see property 7.
 6. **FieldableInterface check:** Updates verify the entity implements `FieldableInterface` before calling `set()`.
+7. **Per-entity access on the stock entity tools (mandatory, fail-closed — C-12):** The stock `ai-tools` entity tools enforce the framework's per-entity `AccessPolicy` (the same `view`/`update`/`delete`/`create` gate the REST/GraphQL surfaces use), not just the coarse `tool.entity.*` capability. `AiToolsServiceProvider` injects the kernel `EntityAccessHandler` into the `AttributeToolRegistry`, which stamps every tool it hydrates so the gate is **always** active in production — it is not opt-in. Enforcement is **fail-closed**: if the handler is ever unavailable in a context that requires enforcement, the per-entity guards **deny** (single reads/writes return a `forbidden` error; `entity.list`/`entity.search` drop every candidate) rather than silently allowing — a wiring gap can never degrade to allow-all. The only place the guards no-op (allow) is bare/unit construction that never wires a handler and never stamps enforcement (capability-only mode), preserving the historical contract for hosts with no entity-access policy.
 
 ## Identity-Key Write Protection (stock entity tools, #1646)
 
@@ -814,7 +747,7 @@ Applies to the stock tools `entity.create` and `entity.update` (`packages/ai-too
 
 ### Refusal set
 
-Per entity type: the registered entity-key column names for the kinds `id`, `uuid`, `revision`, `langcode`, `default_langcode` (so renamed columns like `id => nid` are refused under their real name), unioned with the literal names `uuid`, `langcode`, `default_langcode` (the floor catches translatable schema columns on types that never registered the kind). The `label` and `bundle` kinds are NEVER refused — label is ordinary content (e.g. `title`), bundle is create-time structure.
+Per entity type: the registered entity-key column names for the kinds `id`, `uuid`, `revision`, `langcode`, `default_langcode` (so renamed columns like `id => nid` are refused under their real name), unioned with the literal names `uuid`, `langcode`, `default_langcode`, `revision_id`, `published_revision_id` (the floor catches translatable schema columns on types that never registered the kind, and — the `revision_id`/`published_revision_id` pair, added CW-v1 option-1 PR-4 — the revision-pointer/bookkeeping columns `docs/specs/content-workflow.md` and `docs/specs/api-layer.md` "Write-side field allowlist" name directly: `published_revision_id` carries no entity-key kind on any shipped entity type, so only the literal floor closes it; before this addition it was silently `set()`-able through `entity.update`/`entity.create` despite the "identity fields cannot be written through this tool" contract). The `label` and `bundle` kinds are NEVER refused — label is ordinary content (e.g. `title`), bundle is create-time structure.
 
 ### Whole-write rejection
 
@@ -822,7 +755,7 @@ If the `values` payload contains ANY refused key, the tool returns an error resu
 
 ### Check order
 
-capability → argument shape → entity-type existence → access → **identity-key refusal** → mutation/validation. The refusal must not leak entity existence to callers lacking access.
+capability → argument shape → entity-type existence → access → **identity-key refusal** → **per-field edit access (#1638)** → mutation/validation. The refusal must not leak entity existence to callers lacking access; the per-field edit gate (see *Per-field edit access* below) likewise runs after the entity-level `access` check, before any `set()`. The `access` step is the mandatory, fail-closed per-entity `AccessPolicy` gate (Tool Safety property 7, C-12): in production it is always wired and authoritative; it denies (never silently passes) when the access handler is unavailable, so a wiring gap cannot let identity-key probing or mutation proceed.
 
 ### Error shapes
 
@@ -850,9 +783,11 @@ Other throwables keep the generic error mapping. The tools add no private valida
 - **dry-run** reports an identity-key refusal identically to execute — a dry run of an invalid call must not claim it would succeed.
 - **`revision_log` stays writable** via its dedicated tool argument; it is content, not identity.
 
-### Relation to scoped writes (#1638)
+### Per-field edit access (#1638)
 
-This guard is a fixed, non-configurable floor: identity is never agent-writable through the stock tools. Per-type/per-field configurable write scoping (allowlists for what an agent may write) is #1638's separate, broader mechanism and is out of scope here.
+Beyond the identity-key floor, the stock write tools enforce the framework's **per-field** `FieldAccessPolicy` for the `edit` operation on every submitted field — the same gate the REST (`JsonApiController::store()`/`update()`) and GraphQL write paths apply. `AbstractAgentTool::requireFieldEditAccess()` runs after the identity-key refusal and **before any `set()`**: if a `FieldAccessPolicyInterface` returns `Forbidden` for any submitted field, the whole write is rejected with a `forbidden` error and nothing is mutated or saved. Semantics match the HTTP path — **open-by-default**: a field with no field-policy opinion (`Neutral`/`Allowed`) stays writable; only an explicit `Forbidden` denies. It is a no-op only in capability-only construction (no access handler wired), preserving the historical contract for hosts with no field policy.
+
+This closes the asymmetry whereby an agent holding entity-level `update`/`create` access could set a field a `FieldAccessPolicy` forbids (e.g. a privileged `roles`/`status` field) that the REST/GraphQL surfaces already refuse. **Configurable** per-type write allowlists (declarative scoping of which fields a given agent may write, beyond what the policy layer already expresses) remain the broader future mechanism and are still out of scope here.
 
 ## Optimistic Locking on the Stock Entity Tools (#1647)
 
@@ -984,14 +919,7 @@ Pipeline uses `syncStepsToValues()` to maintain a single source of truth. Called
 | `packages/ai-agent/src/Provider/RateLimitException.php` | `RateLimitException` | HTTP 429 with retryAfterSeconds |
 | `packages/ai-agent/src/Provider/MaxIterationsException.php` | `MaxIterationsException` | Tool loop safety limit exceeded |
 | `packages/ai-pipeline/src/Pipeline.php` | `Pipeline` | Config entity for processing pipelines |
-| `packages/ai-pipeline/src/PipelineStepInterface.php` | `PipelineStepInterface` | Step plugin contract |
 | `packages/ai-pipeline/src/PipelineStepConfig.php` | `PipelineStepConfig` | Step configuration value object |
-| `packages/ai-pipeline/src/PipelineContext.php` | `PipelineContext` | Shared execution state |
-| `packages/ai-pipeline/src/StepResult.php` | `StepResult` | Step result (success/failure/halt) |
-| `packages/ai-pipeline/src/PipelineResult.php` | `PipelineResult` | Full pipeline execution result |
-| `packages/ai-pipeline/src/PipelineExecutor.php` | `PipelineExecutor` | Synchronous pipeline runner |
-| `packages/ai-pipeline/src/PipelineDispatcher.php` | `PipelineDispatcher` | Async queue dispatch |
-| `packages/ai-pipeline/src/PipelineQueueMessage.php` | `PipelineQueueMessage` | Queue message value object |
 | `packages/ai-vector/src/EmbeddingInterface.php` | `EmbeddingInterface` | Embedding provider contract |
 | `packages/ai-vector/src/OpenAiEmbeddingProvider.php` | `OpenAiEmbeddingProvider` | OpenAI embeddings (text-embedding-3-small) |
 | `packages/ai-vector/src/OllamaEmbeddingProvider.php` | `OllamaEmbeddingProvider` | Ollama local embeddings (nomic-embed-text) |
@@ -1006,6 +934,43 @@ Pipeline uses `syncStepsToValues()` to maintain a single source of truth. Called
 | `packages/cli/src/Command/SemanticWarmCommand.php` | `SemanticWarmCommand` | Operational CLI entry point for warmer |
 | `packages/cli/src/Command/SemanticRefreshCommand.php` | `SemanticRefreshCommand` | Operational CLI entry point for resumable refresh batches |
 
+## Observability Wiring Status (ai-observability, R18)
+
+The canonical run telemetry path uses the `AgentRun*` lifecycle events. Both
+production producer factories resolve the kernel dispatcher under the served
+Symfony-contracts FQCN, type-check it against the foundation dispatcher
+contract, and inject it into `AgentExecutor` / `RunAgentHandler`. Provider
+boundary tests pin that wiring.
+
+| Listener | Provider | Events | Status after WP4 |
+|---|---|---|---|
+| `AgentRunTelemetryListener` | `AgentTelemetryServiceProvider` | `Waaseyaa\AI\Observability\Event\AgentRun{Started,IterationCompleted,ProviderCallCompleted,ToolCallObserved,Terminated}` | **Live end-to-end.** Production factories inject the real dispatcher into both producers. Best-effort internally (every handler try-catch wrapped). |
+
+The legacy `LlmCallListener` / `ToolCallListener` chain and its three ai-agent
+event classes were deleted in R18: repository-wide search proved that no
+production code constructed those events, while the richer `AgentRun*` path
+already represented the same execution boundaries. Historical trace storage
+and the explicit `TraceRecorderInterface` API are retained; no migration drops
+existing trace data.
+
 ## Implementation gotchas
 
+- **Tool-loop wiring and allowlisting are inseparable (R18 M2+M3, #1975):**
+  `RunAgentHandler` resolves provider descriptors only for
+  `AgentDefinition::$tools`; `AgentExecutor` receives the same trusted name
+  list and checks membership again before global-registry lookup or execution.
+  Never wire provider tools without this second fail-closed gate.
+- **`RunAgentHandler` enforces `AgentDefinition::$requiresCapability`** (audit
+  A7 F2 / R10 WP2, 2026-07-05): this field used to be plumbed end-to-end
+  (attribute → manifest → registry → definition) but never checked before
+  execution — an agent declaring `requiresCapability` ran for any caller
+  regardless of permissions, reachable via both `ai:run` (CLI) and
+  `POST /api/ai/agent/run` (API). Both entries dispatch a `RunAgent` message
+  handled by the same `RunAgentHandler::__invoke()`, so the fix lives there,
+  once, after the initiator account is resolved and before
+  `AgentExecutor::executeRun()` is called: a missing capability now marks the
+  run terminal `failed` (`error_code='missing_capability'`) with zero
+  `AgentAuditLog` rows, instead of running. See
+  `docs/specs/agent-executor.md` "Identity & permissions" for the full gate
+  inventory.
 - **`AnthropicProvider` cURL streaming**: `CURLOPT_WRITEFUNCTION` callbacks must not throw — wrap `json_decode(..., JSON_THROW_ON_ERROR)` in try-catch inside callbacks. Error handling in `httpPostStreaming` must match `httpPost` (parse error body, handle 429 with `RateLimitException`).

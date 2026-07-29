@@ -1,5 +1,7 @@
 # Ingestion Defaults
 
+<!-- Spec reviewed 2026-07-14 - R24 CLI F11 (#2020): ingestion envelopes deliberately preserve source payload bytes and do not sanitize HTML. The envelope has no render sink; every consumer that persists or renders payload text owns context-appropriate sanitization at that boundary. -->
+
 <!-- Spec reviewed 2026-05-01 - README skeleton added under packages/ingestion/ (purpose, layer, key classes only); EnvelopeValidator, PayloadValidatorInterface, ValidationResult contracts unchanged from prior review (mission #824 WP09 surface F, closes #849) -->
 <!-- Spec reviewed 2026-04-25 - Note entity: attribute-driven entity keys alignment only; ingestion envelope and pipeline semantics unchanged -->
 <!-- Spec reviewed 2026-04-24 - EnvelopeValidator: removed redundant (string) cast on entity_type before validateEntityData (PHPStan); envelope validation semantics unchanged -->
@@ -16,8 +18,8 @@ Defines the ingestion pipeline's envelope schema, validation rules, canonical er
 The ingestion pipeline processes data through three validation phases:
 
 ```
-Raw input → EnvelopeValidator → PayloadValidator → Pipeline
-              (shape check)     (content-type check)  (processing)
+Raw input → MessageEnvelopeValidator → PayloadValidator → Pipeline
+              (shape check)            (content-type check)  (processing)
 ```
 
 Each phase produces canonical `IngestionError` objects. Both success and failure outcomes are logged via `IngestionLogger`.
@@ -27,7 +29,7 @@ Each phase produces canonical `IngestionError` objects. Both success and failure
 | Class | Package | Purpose |
 |-------|---------|---------|
 | `Envelope` | foundation | Immutable DTO for validated envelopes |
-| `EnvelopeValidator` | foundation | Validates raw arrays against envelope schema |
+| `MessageEnvelopeValidator` | foundation | Validates raw arrays against envelope schema |
 | `PayloadValidator` | foundation | Validates payload against content-type schema |
 | `IngestionError` | foundation | Canonical error value object |
 | `IngestionErrorCode` | foundation | Error code enum (ENVELOPE_*, PAYLOAD_*) |
@@ -56,6 +58,15 @@ The canonical ingestion envelope is defined in `defaults/ingestion.envelope.sche
 | `tenant_id` | string (min 1) | Multi-tenant isolation key |
 | `metadata` | object | Arbitrary key-value metadata |
 
+### Consumer sanitization boundary
+
+Envelope normalization and validation preserve payload content; they do not
+strip or rewrite HTML. This is intentional because the framework cannot know a
+future consumer's output context, and `ingest:run` currently emits JSON rather
+than persisting or rendering entities. Any consumer that maps an envelope into
+stored or rendered content must apply its context-appropriate sanitizer at that
+mapper/render boundary before the value reaches an HTML sink.
+
 ### Example — Valid Envelope
 
 ```json
@@ -78,13 +89,13 @@ The canonical ingestion envelope is defined in `defaults/ingestion.envelope.sche
 
 ## Validation Rules
 
-### Phase 1: Envelope Validation (`EnvelopeValidator`)
+### Phase 1: Envelope Validation (`MessageEnvelopeValidator`)
 
 1. **Unknown fields rejected** — only the 7 allowed fields are accepted
 2. **Required fields checked** — source, type, payload, timestamp must be present
 3. **Type checking** — source/type must be strings, payload must be an object, etc.
 4. **Format validation** — timestamp must parse as ISO 8601, trace_id must be a lowercase UUID
-5. **Auto-generation** — trace_id is generated via `Uuid::v4()` if absent
+5. **Auto-generation** — trace_id is generated via the injected `TraceIdGeneratorInterface` (default: `UuidV4TraceIdGenerator`) if absent
 
 On success, returns an `Envelope` DTO. On failure, throws `InvalidEnvelopeException` with structured errors.
 

@@ -290,14 +290,31 @@ proxied to the remote at execution time.
 Agents run as the **initiator's account**. `AgentContext::account` is the
 user who triggered the run.
 
-Authorization happens at three gates:
+Authorization happens at five gates:
 
 1. **Route capability** — `_permission: 'agent.run'` on every
    `/api/ai/agent/run*` route, evaluated by `AccessChecker`.
-2. **Per-tool capability** — every tool the agent invokes requires the
+2. **Per-agent-definition capability** — `AgentDefinition.requires_capability`
+   (when non-null) is enforced in `RunAgentHandler::__invoke()`, after the
+   bundle and initiator account are resolved and before
+   `AgentExecutor::executeRun()` is called. Both the CLI (`ai:run`) and the
+   API (`POST /api/ai/agent/run`) dispatch through this same handler, so the
+   check cannot be bypassed by either entry point. Fail-closed: a missing or
+   permission-less initiator (including an anonymous account) is refused, not
+   silently skipped, because `AccountInterface::hasPermission()` returns
+   `false` in both cases. A refused run never reaches the executor — it is
+   marked terminal `failed` with `error_code='missing_capability'` and no
+   `AgentAuditLog` rows are written (audit A7 F2 / R10 WP2 — this gate was
+   plumbed attribute → manifest → registry → definition but left unenforced
+   until this fix).
+3. **Per-agent tool allowlist** — `RunAgentHandler` advertises only the tool
+   names in `AgentDefinition.tools`, and `AgentExecutor` independently rejects
+   any model-emitted or direct invocation whose name is absent from that list
+   before consulting the global registry. An empty list is fail-closed.
+4. **Per-tool capability** — every tool the agent invokes requires the
    initiator to hold `tool.<name>` (or `tool.mcp.<server>.<name>`). Enforced
    at request-validation time AND defensively at tool-execution time.
-3. **Entity-level access** — tools that touch entities go through
+5. **Entity-level access** — tools that touch entities go through
    `EntityAccessHandler` against the initiator's account. The previous
    `accessCheck(false)` bypass in `McpToolExecutor` is removed.
 
@@ -352,10 +369,16 @@ queued ──► running ──► completed
    ╰─► cancelled  (cancel before worker pickup)
 ```
 
-Reaper transitions `running` → `failed` (`error_code='worker_crashed'`)
-only when `NOW() - started_at > max_runtime_seconds` and the run is not
-already terminal. The reaper is idempotent and cannot regress a terminal
-status.
+The reaper terminalizes abandoned work without regressing concurrent state
+changes: `running` rows age from `started_at`, `queued` rows from `queued_at`,
+`cancelling` rows from `started_at`, and `awaiting_approval` rows from their
+persisted `approval_expires_at` deadline. Each terminal update compares the
+exact source status and lifecycle fields captured by candidate selection.
+Queued/running/cancelling candidates retain their selected timestamps;
+approval candidates additionally retain the call id and deadline, so a worker
+claim or renewed approval cycle that wins the race is preserved. Successful
+terminalization clears pending approval metadata. Upgrade-era approval rows
+with no persisted deadline retain the former `started_at` age fallback.
 
 ## Entities
 
@@ -370,6 +393,7 @@ status.
 | `status` | enum | see state machine above |
 | `destructive_approval` | enum | `none` / `all` / `interactive`, default `none` |
 | `pending_approval_call_id` | text NULL | set when `status='awaiting_approval'` |
+| `approval_expires_at` | datetime NULL | persisted HITL deadline; set when entering `awaiting_approval` |
 | `prompt` | text | resolved user prompt |
 | `response` | text NULL | final LLM response |
 | `transcript_json` | text | full conversation snapshot, truncated at `config.ai.transcript_max_bytes` (default 256 KB); overflow recorded as a single `[truncated]` marker. Full message history remains reconstructable from `AgentAuditLog` rows. |
@@ -384,6 +408,23 @@ status.
 | `error_message` | text NULL | human-readable detail |
 
 Indexes: `(status, queued_at)`, `(account_id, queued_at DESC)`.
+
+### Field-read boundary
+
+`AgentRun.account_id` is a Protected authorization input. The frozen bundle is
+Internal; prompt, response, transcript, accounting, approval, lifecycle, and
+error fields are Protected; structural identifiers and state-machine selectors
+are Public. Account-facing HTTP reads use one fixed projection inside an
+explicit immutable principal scope, while queue workers and the sessionless
+`ai:run` CLI use a fixed-shape system-job capability whose exact field set is
+durably reserved before any value is obtained. Neither boundary accepts caller-
+selected field names, and an ordinary protected read with no account context
+fails closed.
+
+`AgentAuditLog.run_id` is the exact Protected parent authorization input; event
+payload fields are Internal and remain available only to closed audited readers.
+Owner decisions for both entities consume compiled immutable subject views, so
+authorization never performs an ordinary protected field read.
 
 ### `AgentAuditLog`
 
@@ -519,13 +560,20 @@ written directly to stdout as the run proceeds and no SSE consumer is spawned.
 
 ## OpenAPI document
 
-`packages/api/openapi.yaml` is the canonical OpenAPI 3.1.0 document for the
-Waaseyaa Framework API. It was bootstrapped in mission `agent-executor-v1-1-audit-followups`
-(WP02/T018) and includes the `pending_approval` shape for the agent approval endpoint.
+`packages/api/openapi.yaml` is a hand-maintained OpenAPI 3.1.0 **sub-spec** scoped to
+the agent-run SSE surface: the `/api/agent-run/{id}/{events,approve,deny}` endpoints and
+the `pending_approval` payload shape. It was bootstrapped in mission
+`agent-executor-v1-1-audit-followups` (WP02/T018). It is **not** a full description of the
+Waaseyaa Framework API — the framework's broader JSON:API entity surface is modelled at
+runtime by `Waaseyaa\Api\OpenApi\OpenApiGenerator` (see `docs/specs/api-layer.md`
+§"OpenAPI Generation"), which is a separate artifact not covered by this file.
 
-`bin/check-openapi` runs Spectral lint against this document and is included in
-`composer verify`. All additions to the HTTP API surface should include corresponding
-OpenAPI schema entries.
+`bin/check-openapi` runs Spectral lint against this one document and is included in
+`composer verify`. The gate validates YAML/OpenAPI structural validity (syntax + shape)
+of the hand-maintained sub-spec only; it does **not** introspect the route table, diff
+against live routes, or enforce route/schema parity. Treat the agent-run entries here as
+documentation that must be updated by hand when the agent-run SSE contract changes — the
+gate will not catch drift between this file and the actual routes.
 
 ## Provider error handling
 
@@ -552,6 +600,9 @@ occurred — re-execution would duplicate them.
   command (`ai:reap-stalled-runs`, every 5 minutes via scheduler) flips
   any run with `status='running' AND NOW() - started_at > max_runtime_seconds`
   to `status='failed'` with `error_code='worker_crashed'`.
+- Interactive approval persists its own deadline when the worker enters
+  `awaiting_approval`; time spent running before that transition does not
+  consume the approval window.
 - Operators re-issue manually; the framework will not re-run automatically.
 
 ## Cancellation
@@ -610,12 +661,16 @@ run (initiator match) unless the account holds the bypass capability
 |---|---|---|
 | `ai:run "<prompt>"` | `--inline`, `--agent=<id>`, `--dry-run`, `--watch`, `--destructive-approval=<mode>` | Enqueue (default) or run inline. `--watch` tails the SSE channel. |
 | `ai:purge-runs` | `--dry-run`, `--retention-days=<int>` (override config) | Delete `AgentRun` + `AgentAuditLog` rows past TTL. |
-| `ai:reap-stalled-runs` | `--max-runtime-seconds=<int>` (override config) | Flip stuck `running` rows to `failed` with `worker_crashed`. |
+| `ai:reap-stalled-runs` | `--max-runtime-seconds=<int>` (override config) | Terminalize abandoned `queued`, `running`, `awaiting_approval`, and `cancelling` rows. Queued age uses `queued_at`, running/cancelling age uses `started_at`, and approval expiry uses its persisted HITL deadline. |
 
 ## Scheduler entries
 
 - `ai:purge-runs` — daily at 03:00 UTC.
 - `ai:reap-stalled-runs` — every 5 minutes.
+
+Retention never deletes audit rows belonging to a non-terminal run. The reaper
+must first classify an abandoned run as terminal; a later retention pass may
+then remove the run and its audit trail together.
 
 ## Capabilities (seed)
 

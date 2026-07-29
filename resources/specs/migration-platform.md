@@ -1,4 +1,10 @@
 <!-- Spec reviewed 2026-05-13 - migration-platform-v1 mission landed -->
+<!-- Spec reviewed 2026-07-02 - R3 WP1 HtmlSanitizeProcessor nested-case + CDATA-content-model B-4 fix (§3.5, §16) -->
+<!-- Spec reviewed 2026-07-13 - #1982 restores import-derived field definitions on later process boots; full registration remains import-time only (§9.5). -->
+<!-- Spec reviewed 2026-07-13 - #1981 fixed-bundle source and split id-map composition (§3.1, §3.5, §6.1, §16) -->
+<!-- Spec reviewed 2026-07-17 - #2064 WP1 adds capability/preflight data contracts only. Migration plugins and runners are unchanged; exact migration manifests and AuditedFieldRead use begin in WP2. Canonical contract: entity-field-read-boundary.md. -->
+<!-- Spec reviewed 2026-07-17 - #2064 WP2 adds exact MigrationFieldReadManifest metadata and NoActingContext MigrationImport capability issuance bound to an explicit live execution-boundary proof. Privileged migration reads remain explicit at MigrationAuditedFieldReader -> AuditedFieldRead::read; import writes do not imply read authority. -->
+<!-- Spec reviewed 2026-07-20 - #2088: import-derived vocabularies now materialize taxonomy_vocabulary config rows and explicit empty bundle declarations, so later worker rehydration and schema validation recognize migrated term bundles. -->
 
 # Migration Platform
 
@@ -26,7 +32,8 @@ APIs) into the framework's entity storage layer. It ships:
    (ADR 011) and revisions (ADR 016).
 4. **A small library of essential process plugins** (`PassThroughProcessor`,
    `HtmlSanitizeProcessor`, `LookupProcessor`, `ConcatProcessor`,
-   `TypeCoerceProcessor`, `DefaultValueProcessor`).
+   `TypeCoerceProcessor`, `DefaultValueProcessor`,
+   `PartitionedLookupProcessor`).
 5. **A CLI runner** with six commands: `import:run`, `import:run-all`,
    `import:status`, `import:resume`, `import:rollback`, `import:reset`.
 6. **An idempotency primitive** — the `migration_id_map` table, keyed by a
@@ -83,12 +90,17 @@ charter's deprecation cycle. FQCN root: `Waaseyaa\Migration\`.
 | `Waaseyaa\Migration\Plugin\ProcessPluginInterface` | Interface | Transforms a single source value into a destination value. |
 | `Waaseyaa\Migration\Plugin\DestinationPluginInterface` | Interface | Writes a `DestinationRecord` to its target system and supports rollback + lookup. |
 
+`Waaseyaa\Migration\Plugin\Source\FilteredSource` is the stable source
+decorator for fixed-bundle definitions backed by a mixed external stream. It
+filters lazily, delegates `SourceId` construction and stability to the wrapped
+source, exposes an application-selected plugin id, and reports an unknown
+count because evaluating the predicate is the only honest way to count.
+
 ### 3.2 Provider capabilities
 
 | FQCN | Kind | Purpose |
 |---|---|---|
 | `Waaseyaa\Migration\Discovery\HasMigrationsInterface` | Provider capability | Surfaces concrete `MigrationDefinition` instances. |
-| `Waaseyaa\Migration\Discovery\HasMigrationPluginsInterface` | Provider capability | Surfaces source/process/destination plugin instances. |
 
 ### 3.3 Manifest + DTOs
 
@@ -110,7 +122,7 @@ charter's deprecation cycle. FQCN root: `Waaseyaa\Migration\`.
 
 ### 3.5 Process plugin concretes
 
-The framework reserves six process-plugin ids. App-defined process plugins MUST
+The framework reserves seven process-plugin ids. App-defined process plugins MUST
 use a non-reserved id; convention is `<vendor>_<purpose>` (e.g.
 `wordpress_shortcode_strip`).
 
@@ -122,19 +134,54 @@ use a non-reserved id; convention is `<vendor>_<purpose>` (e.g.
 | `Waaseyaa\Migration\Plugin\Process\ConcatProcessor` | `concat` |
 | `Waaseyaa\Migration\Plugin\Process\TypeCoerceProcessor` | `type_coerce` |
 | `Waaseyaa\Migration\Plugin\Process\DefaultValueProcessor` | `default_value` |
+| `Waaseyaa\Migration\Plugin\Process\PartitionedLookupProcessor` | `partitioned_lookup` |
 
 Reserved ids are owned by the framework. The complete list lives in
 `Waaseyaa\Migration\Plugin\ReservedPluginIds`.
+
+**Security note (B-4, nested-case + CDATA-content-model fixpoint — audit-remediation batch 2026-07-02, R3 WP1):**
+`HtmlSanitizeProcessor`'s DOMDocument fallback path (used whenever
+`ezyang/htmlpurifier` is not installed) closes two sibling stored-XSS bypasses
+of the same B-4 class:
+
+- **Nested-wrapper hoist.** The filter re-checks every element it hoists out
+  of a stripped disallowed wrapper, not just top-level children. A disallowed
+  tag or an unsafe-scheme URL attribute nested inside another disallowed tag
+  (e.g. `<span><img onerror=…></span>`, or a `javascript:` href nested inside a
+  stripped `<div>`) is re-run against the tag allowlist and
+  `filterAttributes()`/`hasUnsafeUrlScheme()` at every promotion depth, to a
+  fixpoint — nesting the payload below a disallowed wrapper cannot bypass the
+  allowlist. See `HtmlSanitizeProcessor::applyChildPolicy()` /
+  `HtmlSanitizeProcessor::replaceWithTextContent()`.
+- **CDATA content model.** libxml2 parses the inner payload of the raw-text
+  content-model tags `xmp` / `iframe` / `noembed` / `noframes` / `plaintext`
+  (alongside `script` / `style`) as a `\DOMCdataSection`, which
+  `DOMDocument::saveHTML()` serializes verbatim (no entity escaping), so a
+  `<script>`/`onerror`/`javascript:` payload wrapped in one of them survives as
+  live markup with no nesting. These tags are enumerated in
+  `RAW_TEXT_CONTENT_MODEL_TAGS` and are **force-stripped even when a custom
+  allowlist names them** (escaping is decided by a node's parent content model,
+  so a payload kept inside such a wrapper cannot be escaped in place); their
+  content is routed through the hoist path and neutralized by
+  `convertCdataToText()` (CDATA → entity-escaped text node) — or dropped
+  wholesale for `script`/`style`. RCDATA tags `title` / `textarea` are
+  deliberately exempt: libxml parses them as `\DOMText`, which saveHTML escapes.
 
 ### 3.6 Schema
 
 | Table | Source-of-truth descriptor | Purpose |
 |---|---|---|
-| `migration_id_map` | `Waaseyaa\Migration\Schema\MigrationIdMapSchema` | Maps `(migration_id, source_id_hash)` to `(destination_entity_type, destination_uuid, source_record_hash, run_id, written_at)`. Enables idempotency, lookup, and rollback. |
+| `migration_id_map` | `Waaseyaa\Migration\Schema\MigrationIdMapSchema` | Maps `(migration_id, source_id_hash)` to `(destination_entity_type, destination_uuid, source_record_hash, last_run_id, last_imported_at)`. Enables idempotency, lookup, and rollback. |
 
 The `migration_id_map` table layout is **frozen stable surface**. Future
 column changes require a charter amendment and a data migration of every
 existing row.
+
+`MigrationIdMap::lookupDestinationAcross(list<string> $migrationIds,
+SourceId $sourceId)` is the stable ordered lookup for consumers outside a
+process chain. It returns the first matching `WriteResult`, or `null`. This is
+the composition seam for one logical source split into bundle-specific id-map
+partitions, such as image/document media migrations.
 
 ### 3.7 Exception types
 
@@ -262,6 +309,7 @@ final readonly class MigrationDefinition
         public int $memoryBudgetBytes = 268_435_456,         // 256 MB default
         public float $errorRateWarn = 0.01,
         public float $errorRateHalt = 0.10,
+        public ?string $bundle = null,                       // threaded into every DestinationRecord (§7.1)
     ) { /* validates */ }
 }
 ```
@@ -288,10 +336,6 @@ final class MyMigrationProvider extends ServiceProvider implements HasMigrations
 }
 ```
 
-Reserved-id plugins surface through `HasMigrationPluginsInterface`. The
-`FrameworkPlugin` namespace prefix is reserved — only first-party plugins may
-register ids in that namespace.
-
 ---
 
 ## 6. Storage
@@ -308,8 +352,8 @@ Columns (per `MigrationIdMapSchema`):
 | `destination_entity_type` | TEXT NOT NULL | Target entity type id. |
 | `destination_uuid` | TEXT NOT NULL | UUIDv7 of the persisted entity. |
 | `source_record_hash` | TEXT NOT NULL | Canonical hash of the destination values; used for change detection. |
-| `run_id` | TEXT NOT NULL | UUIDv7 of the run that wrote this row. |
-| `written_at` | TEXT NOT NULL | ISO 8601 UTC timestamp. |
+| `last_run_id` | TEXT NOT NULL | UUIDv7 of the run that most recently wrote this row. Refreshed on every re-import (`upsert()` UPDATE). |
+| `last_imported_at` | TEXT NOT NULL | ISO 8601 UTC timestamp of the most recent write. Refreshed on every re-import; NOT a creation timestamp. Sole ordering signal for the reverse rollback walk (FR-043). |
 
 Primary key: `(migration_id, source_id_hash)`. Unique index:
 `(destination_entity_type, destination_uuid)`.
@@ -355,8 +399,13 @@ The default destination — writes through the entity-storage coordinator
 
 `EntityDestinationFactory::forEntityType('migration_test_widget')` returns an
 `EntityDestination` bound to a specific destination entity type id. Bundle
-resolution is deferred to write time (D8) — bundle is read from the
-`DestinationRecord::$fields['bundle']` slot when present.
+resolution is deferred to write time (D8): a migration author declares the
+bundle once on `MigrationDefinition::$bundle`; `MigrationRunner::processOne()`
+threads that value verbatim into `DestinationRecord::$bundle` for every
+record it builds; `EntityDestination` reads the typed `$bundle` property
+(not a `$fields` array — there is no such slot) at write time and, when
+non-null, resolves the destination entity type's bundle key
+(`EntityType::getKeys()['bundle']`) and sets it on the entity before save.
 
 ### 7.2 Write path (FR-018..FR-022)
 
@@ -368,6 +417,17 @@ resolution is deferred to write time (D8) — bundle is read from the
    `EntityStorageCoordinator::save()`; dispatch `AfterSaveEvent`.
 5. `upsert` the id-map row with the new `source_record_hash`.
 6. Return a `WriteResult`.
+
+**Rerun-hash disclosure (G-015).** `source_record_hash` is computed by
+`EntityDestination::computeSourceRecordHash()` over `{values, bundle,
+langcode}` — `DestinationRecord::$bundle` is one of the folded fields (G-015
+threaded it into every record the runner builds; see the CHANGELOG entry).
+Consequently, adding a `bundle` to an existing migration definition that
+previously ran without one changes every record's hash: an in-place re-run
+over an existing id-map no longer sees any row as unchanged, so every record
+takes the update path (step 1's no-op branch never matches) and — on a
+revisionable destination type — gets a new revision per record on that one
+rerun, even though the underlying source values didn't change.
 
 ### 7.3 Rollback path (FR-035, FR-041–FR-044)
 
@@ -392,6 +452,66 @@ conformant; the conformance harness gates on
 `EntityDestination::lookup(SourceId $sourceId)` returns the `WriteResult`
 captured at last write, or `null` if no id-map row exists. Used by
 `LookupProcessor` to resolve cross-migration references.
+
+### 7.5 Import account contract (G-023)
+
+`EntityDestination`'s `$account` constructor argument (FR-020) is consulted
+by the gate on every create/update/delete. `Waaseyaa\Migration\Account\MigrationSystemAccount`
+(`packages/migration/src/Account/MigrationSystemAccount.php`) is the
+framework's first-class, least-privilege, production-safe account for that
+argument — `hasPermission()` is a strict membership test against an
+injected permission list, never a blanket grant. Its default permission,
+`MigrationSystemAccount::DEFAULT_PERMISSIONS` (`['administer content']`),
+is exactly what `Waaseyaa\Access\Policy\ContentAdminAccessPolicy` requires
+to grant manage + create on any entity type in the `content` group — this
+already covers `node` (`NodeAccessPolicy::createAccess()` never returns
+`Forbidden`, so the group-wide grant is never overridden; `node`'s own
+`administer nodes` is not additionally required). Entity types OUTSIDE the
+`content` group are ungoverned by `ContentAdminAccessPolicy`
+(`appliesTo()` is scoped by group) and need their own admin permission: a
+WordPress-shaped import (posts → `node`, terms → `taxonomy_term`,
+attachments → `media`) needs the trio
+`['administer content', 'administer taxonomy', 'administer media']` —
+`'administer taxonomy'` (`Waaseyaa\Taxonomy\TermAccessPolicy`) and
+`'administer media'` (`Waaseyaa\Media\MediaAccessPolicy`) are the exact
+strings those policies check.
+
+**Per-bundle create permissions work on the import path when the migration
+definition declares a bundle** (GitHub #1946). `EntityDestination::write()`
+resolves the destination entity's bundle-key value (populated from
+`DestinationRecord::$bundle`, set by process plugins per the migration
+definition) via a private `buildCreateSubject()` helper, and — when the
+destination entity type declares a bundle key and the value is non-empty —
+calls `EntityAccessGate::allows('create', ['entity_type' => ..., 'bundle' =>
+...], $account)` instead of the bundle-less string form. `EntityAccessGate`
+forwards the bundle straight into `EntityAccessHandler::checkCreateAccess()`,
+so a permission like `'create article content'`
+(`Waaseyaa\Node\NodeAccessPolicy::createAccess()`) or `'create terms in
+tags'` (`Waaseyaa\Taxonomy\TermAccessPolicy`) now matches through the gate
+for definitions that carry a bundle. A least-privilege import account can
+therefore hold exactly `['create article content']` rather than
+`'administer content'` when its definition writes a single known bundle.
+
+When the destination entity type has no bundle key, or the record does not
+carry one (`DestinationRecord::$bundle === null`), `EntityDestination` falls
+back to the original bundle-less string subject
+(`checkCreateAccess($entityType, '', $account)`) — unchanged from before
+#1946. Bundle-less migrations still need the entity-type/group-wide admin
+permissions (`administer content` / `administer taxonomy` / `administer
+media`) described above; the trio remains the correct grant for those
+imports.
+
+`Waaseyaa\User\DevAdminAccount` remains strictly dev-only (SAPI-guarded,
+blanket `hasPermission() === true`) and must never be wired as a migration
+run's account outside local development. Separately, `MigrationSystemAccount`
+must never be installed as the kernel's ambient `AccountContext` — its
+`id()` is the string sentinel `'migration:system'`, and actor-resolution
+call sites such as `EntityRepository::resolveActor()`
+(`packages/entity-storage/src/EntityRepository.php`) cast the ambient
+account's `id()` to `int`; `(int) 'migration:system'` is `0`, which collides
+with `AnonymousUser`'s sentinel id `0`. Pass it only as `EntityDestination`'s
+`$account` argument, which the gate consults directly and never casts to
+int.
 
 ---
 
@@ -425,9 +545,15 @@ source plugin, skipping records up to that cursor before resuming writes.
 
 ### 8.4 `import:rollback <id>`
 
-Walks `migration_id_map` in reverse insertion order. For each row, calls
+Walks `migration_id_map` in reverse last-imported order (`last_imported_at
+DESC`, tie-broken by `last_run_id DESC`). For each row, calls
 `DestinationPluginInterface::rollback()`, then removes the id-map row on
 success. A failed rollback halts the walk with the id-map intact.
+
+Note: this is *last-imported* order, not creation order — the stable-surface
+table (FR-025) has no immutable creation column, and `last_imported_at` is
+refreshed on every re-import. See FR-043 for why this is the correct
+contract for best-effort rollback.
 
 ### 8.5 `import:reset <id>`
 
@@ -438,18 +564,158 @@ destination state has already been wiped externally (e.g. `DROP TABLE node`).
 
 ## 9. Discovery + boot sequence
 
+`MigrationRegistry` index-building is **lazy** (G-024, #1940): the index is
+built on the registry's **first query**, not at kernel boot.
+
 1. **`PackageManifestCompiler`** scans `extra.waaseyaa.providers` in every
    installed package's `composer.json`.
-2. For each provider class:
-   - If it implements `HasMigrationsInterface`, its `migrations()` array is
-     fed into `MigrationRegistry`.
-   - If it implements `HasMigrationPluginsInterface`, its `migrationPlugins()`
-     array is dispatched by `instanceof` into the source / process /
-     destination sub-registries (`PluginRegistry`).
-3. `DependencyGraph` is built from `MigrationDefinition::$dependencies` and
-   validated via `CycleDetector`.
-4. `bin/waaseyaa optimize:manifest` rebuilds this index on demand; otherwise
-   it lives in the boot-time manifest cache.
+2. `AbstractKernel::injectMigrationProviders()` (runs during
+   `bootProviders()`, before `discoverAccessPolicies()`) hands every provider
+   implementing `HasMigrationsInterface` to the migration package's
+   `ServiceProvider::withMigrationProviders()`. `ServiceProvider::register()`
+   binds `MigrationRegistry` as a singleton but does **not** call `boot()` on
+   it, and `ServiceProvider::boot()` does **not** resolve the registry either
+   — both used to, prior to G-024.
+3. The registry actually consumes providers on the **first call** to any
+   query method (`get()`, `has()`, `all()`, `topologicallySorted()`,
+   `graph()`), via a private `ensureBooted()` that runs the same logic
+   `boot()` always has (callers may still call `boot()` explicitly; it is a
+   no-op via `ensureBooted()` on any query that follows). At that point:
+   - Every `HasMigrationsInterface` provider's `migrations()` is fed into
+     the registry.
+   - `DependencyGraph` is built from `MigrationDefinition::$dependencies`
+     and validated via `CycleDetector`.
+4. In practice, the first query happens when a CLI `import:*` command runs:
+   `ImportServiceProvider` resolves `MigrationRegistry` inside each
+   command's own singleton factory, so the registry isn't touched until a
+   command actually executes — well after `AbstractKernel::boot()` has
+   fully completed, including `discoverAccessPolicies()`.
+5. `bin/waaseyaa optimize:manifest` rebuilds the *provider-discovery* index
+   (`extra.waaseyaa.providers` → provider class list) on demand; that cache
+   is unrelated to — and unaffected by — the lazy `MigrationRegistry`
+   index-building described above.
+
+**Why lazy:** `bootProviders()` (step 2) runs strictly before
+`discoverAccessPolicies()` builds the kernel's `EntityAccessHandler`. A
+provider's `migrations()` implementation that resolves
+`GateInterface`/`EntityAccessHandler` off the kernel-services bus — e.g. to
+construct an `EntityDestination` — used to crash kernel boot with `"No
+binding registered for ..."` when it ran during step 2, because those
+services were not resolvable yet (the Sheguiandah pass-1 first production
+import hit exactly this and needed a lazy-gate workaround shim on the
+application side). Deferring index-building to first query means every
+provider's `migrations()` runs only once the whole kernel — including
+access services — is fully live.
+
+**Trade-off, accepted deliberately:** structural manifest errors (missing
+dependency, plugin id collision, dependency cycle) no longer fail fast at
+framework boot. They now surface at the first CLI invocation that queries
+the registry instead of at `composer install` / server start time. There is
+no eager validation path left — an application with a broken manifest boots
+successfully and only fails when an operator runs `import:status` or
+`import:run`.
+
+### 9.5 Content model registration (G-026, #1940)
+
+`Waaseyaa\Migration\ContentModel\ContentModelRegistrar` is the **one
+supported path** for an application to declare per-bundle content types and
+fields derived from a migration source. It is bound as a singleton by
+`Waaseyaa\Migration\ServiceProvider`. Full registration is invoked from
+`MigrationRunner` at import time; later process boots replay only field
+declarations for bundle config entities that a completed import persisted.
+
+**Contract:**
+
+- A `ServiceProvider` shipping a migration source that can describe its own
+  content shape implements `DerivesContentModelInterface::deriveContentModel(): ?ContentModel`
+  — the same "provider capability" pattern as `HasMigrationsInterface`
+  (§9 step 2), not a bespoke discovery mechanism.
+- `ContentModel` is a source-agnostic list of `ContentTypeModel`s (destination
+  entity type + bundle + label + typed `FieldDefinitionInterface[]` +
+  informational shared-field/note lists).
+- `ContentModelRegistrar::register(ContentModel $model)` does two things per
+  content type: `ensureBundleConfigEntity()` (creates the bundle config
+  entity — e.g. a `node_type` row — via reflection on the destination entity
+  type's declared `bundleEntityType`, reached generically so the registrar
+  carries no compile-time edge to any Layer-2 content package) and
+  `declareFields()` (`EntityTypeManager::addBundleFields()`, which also
+  auto-materializes the per-bundle subtable with real typed columns). Both
+  steps are idempotent — a repeated registration for an existing bundle/field
+  is a silent no-op, not an error.
+- Every id in `ContentModel::$vocabularies` is treated as an explicit
+  `taxonomy_term` bundle: registration materializes the corresponding
+  `taxonomy_vocabulary` config entity and records the bundle even when it adds
+  no bundle-specific fields. Rehydration restores those empty declarations in
+  later HTTP/worker processes, so persisted terms never fail schema validation
+  as an unknown bundle.
+
+**Invocation point — the pass-1 fix.** Discovery/collection happens at boot,
+exactly like `HasMigrationsInterface` in §9 step 2:
+`AbstractKernel::injectContentModelProviders()` scans `$this->providers` for
+`DerivesContentModelInterface` and hands the list to
+`ServiceProvider::withContentModelProviders()`
+(`Waaseyaa\Foundation\ServiceProvider\Capability\AcceptsContentModelProvidersInterface`).
+That step only collects object references — it never calls
+`deriveContentModel()`. Full registration happens later, in
+`MigrationRunner::ensureContentModelsRegistered()`, guarded to run exactly
+once per `MigrationRunner` instance (a container singleton, i.e. once per CLI
+process), immediately before the first migration of the invocation executes.
+
+**Read-process rehydration (#1982).** The field registry populated above is
+process-local. `Migration\ServiceProvider::boot()` therefore asks the collected
+providers for the same model and calls `ContentModelRegistrar::rehydrate()`.
+Rehydration declares fields only when the destination's bundle config entity
+already exists; it does not create config entities. A clean first-install boot
+before import is consequently still a no-op, while a later HTTP or worker
+process restores the definitions needed by `BundleSubtableGateway` to hydrate
+persisted columns. Replaying declarations is idempotent for upgraded installs
+and does not rewrite their entity rows.
+
+This split matters because of a real production failure. The Sheguiandah
+pass-1 build (`sheg-waaseyaa-pass1`, read-only reference) constructed
+`ContentModelRegistrar` by hand inside `SfnWordPressMigrationProvider`'s
+`ServiceProvider::boot()` — which, per §9, runs during
+`AbstractKernel::bootProviders()`, strictly *before* the kernel's schema-sync
+phase for that provider's own destination tables has necessarily completed.
+Calling the registrar there silently no-op'd on the first boot after
+`db:init`: the destination tables the derived model described did not exist
+yet, so `ensureBundleConfigEntity()`/`declareFields()` failed against
+not-yet-created schema and (under the pre-G-026 best-effort semantics, see
+below) swallowed the failure instead of surfacing it. Invoking the registrar
+from `MigrationRunner` instead — at the first `import:*` command, after full
+kernel boot — removes the ordering hazard by construction: there is no
+second-boot requirement, because import commands never run before the
+schema they import into exists.
+
+**Failure semantics (changed from the pre-G-026 scaffolding).**
+`ContentModelRegistrar` used to swallow every failure behind a
+`notice`/`error` log line and continue, because it was (on paper) invocable
+during kernel boot, where a hard failure would have crashed boot for reasons
+unrelated to the content model itself. Full `register()` remains an import-time
+operation (§9.5 above), and raises
+`Waaseyaa\Migration\Exception\ContentModelRegistrationException` on any
+structural failure — destination entity type not registered, bundle config
+entity cannot be built/saved, no field registry configured, or
+`addBundleFields()` rejects a field — and aborts before any source record is
+read. The only paths that remain silent are genuine no-op cases, not
+failures: a bundle config entity that already exists (idempotency) and a
+destination entity type with no `bundleEntityType` declared (bundle is a bare
+string; nothing to materialize, by design).
+
+**Boundary vs the static app-model path.** `#[BundleTemplate]` /
+`#[FieldTemplate]` + `BundleTemplateCompiler`
+(`docs/specs/work-surface.md` §F2) is the STATIC path for bundles and fields
+an application author already knows about at compile time — discovered and
+compiled once at `optimize:manifest` time, terminating at
+`FieldDefinitionRegistry::registerBundleFields()`. `ContentModelRegistrar` is
+the RUNTIME/import-derived counterpart for bundles and fields a migration
+source reveals only once its data has actually been inspected — unknowable
+at compile time by definition. Both terminate at the same
+`EntityTypeManager`/`FieldDefinitionRegistry` substrate, so this is **not** a
+third field-declaration mechanism; it is the same substrate fed from a
+later-arriving source of truth. The two paths are not merged and must not
+be: a compile-time attribute scan cannot see data that only exists after a
+migration source has been read.
 
 ---
 
@@ -499,6 +765,18 @@ conformance asserts on `EntityDestination` itself.
   non-zero so `import:resume` can pick up where it stopped.
 - **Windows:** flock degrades to advisory-only on some filesystems; the
   platform still works but the lock is best-effort.
+- **Monotonic clock clamp:** `RunReport`/`RollbackReport` both assert
+  `finishedAt >= startedAt`. Since the runner's/walker's injected clock
+  defaults to non-monotonic wall-clock time (`new \DateTimeImmutable('now',
+  UTC)`), a backward step mid-run (NTP step, VM/WSL suspend-resume,
+  leap-second smear) could otherwise trip that invariant on an already
+  fully-committed run and crash the CLI with an uncaught
+  `\InvalidArgumentException`. `MigrationRunner::nowClampedTo()` and
+  `RollbackWalker::rollback()`'s inline clamp both capture `($this->clock)()`
+  and advance a regressed finish stamp forward by 1 microsecond over
+  `$startedAt` before constructing the report, so a clock regression is
+  absorbed rather than surfaced as a crash (audit-remediation batch
+  2026-07-02 R3 WP2, migration M2).
 
 ---
 
@@ -546,6 +824,28 @@ lives at `docs/cookbook/migration-first-cut.md`.
 
 ## 16. History
 
+- 2026-07-13 — #1981 closes the fixed-bundle composition gap exposed by the
+  Sheguiandah pass-2 rehearsal. `FilteredSource` replaces app-defined source
+  wrappers, `PartitionedLookupProcessor` resolves mixed reference lists across
+  bundle-specific migrations, and `MigrationIdMap::lookupDestinationAcross()`
+  gives non-process consumers an ordered view of split id maps. Fresh-install
+  coverage pins real migrations, runner writes, fixed bundles, and
+  least-privilege create grants.
+- 2026-07-02 — Audit-remediation batch, R3 WP1 (M1). Closed two sibling
+  stored-XSS bypasses in `HtmlSanitizeProcessor`'s DOMDocument fallback path,
+  both reopening B-4: (1) a **nested-wrapper** bypass —
+  `replaceWithTextContent()` hoisted a disallowed wrapper's descendants
+  verbatim without re-running the tag allowlist or `filterAttributes()`/
+  URL-scheme check on the promoted nodes, so a dangerous element or attribute
+  nested one or more levels below a disallowed tag survived untouched; fixed
+  by re-applying the per-child policy (`applyChildPolicy()`) to every promoted
+  node at every hoist depth, to a fixpoint. (2) a **CDATA-content-model**
+  bypass — libxml parses the payload of `xmp`/`iframe`/`noembed`/`noframes`/
+  `plaintext` as a `\DOMCdataSection` that saveHTML emits verbatim, so a live
+  `<script>`/`onerror`/`javascript:` survived with no nesting; fixed by
+  force-stripping those tags (`RAW_TEXT_CONTENT_MODEL_TAGS`) even when
+  custom-allowlisted and converting CDATA to entity-escaped text
+  (`convertCdataToText()`). See §3.5 for the security note.
 - 2026-05-13 — Mission `migration-platform-v1-01KRCDE9` (M-002) lands on
   `main`. WP01 through WP11 ship code; WP12 ships this document plus the
   charter §5.8 amendment and CHANGELOG entry.

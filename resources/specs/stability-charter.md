@@ -1,7 +1,9 @@
 # Waaseyaa Stability Charter
 
-**Status:** Ratification-ready — strategic decisions complete (ADRs 010–018 accepted, 012 superseded by 012a); all §11 operational questions resolved (2026-05-11); CI infrastructure authored at `.github/workflows/surface-parity.yml` + `changelog-discipline.yml`; awaiting `@jonesrussell` merge per §12.4
-**Owner:** Framework maintainers (`@jonesrussell` as release authority)
+<!-- Spec reviewed 2026-07-17 - #2064 WP1 follows §4 by adding the V2 storage SPI and dormant compatibility adapter before the approved alpha no-shim activation. The stable FieldDefinitionInterface and all existing read/serialization/V1 behavior remain unchanged in WP1. Activation owns the breaking-change guide, checklist, release-note heading, V1 removal, guarded toArray(), and serialization break. -->
+
+**Status:** In force (solo-developer project — no ratification ceremony; see §12). Strategic decisions complete (ADRs 010–018 accepted, 012 superseded by 012a); §11 operational questions resolved (2026-05-11); CI enforcement live — `surface-parity` is a real blocking AST gate and the full `composer verify` gate set runs in CI (`ci/verify-gates`).
+**Owner:** `@jonesrussell` (sole maintainer and release authority)
 **Authoritative on:** API stability, deprecation process, breaking-change procedure
 **Defers to:** [`VERSIONING.md`](../VERSIONING.md) for release stages, tag policy, and v1.0 sign-off
 **References:** [`public-surface-map.md`](../public-surface-map.md), [`specs/extension-release-playbook.md`](extension-release-playbook.md)
@@ -50,7 +52,9 @@ This charter exists because the 2026-05-11 framework/app audit found that recent
 
 ## 2. Surface classification
 
-The framework public surface is classified into three tiers. Every exported symbol (class, interface, method, function, constant, config key, log channel, event name, CLI command, env var) lives in exactly one tier.
+The framework public surface uses a **binary** classification: every tracked element is either **public** or **internal** (audit C-15). An earlier three-tier `stable | provisional | internal` model and a `mission_status` axis — described in §2.1–§2.3 and §2.6 below, and in §11 Q1 — were aspirational and **never shipped**; the public-surface-map, the surface-parity gate (`tools/check-surface-parity.php`), and `PublicSurfaceVerificationTest` all implement the binary model. §2.1–§2.3 are retained only for historical context.
+
+The tracked surface is the **contract shapes** — interfaces, abstract classes, traits, and enums declared under `packages/*/src` — together with the config keys, log channels (§4.4), event names, CLI commands, and env vars enumerated in this charter. Concrete `final`/plain classes are implementations, not extension points, and are intentionally **not** tracked by the parity gate (audit C-16): there are ~1378 of them versus ~426 mapped contract elements, and listing them would not strengthen the stability guarantee — consumers depend on the interface, not the implementation (e.g. `EntityTypeManagerInterface` is mapped `public` while the concrete `EntityTypeManager` is not). The single source of truth for an element's disposition is the public-surface-map (§2.5).
 
 ### 2.1 Stable
 
@@ -99,7 +103,7 @@ A symbol whose tier is unclear is treated as **provisional** until a maintainer 
 
 ### 2.5 Where classification lives
 
-Single source of truth: [`public-surface-map.md`](../public-surface-map.md) and its companion `public-surface-map.php`. Every package section in the map must, before this charter ratifies, label its exported items with `stable | provisional | internal`. Items not labeled at ratification time default to provisional.
+Single source of truth: [`public-surface-map.md`](../public-surface-map.md) and its companion `public-surface-map.php`. Every tracked contract shape is labeled `public` or `internal` (the binary model — §2 above); the surface-parity gate (`tools/check-surface-parity.php`) fails on any source element missing from the map, so the labeling is **complete by construction** — there are no unlabeled items. Audit C-15 (surface tier labeling) is therefore satisfied and the §3.2-1 beta-entry criterion is met. (The earlier `stable | provisional | internal` scheme never shipped — see §2.)
 
 ### 2.6 Mission-status column
 
@@ -145,17 +149,15 @@ Pre-v1 alpha trains (`0.x-alpha.N`).
 
 Pre-v1 beta trains (`0.x-beta.N`).
 
-**Entry criteria** (all must hold; not date-driven):
+**Entry criteria** (all must hold; not date-driven). Waaseyaa is a **single-developer project moving fast**: the beta bar is **code health and enforced CI**, nothing else. There is no owner-approval artifact, no third-party / non-Waaseyaa-org consumer requirement, and no ratification vote — beta is entered when the engineering criteria below are objectively green on `main`. (See §3.4 for the transition mechanism, which is a code-health check, not a sign-off.)
 
 1. **Surface labeling complete.** Every package in the public-surface-map has every exported item tier-labeled. No unlabeled items.
-2. **Two clean alpha trains.** Two consecutive alpha trains have shipped without an undeprecated stable-surface break.
-3. **One non-Minoo consumer.** At least one app or extension outside Minoo has successfully consumed the framework through one upgrade cycle, including following the upgrade guide.
-4. **Deprecation budget under threshold.** Active deprecations carrying shim debt do not exceed 10. (Forcing function: if the list grows, the framework must spend a cycle paying it down before entering beta.)
-5. **CI enforcement live.** The checks in §8 are wired and green on `main`.
-6. **Owner authorization.** `@jonesrussell` opens a PR creating `release-approvals/beta.approved`, mirroring the `VERSIONING.md` §6 pattern.
-7. **Listing pipeline in production.** Per [ADR 015](../adr/015-listing-pipeline-views-equivalent.md) and ratified by mission `listing-pipeline-v1-01KRMN0B` (M-007, 2026-05-16): the `Waaseyaa\Listing\ListingDefinition` contract and the `ListingResolver` service are stable surface (see §5.6), the cache tag-aware operations and context registry are stable surface (see §5.9), and at least one consumer app uses them for production listings. The mission shipped the contract; remaining beta-gate work is the production-consumer demonstration. Reason: declaring beta without this misleads Drupal-migration consumers about what the framework covers.
-8. **Revisions in production.** Per [ADR 016](../adr/016-revisions-first-class.md), `RevisionableEntityInterface` is stable surface, and at least one revisionable entity type ships in a consumer app. Reason: editorial CMSs cannot rely on "alpha" semantics for revision history.
-9. **No unresolved critical mission gaps.** No `❌` entries in [`drupal-comparison-matrix.md`](drupal-comparison-matrix.md) §3 ("Mission-critical gaps") remain in `unknown` or `unresolved` state. `intentional-gap` decisions documented via ADR are acceptable; undecided gaps are not. **Per-field translation (matrix §3.2) — SATISFIED** by M-006 (`entity-storage-translations-v1`) shipping the single-axis translation substrate per ADR 017; see §5.3 for the stable surface. **CMI config sync (matrix §3.5) — SATISFIED** by M-003 (`config-management-v1-01KRCDEC`) shipping the active/sync store split per ADR 018; see §5.5 for the stable surface (`ConfigDependencyInterface`, sync-store YAML format, six `config:*` commands, `config.audit` log channel, backend restriction).
+2. **Two clean alpha trains.** Two consecutive alpha trains have shipped without an undeprecated stable-surface break — *enforced by the surface-parity gate (§8.1), not asserted by hand*.
+3. **Deprecation budget under threshold.** Active deprecations carrying shim debt do not exceed 10. (Forcing function: if the list grows, the framework must spend a cycle paying it down before entering beta.)
+4. **CI enforcement live & green.** The checks in §8 are wired and green on `main`, and `composer verify` — the full gate set — passes on `main`.
+5. **No unresolved critical mission gaps.** No `❌` entries in [`drupal-comparison-matrix.md`](drupal-comparison-matrix.md) §3 ("Mission-critical gaps") remain in `unknown` or `unresolved` state. `intentional-gap` decisions documented via ADR are acceptable; undecided gaps are not. **Per-field translation (matrix §3.2) — SATISFIED** by M-006 (`entity-storage-translations-v1`) shipping the single-axis translation substrate per ADR 017; see §5.3 for the stable surface. **CMI config sync (matrix §3.5) — SATISFIED** by M-003 (`config-management-v1-01KRCDEC`) shipping the active/sync store split per ADR 018; see §5.5 for the stable surface (`ConfigDependencyInterface`, sync-store YAML format, six `config:*` commands, `config.audit` log channel, backend restriction).
+
+The stable surfaces for the listing pipeline (§5.6, §5.9) and revisions (ADR 016, `RevisionableEntityInterface`) are already ratified by their missions; beta entry does **not** additionally require a production-consumer demonstration of them.
 
 **Beta rules:**
 - Stable-surface breaks require a full deprecation cycle (§4) — no abbreviated path.
@@ -176,8 +178,8 @@ Governed by `VERSIONING.md` §4 ("Post-v1.0"). This charter binds the framework 
 
 | From | To | Mechanism |
 |---|---|---|
-| alpha | beta | `release-approvals/beta.approved` PR (§3.2 criterion 6) |
-| beta | stable (`v1.0`) | `release-approvals/v1.0.approved` PR (`VERSIONING.md` §6) |
+| alpha | beta | All §3.2 entry criteria objectively green/enforced on `main` (a code-health check — **no approval artifact, no sign-off PR**) |
+| beta | stable (`v1.0`) | Per `VERSIONING.md` §6 — the one-time v1.0 owner sign-off is a deliberate anti-accident gate for the *stable* milestone (enforced by `release-gate.yml`'s `v1.0*` tag quarantine), distinct from the fast-moving alpha/beta cadence above |
 | any | hotfix branch | Maintainer prerogative; hotfix branches inherit their parent phase's rules |
 
 ---
@@ -312,7 +314,7 @@ This section enumerates the major contract families and the per-phase rules for 
 - `EntityType` definition shape, including the `revisionable` flag (per ADR 016) and `entityKeys.revision` slot.
 - `FieldDefinition` API, including `storedIn(string $backendId)` (per ADR 010).
 - Access-policy attribute system (`PolicyAttribute`, `GateInterface`), including the `view_revision` operation (per ADR 016).
-- **Field storage backend contract** — `FieldStorageBackendInterface` and the backend id namespace; ids `sql-blob`, `sql-column`, `vector` are reserved (per ADR 010).
+- **Field storage backend contract** — `FieldStorageBackendV2Interface` and the backend id namespace; ids `sql-blob`, `sql-column`, `vector` are reserved (per ADR 010).
 - **Entity lifecycle events** — `BeforeSaveEvent`, `AfterSaveEvent`, `BeforeDeleteEvent`, `AfterDeleteEvent`, marker interface `EntityLifecycleEventInterface`, and `AbortOperationException` (per ADR 011). `EntityEvent` is non-`final` so the `TranslationEvent` sibling family may extend it (per M-006 / ADR 017).
 - **Revisionable surface** — `RevisionableEntityInterface` (per ADR 016). (`RevisionableEntityStorageInterface` and the rest of the `vid` revision stack were removed in alpha.196.)
 - **Translatable surface (M-006 / ADR 017):**
@@ -352,7 +354,7 @@ This section enumerates the major contract families and the per-phase rules for 
 
 The current `_data` JSON-blob path is reframed as the `sql-blob` backend (ADR 010). Migration to column-backed fields is migration to the `sql-column` backend, not a removal of the blob entirely. The protocol:
 
-1. **Introduce** `FieldStorageBackendInterface` and the `sql-blob` / `sql-column` backends as named, registered services.
+1. **Introduce** `FieldStorageBackendV2Interface` and the `sql-blob` / `sql-column` backends as named, registered services.
 2. **Co-design** revision-table layout in the same pass (per ADR 016) — column-backed entities and their revisions ship together; revisions are not retrofitted later.
 3. **Shim** existing entity types — they continue on `sql-blob` until per-type opt-in to `sql-column`.
 4. **Emit** an `entity.deprecation` notice on a per-entity-type basis identifying types still on `sql-blob` after a documented threshold train.
@@ -547,7 +549,6 @@ Per [ADR 012a](../adr/012a-migration-substrate-in-core.md). Delivered by mission
 
 *Provider capabilities:*
 - `Waaseyaa\Migration\Discovery\HasMigrationsInterface` — surfaces concrete `MigrationDefinition` instances.
-- `Waaseyaa\Migration\Discovery\HasMigrationPluginsInterface` — surfaces source / process / destination plugin instances.
 
 *Value objects and DTOs (`final readonly class`):*
 - `Waaseyaa\Migration\MigrationDefinition` — manifest object: id, source, process map, destination, dependencies.
@@ -561,6 +562,9 @@ Per [ADR 012a](../adr/012a-migration-substrate-in-core.md). Delivered by mission
 - `Waaseyaa\Migration\Plugin\Destination\EntityDestination` — default destination; writes through the entity-storage coordinator (ADR 010).
 - `Waaseyaa\Migration\Plugin\Destination\EntityDestinationFactory` — factory binding entity type + bundle.
 
+*Source composition:*
+- `Waaseyaa\Migration\Plugin\Source\FilteredSource` — lazy fixed-bundle source decorator that preserves wrapped-source identity semantics.
+
 *Reserved process plugins (framework-owned ids):*
 - `Waaseyaa\Migration\Plugin\Process\PassThroughProcessor` (`pass_through`).
 - `Waaseyaa\Migration\Plugin\Process\HtmlSanitizeProcessor` (`html_sanitize`).
@@ -568,11 +572,13 @@ Per [ADR 012a](../adr/012a-migration-substrate-in-core.md). Delivered by mission
 - `Waaseyaa\Migration\Plugin\Process\ConcatProcessor` (`concat`).
 - `Waaseyaa\Migration\Plugin\Process\TypeCoerceProcessor` (`type_coerce`).
 - `Waaseyaa\Migration\Plugin\Process\DefaultValueProcessor` (`default_value`).
+- `Waaseyaa\Migration\Plugin\Process\PartitionedLookupProcessor` (`partitioned_lookup`).
 
 Reserved-id list canonicalised in `Waaseyaa\Migration\Plugin\ReservedPluginIds`. App-defined process plugins MUST use a non-reserved id; convention `<vendor>_<purpose>`.
 
 *Schema:*
 - `migration_id_map` table layout — frozen stable surface. Future column changes require a charter amendment and a data migration of every existing row. Source-of-truth descriptor: `Waaseyaa\Migration\Schema\MigrationIdMapSchema`.
+- `Waaseyaa\Migration\MigrationIdMap::lookupDestination()` and `lookupDestinationAcross()` — read-only id-map access for source-reader composition; all mutation and traversal methods remain mission-internal.
 
 *Exception types:*
 - `Waaseyaa\Migration\Exception\MigrationCycleException`
@@ -609,8 +615,8 @@ Exit codes: `0` success, `1` generic failure, `2` lock held by another process.
 - `Waaseyaa\Migration\Schema\MigrationRunStateSchema` (mission-internal).
 - `Waaseyaa\Migration\Runner\MigrationRunner` and all classes under `Waaseyaa\Migration\Runner\` (`MigrationLock`, `ProcessChainExecutor`, `RollbackWalker`, `RecordError`, `RollbackError`, `RollbackReport`, `RunOptions`, `RunReport`).
 - `storage/migration-locks/<id>.lock` file format (flock-based; lock-file presence is operator-visible but the format is not a published contract).
-- `Waaseyaa\Migration\Discovery\PluginRegistry`, `MigrationRegistry`, `CycleDetector`, `DependencyGraph`, `FilesystemManifestLoader` (boot-time discovery internals).
-- `Waaseyaa\Migration\MigrationIdMap` PHP gateway class (the **table** is stable; the PHP accessor is mission-internal — apps consult the table through `DestinationPluginInterface::lookup()`).
+- `Waaseyaa\Migration\Discovery\MigrationRegistry`, `CycleDetector`, `DependencyGraph`, `FilesystemManifestLoader` (boot-time discovery internals).
+- `Waaseyaa\Migration\MigrationIdMap` mutation, deletion, transaction, count, and reverse-walk methods. Only the two read-only lookup methods named above are stable source-reader composition seams.
 - `Waaseyaa\Migration\Canonical\CanonicalForm` (helper backing `SourceId::hash()`; behaviour is stable transitively, but the class is not a public extension point).
 
 **Operator-visible but not contractual:**
@@ -823,7 +829,7 @@ A CI job runs on every PR:
 3. Fails on:
    - Symbol present in source, missing from map (untracked surface).
    - Symbol present in map, missing from source (removal without deprecation entry).
-   - Symbol's classification (`stable | provisional | internal`) downgraded without a deprecation entry in the matching changelog.
+   - Symbol's classification downgraded (`public` → `internal`) without a deprecation entry in the matching changelog.
 
 ### 8.2 CI: changelog discipline
 
@@ -900,19 +906,19 @@ The following ADRs add stable surface contracts that this charter governs. Each 
 
 ---
 
-## 11. Open questions (resolve before ratification)
+## 11. Open questions (historical — all resolved)
 
-**STATUS (2026-05-11): All twelve questions resolved.** Charter §12 ratification now gates only on (a) the §11-resolution PR merging and (b) the CI infrastructure landing per Q3. Both are deliverable in a single ratification PR.
+**STATUS: All twelve questions resolved (2026-05-11).** The charter is in force (§12); there is no ratification gate. The Q3 CI infrastructure has landed and is enforced (`surface-parity` blocking, `ci/verify-gates` running the full `composer verify` set).
 
 1. **~~`public-surface-map.php` schema bump~~** — **RESOLVED (2026-05-11).** Additive schema bump: each surface entry gains an optional `mission_status` field (`present | partial | planned | intentional-gap`) alongside the existing tier field. Forward-compatible — tooling that reads only the tier field continues working without modification. Schema migration lands in the pre-ratification PR alongside the Q3 CI infrastructure. Not a breaking change to any consumer.
 2. **~~Log layer support~~** — **RESOLVED (2026-05-11).** Confirmed: the Foundation `LoggerInterface` supports the `(channel, event, subject)` shape via PSR-3-compatible `$context` arrays. The `entity.lifecycle` channel (per ADR 011), `migration.deprecation` and `config.audit` channels (per ADRs 012a / 018), and the existing `dispatcher.deprecation` / `boot.deprecation` channels all follow the same shape. Pre-ratification verification step: enable `WAASEYAA_LOG_LEVEL=notice` in CI and confirm sample emissions parse to the documented event schema.
 3. **~~CI infrastructure~~** — **RESOLVED (2026-05-11).** `surface-parity` and `changelog-discipline` jobs authored at `.github/workflows/surface-parity.yml` and `.github/workflows/changelog-discipline.yml`. Supporting scripts at `tools/check-surface-parity.php` and `tools/check-changelog-discipline.sh`. Owner: framework maintainers (`@jonesrussell`). Both jobs gate PRs to `main` per §8.1 and §8.2. Land in the ratification PR.
 4. **~~Retroactive upgrade guides~~** — **RESOLVED (2026-05-11).** Deferred to a follow-up "retroactive-upgrade-guides" meta-mission. Charter ratification does NOT gate on retroactive guides for alpha.106 / alpha.107 / alpha.173 / alpha.175. Rationale: retroactive guides are orthogonal to the charter mechanism; their absence does not weaken the contract; bundling them in would delay ratification by weeks for documentation already-superseded by code state. Tracked as a separate post-ratification deliverable.
-5. **~~Beta entry criterion 3~~** — **RESOLVED (2026-05-11).** "One non-Minoo consumer" means a **real third-party consumer**. Internal example apps, framework-internal consumers, or Waaseyaa-org-owned demo apps do NOT satisfy the criterion. Specific signal: a non-Minoo, non-Waaseyaa-org GitHub repository that has successfully consumed a tagged alpha release through at least one upgrade cycle following the upgrade guide. Charter §3.2 criterion 3 is amended in this PR to reflect the explicit standard.
+5. **~~Beta entry criterion 3 (third-party consumer)~~** — **REMOVED (2026-06-15, solo-dev charter strip).** The original resolution defined "one non-Minoo consumer" as a real, non-Waaseyaa-org third-party consumer through an upgrade cycle. That entry criterion has been **deleted** from §3.2: Waaseyaa is a single-developer project and an external-adoption gate is dead weight. The beta bar now depends only on code health and enforced CI.
 6. **~~Removal window for the `sql-blob` backend~~** — **RESOLVED (2026-05-11).** Soft-cap: **12 alpha trains beyond beta entry, OR until `sql-blob` backend usage in the consumer ecosystem reaches zero, whichever is sooner**. Honors ADR 010's "until usage reaches zero" intent for early beta phases while preventing indefinite blob-backend support tax in late beta and v1.x. Charter §5.3 special-case wording updated to reflect the cap. Mission spec `entity-storage-v2.md` references this resolution for migration scheduling.
 7. **~~Unresolved §3.2 critical-gap criteria~~** — **RESOLVED.** Matrix §3.2 (per-field translation) is governed by [ADR 017](../adr/017-per-field-translation.md); matrix §3.5 (CMI / config sync) is governed by [ADR 018](../adr/018-configuration-management-sync.md). Both accepted 2026-05-11. Beta entry criterion 9 fully clearable.
 8. **~~Cache tags + contexts package ownership~~** — **RESOLVED (2026-05-11).** Cache tags and contexts are owned by the `cache` package and made stable surface as part of ADR 015's listing-pipeline mission implementation (TBD `listing-pipeline-v1.md`). No separate "cache invalidation v2" ADR required. Tag format: `entity:<type>:<id>` and `entity:<type>:<id>:<langcode>` (per ADR 017 / `entity-storage-translatable-revisions.md` FR-032). Context names: `user.roles`, `url.query.<param>`, `language.requested`. The listing-pipeline mission spec carries these as acceptance criteria when it drafts.
-9. **~~Backend ID namespace policy~~** — **RESOLVED (2026-05-11).** Framework owns the reserved built-in namespace: `sql-blob`, `sql-column`, `vector`, `remote`. Apps and packages MAY register backends under any non-reserved id; recommended convention `<vendor>-<purpose>` (e.g. `minoo-elasticsearch`, `acme-tigerbeetle`). Collision detection at boot via `BackendIdCollisionException` (entity-storage-v2 FR-005). No separate registration API beyond the existing `HasFieldStorageBackendsInterface` capability.
+9. **~~Backend ID namespace policy~~** — **RESOLVED (2026-05-11).** Framework owns the reserved built-in namespace: `sql-blob`, `sql-column`, `vector`, `remote`. Apps and packages MAY register backends under any non-reserved id; recommended convention `<vendor>-<purpose>` (e.g. `minoo-elasticsearch`, `acme-tigerbeetle`). Collision detection at boot via `BackendIdCollisionException` (entity-storage-v2 FR-005). No separate registration API beyond the existing `HasFieldStorageBackendsV2Interface` capability.
 10. **~~`storage-coordinator` event-fan-out semantics~~** — **RESOLVED.** Per `docs/specs/entity-storage-v2.md` FR-024: `AfterSaveEvent` does NOT fire on partial-save failure; partial-save raises `PartialSaveException` with both committed and uncommitted backend lists. Charter §5.3 surface inherits the resolution from the mission spec.
 11. **~~CLI namespace consolidation~~** — **RESOLVED (2026-05-11).** Deferred to a separate post-migration-platform ADR. Current disambiguation (`import:*` for data migration, `migrate:*` for schema migration) is workable and ships in v0.x. Charter ratification does NOT gate on consolidation. Rationale: pre-ratification renames create deprecation churn that yields no consumer-visible benefit until the migration platform actually ships. Consolidation question tracked as a v1.x candidate ADR after both migration platform and schema migration are mature.
 12. **~~`config:*` command namespace reservation~~** — **RESOLVED (2026-05-11).** The `config:*` verb namespace is reserved framework-side. Reserved sub-verbs: `export`, `import`, `diff`, `status`, `validate`, `reset` (per ADR 018). Apps registering conflicting commands fail at boot via `ConfigCommandCollisionException` (config-management-v1 FR-048). Mechanism: registration-time collision check in the CLI kernel, parallel to the backend-id collision check (entity-storage-v2 FR-005).
@@ -942,13 +948,13 @@ These are the implementation missions that operationalize the accepted ADRs. The
 
 ---
 
-## 12. Ratification
+## 12. Status — in force
 
-This charter takes effect when:
+This charter is **in force**. As a single-developer project, it takes effect by being committed to `main` and followed — there is no ratification vote, sign-off PR, or owner-approval artifact gating it (that ceremony was removed 2026-06-15; it was dead weight for a one-person project).
 
-1. Open questions in §11 are resolved (PR comments or follow-up commits).
-2. `public-surface-map.md` items are tier-labeled per §2.5.
-3. Enforcement hooks §8.1 and §8.2 are wired and green on `main`.
-4. `@jonesrussell` merges this file with a commit message tagging the alpha train of ratification.
+Two engineering items remain to fully satisfy the §3.2 *beta* bar (they do not gate the charter being in force for *alpha*):
 
-Until then, this is a draft. Maintainers should follow it in spirit; consumers should not yet treat its guarantees as binding.
+1. `public-surface-map.php` items fully tier-labeled per §2.5 (tracked as audit C-15).
+2. The enforcement hooks of §8 wired and green on `main` — **done**: `surface-parity` is a real blocking AST gate, and the full `composer verify` gate set runs in CI (`ci/verify-gates`).
+
+The charter's guarantees bind the framework's own development now; consumers gain binding stable-surface guarantees at beta entry (§3.2).

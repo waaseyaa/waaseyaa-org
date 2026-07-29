@@ -1,32 +1,32 @@
 {
-    "framework_version": "v0.1.0-alpha.210",
-    "synced_at": "2026-06-14T21:55:40+00:00",
+    "framework_version": "v0.1.0-alpha.276",
+    "synced_at": "2026-07-29T17:33:52+00:00",
     "source": "vendor/waaseyaa/framework/docs/specs",
     "specs": [
         {
             "name": "access-control",
             "title": "Access Control",
-            "sha1": "7b6f12eabcb882ec9cbda4298669ca25bb11115c"
+            "sha1": "7c67c8a40b79b02a2a848d66385816ae11fc4032"
         },
         {
             "name": "admin-spa",
             "title": "Admin SPA",
-            "sha1": "2f02115cba6be12bfcbe04596eafbe28ee51a651"
+            "sha1": "b41d2153591679634646b05b4af2240ce94e8fff"
         },
         {
             "name": "agent-executor",
             "title": "Agent Executor",
-            "sha1": "d68436c117586e9c424ba8adcc16ba916121c78d"
+            "sha1": "1ebbdbfd9e8758bf01117ff7a7f56b5cb1863fe9"
         },
         {
             "name": "agent-output",
-            "title": "Agent-output envelope schema",
-            "sha1": "6ea6cef4b784139f454de65b37aa34b2b1f08a98"
+            "title": "Agent-output envelope schema (retired)",
+            "sha1": "f723b117e6b82db5c41a8745b0b18d81bd6d255e"
         },
         {
             "name": "ai-integration",
             "title": "AI Integration",
-            "sha1": "99961f085995478846fb961cead9fe3851dac197"
+            "sha1": "0526e1aa2700c645bc7aa86e18f3d49ec6908ba0"
         },
         {
             "name": "ai-schema",
@@ -36,12 +36,12 @@
         {
             "name": "api-layer",
             "title": "API Layer",
-            "sha1": "6d4215aaf452504cb74db4e5bf5cbee4d9998351"
+            "sha1": "5713f4528019dc5a12d6286bcd14bced352d4f6b"
         },
         {
             "name": "app-controller-invocation",
             "title": "App controller invocation (SSR `Class::method`)",
-            "sha1": "371e82beb85742354d2d75679194754607445085"
+            "sha1": "4fd174a047b11c4b9baa4cd9576592f6dcabb758"
         },
         {
             "name": "authoring-assist-contract",
@@ -51,7 +51,7 @@
         {
             "name": "bimaaji",
             "title": "Bimaaji \u2014 Application Graph & Agent Mutation Layer",
-            "sha1": "7a3c680481739a1e5e7c9e1a213a35a4c239b801"
+            "sha1": "ba7b25a116b372a6b82eba1cf7f4c123e1799439"
         },
         {
             "name": "bimaaji-install",
@@ -61,7 +61,7 @@
         {
             "name": "broadcasting",
             "title": "Broadcasting (Server-Sent Events)",
-            "sha1": "9592cc28a8393b113081adcfa7cad54a5bad4783"
+            "sha1": "a2872616122d952f93ceb3c7d57998aacc011f87"
         },
         {
             "name": "bundle-scoped-fields",
@@ -76,17 +76,17 @@
         {
             "name": "classification-and-retention",
             "title": "Classification & Retention Engine",
-            "sha1": "a05be3e2bb925d79764c8c90500d705e8eb4e2cc"
+            "sha1": "a7630e76facbfa9665f76013989a68dc6a897b41"
         },
         {
             "name": "cli-kernel",
-            "title": "CLI Kernel",
-            "sha1": "cae5c274820310f14f96bac558ece22528bdf66e"
+            "title": "CLI Console",
+            "sha1": "b67d24fc7fedce5d1b029e9db82c0d26a8f4a158"
         },
         {
-            "name": "codified-context-integration",
-            "title": "Codified Context Integration Spec",
-            "sha1": "e1bedc9e6c22c50f40627bb0b84a2e73d2fb00a1"
+            "name": "cli-symfony-console-migration-plan",
+            "title": "CLI Migration Plan: Replace Native Kernel with Symfony Console",
+            "sha1": "919b413a0299b80dfec88fbfcc2c4c964fc4daf5"
         },
         {
             "name": "config-management",
@@ -96,7 +96,12 @@
         {
             "name": "config-management-v1",
             "title": "Configuration Management v1 \u2014 Active/Sync Store Split",
-            "sha1": "d2477cc89673699aafe30f13ffc9e7f57289ea02"
+            "sha1": "32b31adb73309db406842a3c9865ed0c1ed01765"
+        },
+        {
+            "name": "content-workflow",
+            "title": "Content Workflow (CW-v1)",
+            "sha1": "e3c2556b43a1554f6b48511adf99b94c1fdefcc2"
         },
         {
             "name": "controller-dispatcher-split",
@@ -111,12 +116,17 @@
         {
             "name": "debugging-dx",
             "title": "Debugging & Developer Experience",
-            "sha1": "066b20e073108ab50336d648e33d9f14ced54cc3"
+            "sha1": "8b82b1d97ee19ed3dcb59b0a22b666030ef43486"
         },
         {
             "name": "drupal-comparison-matrix",
             "title": "Waaseyaa \u2194 Drupal Feature Comparison Matrix",
             "sha1": "3e90f8f90dfb9ab70bdf3d2874b937a0849c0002"
+        },
+        {
+            "name": "entity-field-read-boundary",
+            "title": "Entity Field-Read Boundary",
+            "sha1": "0c71b64242774495383fc6bca104332742bb1817"
         },
         {
             "name": "entity-storage-translatable-revisions",
@@ -126,22 +136,22 @@
         {
             "name": "entity-storage-translations-v1",
             "title": "Entity Storage \u2014 Single-Axis Translations v1",
-            "sha1": "875e8d0df85a250fbedafca1a9d808f51341b424"
+            "sha1": "c6d3c22dafd6a1f15048f3c099d9ca5ef512c31a"
         },
         {
             "name": "entity-storage-two-axis",
             "title": "Entity Storage \u2014 Two-Axis (Revisionable \u00d7 Translatable)",
-            "sha1": "edcb89b5a89799877e419a45b1b246a84154f4ac"
+            "sha1": "bdf26473ce6a7decbce779fe8efad9356d7ad5f9"
         },
         {
             "name": "entity-storage-v2",
             "title": "Entity Storage v2 \u2014 Multi-Backend Storage with Revisions",
-            "sha1": "7f31cb65a5bf2f77d7a233797341471e42610c3f"
+            "sha1": "f150a9212ee9a0a12fbcc14f1cdbab75d4ad0bba"
         },
         {
             "name": "entity-system",
             "title": "Entity System",
-            "sha1": "1f3283974f96f9f7c92e4c51ad67e46b3a7e3310"
+            "sha1": "89d32b619d0a06897b81e6df355fbddf1abdfc39"
         },
         {
             "name": "extension-author-onboarding",
@@ -171,17 +181,17 @@
         {
             "name": "field-access",
             "title": "Field-Level Access",
-            "sha1": "c0cb7046908ebe5837bca6ed26bc688baa60bdda"
+            "sha1": "6513f92837c5cbbf125e25a742c78a5db0285b49"
         },
         {
             "name": "field-storage-backends",
             "title": "Field Storage Backends",
-            "sha1": "64a5f5c65f581aef0e63fb091210c720253ed693"
+            "sha1": "b4baccb65907962d03894b315b37d05fd308ce01"
         },
         {
             "name": "genealogy",
             "title": "Genealogy package (v0.1)",
-            "sha1": "f545a6f685f77c7a49e05beec7c05c60b9edab0c"
+            "sha1": "41979d85712b374114bef1916334ceadffc193fd"
         },
         {
             "name": "genealogy-groups-gate",
@@ -201,17 +211,17 @@
         {
             "name": "http-entry-point",
             "title": "HTTP entry point (`public/index.php`)",
-            "sha1": "d2633fa1adbb6f3c4408bbf8ca1b66ad5d75fc30"
+            "sha1": "f68a39f9959f6e5bc045e2ef2be266969f9023c9"
         },
         {
             "name": "infrastructure",
             "title": "Infrastructure",
-            "sha1": "78d7101a192a1616256b859eca7bc8938bc11e00"
+            "sha1": "1520fc0788d6f2b6728804cab1477d9d9ef06ca3"
         },
         {
             "name": "ingestion-defaults",
             "title": "Ingestion Defaults",
-            "sha1": "cc61852b2b117daa4a45dc94ae85b3751b570890"
+            "sha1": "197b0cff3a67d54e8f7f7ec42621560b4fb135d8"
         },
         {
             "name": "ingestion-editorial-dashboard-contract",
@@ -220,8 +230,8 @@
         },
         {
             "name": "ingestion-fixture-pack-contract",
-            "title": "Ingestion Fixture Pack Contract (v1.5)",
-            "sha1": "924acf17c52c330709eb2d7f932853dc2290b7d4"
+            "title": "Ingestion Fixture Pack Contract",
+            "sha1": "61252ab3afcdba48fdc188d04efbfe2ebeafbd8c"
         },
         {
             "name": "ingestion-validation-gates-contract",
@@ -236,62 +246,62 @@
         {
             "name": "jsonapi",
             "title": "JSON:API \u2014 cast-aware attributes",
-            "sha1": "d371992a03ec5e16f5ec34259ff24c09f47b00f8"
+            "sha1": "bf9b50da8fb893609dd4ab1936c5c9e16146e973"
         },
         {
             "name": "listing-pipeline-v1",
             "title": "Listing Pipeline v1 \u2014 Views-equivalent surface for entity listings",
-            "sha1": "ab0dfb45bcb395899e4084ead48cc0744adf78eb"
+            "sha1": "28406bfa7a1c20b06e3b7482e9b918e22d1171d6"
         },
         {
             "name": "mcp-endpoint",
             "title": "MCP Endpoint",
-            "sha1": "873bfb1b474d113983a63fd263937e8a3859aff7"
+            "sha1": "4011f77e5f7d26c101ef5c7324c8476dc567c7a9"
         },
         {
             "name": "messaging",
             "title": "Messaging \u2014 L3 Chat Substrate",
-            "sha1": "d8bddd55f0f1831404cc321b69733728cd1543ea"
+            "sha1": "db452b4818c326ce029b189a009aa66d24e8ce86"
         },
         {
             "name": "middleware-pipeline",
             "title": "Middleware Pipeline",
-            "sha1": "97191d432b402d471448523b38e22d10c89e63ad"
+            "sha1": "db8330b5b854e12ff26b320f34ac25c03a74dc56"
         },
         {
             "name": "migration-platform",
             "title": "Migration Platform",
-            "sha1": "c4c88832975767bd99da0fda9765c33216e1a6d1"
+            "sha1": "3474702fa825f58b8f667ed396ea4f1f6f761956"
         },
         {
             "name": "migration-platform-v1",
             "title": "Migration Platform v1 \u2014 Substrate in Core",
-            "sha1": "9bcf276366721966a2905eeac3e1fbdf1c18ed46"
+            "sha1": "e343b1c1c769ed287b006e8573c52d23edabc15e"
         },
         {
             "name": "ocap-audit-log",
             "title": "OCAP Audit Log Substrate",
-            "sha1": "05b0e62d09c590f328700dc509a5ed674213bede"
+            "sha1": "0f44a2707041613b8c2b18f3442278e6b019e923"
         },
         {
             "name": "operations-playbooks",
             "title": "Operations Playbooks",
-            "sha1": "1cfe3c1a7aa72879ed62a9aaee47f25e4e2876ae"
+            "sha1": "48f6983bf23f05e47a128854ad5da1aa81aab1b0"
         },
         {
             "name": "operator-diagnostics",
             "title": "Operator Diagnostics",
-            "sha1": "0af7de25c3df39f241fe58d97c2bf17f711fc55a"
+            "sha1": "e6a1901a3bd30e9a91a55f04ca4695273ed55713"
         },
         {
             "name": "package-discovery",
             "title": "Package Discovery",
-            "sha1": "2e97120954c1a763d82d187ae9e1663cbc3a088a"
+            "sha1": "276123bc113ed1cc72da04a890045a1b90886388"
         },
         {
             "name": "per-site-convergence-audit",
             "title": "Per-site convergence audit (Waaseyaa ecosystem)",
-            "sha1": "89b8179501fd7f3b870e65e73c7f77497da4a226"
+            "sha1": "9b6beca7c8cc9aa2b0f13287384f21272c394f0f"
         },
         {
             "name": "plugin-extension-points",
@@ -306,7 +316,7 @@
         {
             "name": "relationship-modeling",
             "title": "Relationship Modeling (v0.6)",
-            "sha1": "faa5e08d7e6cb56996377c773153f2598aba5798"
+            "sha1": "bc273234ff144d5681800f14f34b5f0aa47345d6"
         },
         {
             "name": "remediation-program-handoff",
@@ -316,7 +326,7 @@
         {
             "name": "revision-system-unified",
             "title": "Revision system (unified, with an optional translation axis)",
-            "sha1": "b7cb0d19959a8e30306d6d766e0dac87df35fb78"
+            "sha1": "faf1416cd7da9002a11818d4ca8cb00c28f8da47"
         },
         {
             "name": "schema-evolution-v2",
@@ -326,7 +336,7 @@
         {
             "name": "security-defaults",
             "title": "Security Defaults",
-            "sha1": "7a5f5d8172a8bd37178641435958f46e92faf3e2"
+            "sha1": "1cf961c88a3aa31384bd1d645f6a80ff206a7835"
         },
         {
             "name": "semantic-refresh-trigger-contract",
@@ -336,17 +346,7 @@
         {
             "name": "seo",
             "title": "SEO package (`waaseyaa/seo`)",
-            "sha1": "9ade9b26f758250781b040dc50c8e685e03a53a8"
-        },
-        {
-            "name": "source-adapter-contract",
-            "title": "Source Adapter Contract (v1.6)",
-            "sha1": "e9d288d7c81ab8ebc033095a6be464f9f77e2cb1"
-        },
-        {
-            "name": "source-connectors-contract",
-            "title": "Source Connector Contract (v1.6)",
-            "sha1": "a0373f97bb7e16f2ca6a328f6a8be8c4541ea4aa"
+            "sha1": "198d0e5a2dead71c7d182acadd62e18cbb643712"
         },
         {
             "name": "source-priority-merge-contract",
@@ -359,19 +359,19 @@
             "sha1": "253e05ec8f878d79f5b0b4d82b7bb45de084f0a3"
         },
         {
+            "name": "ssr-page-composition",
+            "title": "Generic SSR entity-page composition",
+            "sha1": "728d76c5fc14c87f5dfb40b66edb167bebad967d"
+        },
+        {
             "name": "stability-charter",
             "title": "Waaseyaa Stability Charter",
-            "sha1": "10cd1a47d1825ed14e102cd07f289fd942ab4564"
+            "sha1": "a53bc8cb57d89492a47fded8d176cefe844e55d5"
         },
         {
             "name": "symfony-version-floors",
             "title": "Symfony 7 version floors in split packages",
             "sha1": "3cfca0c62e9215a84e2d794361a49d251801150d"
-        },
-        {
-            "name": "telescope-agent-context-telemetry",
-            "title": "Telescope agent-context telemetry",
-            "sha1": "24fb30a9aaac30d021e07b432dc6578ed8e97d37"
         },
         {
             "name": "testing-strategy",
@@ -389,11 +389,6 @@
             "sha1": "3aa9156447d770edc8402aba307ddb487ee69e91"
         },
         {
-            "name": "v1.6-verification-gate-contract",
-            "title": "v1.6 Verification Gate Contract",
-            "sha1": "7ec94c3faf533f261bf7e58edc9cf50a5e933927"
-        },
-        {
             "name": "version-provenance",
             "title": "Waaseyaa version and provenance",
             "sha1": "e29ed97f28b1068c56c9d1cfb2dab7da9f6f9dd8"
@@ -401,17 +396,22 @@
         {
             "name": "waaseyaa-migrate-source-wordpress",
             "title": "WordPress Source Reader \u2014 `waaseyaa-migrate-source-wordpress`",
-            "sha1": "4a192d9d1a24ee11dffd6b627addfe1b257c25d6"
+            "sha1": "b13670ff0d44c1738acb00b36734bb6a5b5dc5cc"
+        },
+        {
+            "name": "wayfinding",
+            "title": "Wayfinding",
+            "sha1": "cfa857ce5e1f09e57af7d1b889bb9775234e0728"
         },
         {
             "name": "work-surface",
             "title": "Work Surface",
-            "sha1": "42a174ce9f8b8e0e2712534f62e849e5cc0872be"
+            "sha1": "477d03390b1e9821f55ce6c4c9213d2bb8079bdf"
         },
         {
             "name": "workflow",
-            "title": "Workflow governance (Spec Kitty\u2013first)",
-            "sha1": "130d7267791246463dd9a157730b08340bfa4829"
+            "title": "Workflow governance (anchor-issue + design-first)",
+            "sha1": "5cd954d774154f6d0afa8e2b27754bd100fb5772"
         },
         {
             "name": "workspace-chat-surface",
