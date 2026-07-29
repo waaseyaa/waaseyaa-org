@@ -9,3 +9,4 @@ composer.local.json
 # Generated at deploy by field-access:preflight --write-artifact; never commit
 /.waaseyaa/field-access-preflight.json
 /storage/.db-init.lock
+.php-cs-fixer.cache
