@@ -38,6 +38,10 @@ return [
             getenv('WAASEYAA_DEV_FALLBACK_ACCOUNT') ?: false,
             FILTER_VALIDATE_BOOLEAN,
         ),
+        // HMAC key for reset/verify auth tokens. Required (non-empty, not
+        // 'change-me') outside local development even though this site has
+        // no public accounts - the auth provider boots with the framework.
+        'token_secret' => getenv('WAASEYAA_AUTH_TOKEN_SECRET') ?: '',
     ],
 
     // Upload validation (POST /api/media/upload).
