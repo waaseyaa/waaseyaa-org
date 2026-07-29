@@ -10,3 +10,4 @@ composer.local.json
 /.waaseyaa/field-access-preflight.json
 /storage/.db-init.lock
 .php-cs-fixer.cache
+.phpunit.cache/
