@@ -90,6 +90,11 @@ final class DocsServiceProvider extends ServiceProvider
         );
 
         $sitemap = new \App\Controller\SitemapController($corpus, $urls);
+        // waaseyaa/ssr registers its own entity-driven /sitemap.xml
+        // (seo.sitemap_xml, priority 10) which would shadow this corpus
+        // sitemap with an empty urlset on a site that registers no
+        // entities. Same override lever as the MCP routes above.
+        $router->removeRoute('seo.sitemap_xml');
         $router->addRoute(
             'sitemap.xml',
             RouteBuilder::create('/sitemap.xml')

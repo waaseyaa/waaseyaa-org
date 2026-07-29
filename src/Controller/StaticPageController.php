@@ -10,14 +10,20 @@ use Symfony\Component\HttpFoundation\Response;
 use Waaseyaa\SSR\SsrServiceProvider;
 
 /**
- * The narrative pages (Why Waaseyaa, Compare): server-rendered Twig in
- * the same design system, schema.org JSON-LD in the head blocks.
+ * The narrative pages (Start, Why Waaseyaa, Compare): server-rendered Twig
+ * in the same design system, schema.org JSON-LD in the head blocks. The
+ * Start page's code samples are mirrored by tests/Tutorial/TodoAppTest.php.
  */
 final class StaticPageController
 {
     public function __construct(
         private readonly SiteUrl $urls,
     ) {}
+
+    public function start(): Response
+    {
+        return $this->render('start.html.twig');
+    }
 
     public function why(): Response
     {
