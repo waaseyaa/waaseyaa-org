@@ -18,7 +18,8 @@ final readonly class PublicServerCard
     public function __construct(
         private SpecCorpus $corpus,
         private SiteUrl $urls,
-    ) {}
+    ) {
+    }
 
     public function serve(): Response
     {

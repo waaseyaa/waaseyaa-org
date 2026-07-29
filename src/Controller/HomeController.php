@@ -13,7 +13,8 @@ final class HomeController
 {
     public function __construct(
         private readonly ?PiTelemetry $telemetry = null,
-    ) {}
+    ) {
+    }
 
     public function index(): Response
     {

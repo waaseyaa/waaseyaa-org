@@ -1,0 +1,18 @@
+version: 2
+updates:
+  - package-ecosystem: composer
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    # The waaseyaa/* alpha line is exact-pinned and upgraded only through
+    # dedicated, reviewed framework-upgrade PRs (see CONTRIBUTING.md).
+    ignore:
+      - dependency-name: "waaseyaa/*"
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5

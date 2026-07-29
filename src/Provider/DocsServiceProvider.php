@@ -39,15 +39,19 @@ final class DocsServiceProvider extends ServiceProvider
 {
     public const string CHAT_MODEL = 'claude-sonnet-4-6';
 
-    public function register(): void {}
+    public function register(): void
+    {
+    }
 
     public function boot(): void
     {
         // Best effort: the chat tables exist before the first request needs
-        // them; a bare bootstrap (tests, CLI without a DB) skips silently.
+        // them; a bare bootstrap (tests, CLI without a DB) degrades, but
+        // never silently.
         try {
             new ChatSchema(\App\Support\Db::persistent())->ensure();
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            \App\Support\OperationalLog::warning('chat_schema_ensure_failed', $e);
         }
     }
 
@@ -64,7 +68,8 @@ final class DocsServiceProvider extends ServiceProvider
         $specIndex = new SpecIndex($corpus, \App\Support\Db::persistent());
         try {
             $specIndex->ensure();
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            \App\Support\OperationalLog::warning('spec_index_ensure_failed', $e);
         }
         $search = new SpecSearch($corpus, $specIndex);
 
@@ -104,6 +109,10 @@ final class DocsServiceProvider extends ServiceProvider
                 ->build(),
         );
 
+        // waaseyaa/ssr registers its own /llms.txt (seo.llms_txt, priority
+        // 10) whose generic body shadowed this corpus index in production.
+        // Same documented override lever as the MCP and sitemap routes.
+        $router->removeRoute('seo.llms_txt');
         $router->addRoute(
             'llms.txt',
             RouteBuilder::create('/llms.txt')
@@ -142,8 +151,11 @@ final class DocsServiceProvider extends ServiceProvider
 
         // Docs chat: grounded on the same corpus and search engine as the
         // MCP tools. Anthropic when a key is configured; honest extractive
-        // quotes otherwise.
+        // quotes otherwise. ChatGuard bounds abuse and spend: per-visitor
+        // and hashed-per-IP rate limits, a daily model budget, a stream
+        // concurrency cap and a failure circuit breaker.
         $anthropicKey = getenv('ANTHROPIC_API_KEY') ?: '';
+        $chatLimits = \App\Chat\ChatLimits::fromEnvironment();
         $chat = new DocsChatController(
             retriever: new DocsRetriever($corpus, $specIndex, $urls),
             prompts: new ChatPrompt(),
@@ -151,6 +163,12 @@ final class DocsServiceProvider extends ServiceProvider
             conversations: new ConversationStore(\App\Support\Db::persistent()),
             urls: $urls,
             provider: $anthropicKey !== '' ? new \Waaseyaa\AI\Agent\Provider\AnthropicProvider($anthropicKey, self::CHAT_MODEL) : null,
+            guard: new \App\Chat\ChatGuard(
+                \App\Support\Db::persistent(),
+                $chatLimits,
+                hashKey: hash('sha256', 'waaseyaa-chat-ip.' . (getenv('WAASEYAA_APP_SECRET') ?: bin2hex(random_bytes(16)))),
+            ),
+            limits: $chatLimits,
         );
 
         $router->addRoute(
@@ -169,6 +187,16 @@ final class DocsServiceProvider extends ServiceProvider
                 ->controller(fn (Request $request, string $id) => $chat->messages($request, $id))
                 ->allowAll()
                 ->methods('GET')
+                ->build(),
+        );
+
+        $router->addRoute(
+            'docs.chat.clear',
+            RouteBuilder::create('/docs-chat/clear')
+                ->controller(fn (Request $request) => $chat->clear($request))
+                ->allowAll()
+                ->methods('POST')
+                ->csrfExempt()
                 ->build(),
         );
 

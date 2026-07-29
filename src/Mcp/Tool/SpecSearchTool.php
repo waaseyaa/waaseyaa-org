@@ -26,7 +26,8 @@ final class SpecSearchTool extends AbstractAgentTool
         private readonly SpecCorpus $corpus,
         private readonly SpecSearch $search,
         private readonly SiteUrl $urls,
-    ) {}
+    ) {
+    }
 
     public function execute(array $arguments, AccountInterface $account): AgentToolResult
     {

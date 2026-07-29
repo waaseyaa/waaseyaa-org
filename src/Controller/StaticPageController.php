@@ -18,7 +18,8 @@ final class StaticPageController
 {
     public function __construct(
         private readonly SiteUrl $urls,
-    ) {}
+    ) {
+    }
 
     public function start(): Response
     {

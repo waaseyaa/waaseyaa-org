@@ -24,7 +24,8 @@ final class DocsRetriever
         private readonly SpecCorpus $corpus,
         private readonly SpecIndex $index,
         private readonly SiteUrl $urls,
-    ) {}
+    ) {
+    }
 
     /**
      * @return list<Passage>

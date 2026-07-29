@@ -20,7 +20,8 @@ final class SpecCorpus
 
     public function __construct(
         private readonly string $dir,
-    ) {}
+    ) {
+    }
 
     public static function default(): self
     {

@@ -1,0 +1,46 @@
+# CI-only production-shaped image: APP_ENV=production with the real
+# alpha boot gates (existing database requirement, application secret,
+# auth token secret, field-access activation artifact). Serves via
+# php -S; the fpm/Caddy topology belongs to waaseyaa-infra and is not
+# reproduced here. What this image proves is kernel behavior under
+# production rules, which is where every past deploy incident lived.
+
+FROM composer:2 AS deps
+WORKDIR /src
+COPY composer.json composer.lock ./
+RUN composer install --no-dev --no-interaction --no-progress --prefer-dist \
+      --no-scripts --ignore-platform-req=php
+
+FROM php:8.5-cli-alpine
+RUN apk add --no-cache sqlite-libs icu-libs
+
+WORKDIR /app
+COPY . /app
+COPY --from=deps /src/vendor /app/vendor
+
+COPY <<'EOF' /usr/local/bin/ci-entrypoint.sh
+#!/bin/sh
+set -e
+export APP_ENV=production
+export APP_URL=http://127.0.0.1:8080
+export WAASEYAA_ORG_CANONICAL_URL=http://127.0.0.1:8080
+export WAASEYAA_APP_SECRET="base64:$(head -c 32 /dev/urandom | base64 | tr -d '\n')"
+export WAASEYAA_AUTH_TOKEN_SECRET="$(head -c 32 /dev/urandom | base64 | tr -d '\n')"
+export WAASEYAA_DB=/app/storage/waaseyaa.sqlite
+
+# Same sequence the production entrypoint uses: create/migrate the DB,
+# write the activation artifact, one throwaway boot to settle the
+# schema, rewrite the artifact.
+mkdir -p /app/storage/framework
+touch "$WAASEYAA_DB"
+APP_ENV=local php /app/vendor/bin/waaseyaa db:init > /dev/null
+php /app/vendor/bin/waaseyaa field-access:preflight --write-artifact > /dev/null
+php -r 'require "/app/vendor/autoload.php"; $_SERVER["REQUEST_URI"] = "/"; $_SERVER["REQUEST_METHOD"] = "GET"; new Waaseyaa\Foundation\Kernel\HttpKernel("/app")->handle();' > /dev/null 2>&1 || true
+php /app/vendor/bin/waaseyaa field-access:preflight --write-artifact > /dev/null
+
+exec php -S 0.0.0.0:8080 -t /app/public /app/public/index.php
+EOF
+RUN chmod +x /usr/local/bin/ci-entrypoint.sh
+
+EXPOSE 8080
+ENTRYPOINT ["/usr/local/bin/ci-entrypoint.sh"]

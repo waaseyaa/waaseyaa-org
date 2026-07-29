@@ -58,11 +58,29 @@ foreach (glob($source . '/*.md') ?: [] as $file) {
     ];
 }
 
-usort($specs, fn(array $a, array $b): int => strcmp($a['name'], $b['name']));
+usort($specs, fn (array $a, array $b): int => strcmp($a['name'], $b['name']));
+
+// Provenance timestamp: the locked framework package's release time
+// (composer's installed.json "time" field), NOT the wall clock. The
+// manifest must be a pure function of the locked inputs so running the
+// sync twice leaves the repository byte-for-byte clean and the CI
+// generated-files check stays meaningful.
+$sourceReleasedAt = null;
+$installed = json_decode(
+    (string) file_get_contents($root . '/vendor/composer/installed.json'),
+    true,
+);
+foreach (($installed['packages'] ?? []) as $package) {
+    if (($package['name'] ?? '') === 'waaseyaa/framework') {
+        $sourceReleasedAt = $package['time'] ?? null;
+        break;
+    }
+}
 
 $manifest = [
     'framework_version' => $version,
-    'synced_at' => gmdate('c'),
+    'source_released_at' => $sourceReleasedAt,
+    'corpus_sha1' => sha1(implode("\n", array_map(static fn (array $s): string => $s['name'] . ':' . $s['sha1'], $specs))),
     'source' => 'vendor/waaseyaa/framework/docs/specs',
     'specs' => $specs,
 ];

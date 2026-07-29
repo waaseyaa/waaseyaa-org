@@ -29,7 +29,8 @@ final class DocsController
     public function __construct(
         private readonly SpecCorpus $corpus,
         private readonly SiteUrl $urls,
-    ) {}
+    ) {
+    }
 
     public function index(Request $request): Response
     {

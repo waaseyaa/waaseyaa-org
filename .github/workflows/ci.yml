@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        # actions/checkout v5.0.0
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - name: Set up PHP 8.5
+        # shivammathur/setup-php 2.35.5
+        uses: shivammathur/setup-php@bf6b4fbd49ca58e4608c9c89fba0b8d90bd2a39f
+        with:
+          php-version: '8.5'
+          extensions: mbstring, intl, sqlite3
+          coverage: none
+
+      - name: Validate composer manifests
+        run: composer validate --strict
+
+      - name: Clean install from the committed lock
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Dependency security audit
+        run: composer audit --locked --no-dev
+
+      - name: Static analysis (PHPStan)
+        run: vendor/bin/phpstan analyse --no-progress
+
+      - name: Coding style (php-cs-fixer, check only)
+        run: PHP_CS_FIXER_IGNORE_ENV=1 vendor/bin/php-cs-fixer fix --dry-run --diff
+
+      - name: Copy lint (no em dashes in authored content)
+        run: |
+          if grep -rPl '\x{2014}' templates src README.md CONTRIBUTING.md SECURITY.md SUPPORT.md 2>/dev/null; then
+            echo 'Em dash found in authored content.'
+            exit 1
+          fi
+
+      - name: Spec corpus provenance (no drift against the locked framework)
+        run: |
+          php bin/sync-specs.php
+          git diff --exit-code -- resources/specs
+
+      - name: PHPUnit (unit, integration, tutorial verification)
+        run: vendor/bin/phpunit
+
+  docker-smoke:
+    name: Production-shaped container smoke
+    runs-on: ubuntu-latest
+    needs: quality
+    steps:
+      - name: Checkout
+        # actions/checkout v5.0.0
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - name: Build production-shaped image
+        run: docker build -f docker/Dockerfile.ci -t waaseyaa-org-ci .
+
+      - name: Boot container (APP_ENV=production, real boot gates)
+        run: |
+          docker run -d --name smoke -p 8080:8080 waaseyaa-org-ci
+          for i in $(seq 1 30); do
+            if curl -fsS -o /dev/null http://127.0.0.1:8080/healthz; then exit 0; fi
+            sleep 2
+          done
+          echo 'Container never became healthy.'
+          docker logs smoke
+          exit 1
+
+      - name: Smoke checks
+        run: ./docker/smoke.sh http://127.0.0.1:8080
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs smoke

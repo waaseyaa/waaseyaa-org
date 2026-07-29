@@ -15,11 +15,30 @@ final class ChatSchema
 {
     public const CONVERSATIONS = 'docs_chat_conversation';
     public const MESSAGES = 'docs_chat_message';
+    public const LIMITS = 'docs_chat_limits';
+    public const CONTROL = 'docs_chat_control';
 
-    public function __construct(private readonly DatabaseInterface $db) {}
+    public function __construct(private readonly DatabaseInterface $db)
+    {
+    }
 
     public function ensure(): void
     {
+        $this->db->query(
+            'CREATE TABLE IF NOT EXISTS ' . self::LIMITS . ' (
+                bucket TEXT PRIMARY KEY,
+                expires_at INTEGER NOT NULL,
+                count INTEGER NOT NULL DEFAULT 0
+            )',
+            [],
+        );
+        $this->db->query(
+            'CREATE TABLE IF NOT EXISTS ' . self::CONTROL . ' (
+                ctl_key TEXT PRIMARY KEY,
+                value INTEGER NOT NULL DEFAULT 0
+            )',
+            [],
+        );
         $this->db->query(
             'CREATE TABLE IF NOT EXISTS ' . self::CONVERSATIONS . ' (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

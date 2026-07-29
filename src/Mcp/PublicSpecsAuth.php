@@ -15,7 +15,7 @@ use Waaseyaa\Mcp\Auth\McpAuthInterface;
  */
 final class PublicSpecsAuth implements McpAuthInterface
 {
-    public function authenticate(?string $authorizationHeader): ?AccountInterface
+    public function authenticate(?string $authorizationHeader): AccountInterface
     {
         return new SpecReaderAccount();
     }

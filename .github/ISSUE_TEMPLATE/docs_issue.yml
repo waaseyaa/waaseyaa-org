@@ -1,0 +1,22 @@
+name: Docs content issue
+description: A spec page, the /start walkthrough, or other site copy is unclear, outdated, or incorrect.
+labels: [docs]
+body:
+  - type: input
+    id: url
+    attributes:
+      label: Page
+      placeholder: https://waaseyaa.org/start
+    validations:
+      required: true
+  - type: textarea
+    id: issue
+    attributes:
+      label: What is wrong or unclear
+      description: |
+        Note: pages under /docs/specs are published from the framework's
+        own spec corpus. Corrections to spec content usually belong in a
+        framework PR; this repository controls the walkthrough, narrative
+        pages, and presentation.
+    validations:
+      required: true

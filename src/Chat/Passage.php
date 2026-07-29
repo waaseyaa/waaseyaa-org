@@ -16,7 +16,8 @@ final readonly class Passage
         public ?string $section,
         public string $excerpt,
         public string $url,
-    ) {}
+    ) {
+    }
 
     public function citationTitle(): string
     {

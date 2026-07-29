@@ -1,6 +1,7 @@
 {
     "framework_version": "v0.1.0-alpha.276",
-    "synced_at": "2026-07-29T17:33:52+00:00",
+    "source_released_at": "2026-07-27T17:50:36+00:00",
+    "corpus_sha1": "316d7cf359a4e5cefb7cf4768d484416e97d660c",
     "source": "vendor/waaseyaa/framework/docs/specs",
     "specs": [
         {

@@ -36,7 +36,8 @@ final class SpecToolRegistry implements ToolRegistryInterface
      */
     public function __construct(
         private readonly array $implementations,
-    ) {}
+    ) {
+    }
 
     /**
      * @return list<class-string<AgentToolInterface>>

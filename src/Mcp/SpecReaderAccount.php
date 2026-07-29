@@ -19,7 +19,7 @@ final class SpecReaderAccount implements AuthorizationPrincipalInterface
 {
     public const CAPABILITY = 'site.specs.read';
 
-    public function id(): int|string
+    public function id(): string
     {
         return 'public-spec-reader';
     }

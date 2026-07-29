@@ -120,7 +120,7 @@ final class DocsChatTest extends TestCase
                 $this->assertNotSame('', $source['title'], $question);
             }
 
-            $answer = implode('', array_map(static fn(array $d): string => (string) ($d['text'] ?? ''), $events['delta'] ?? []));
+            $answer = implode('', array_map(static fn (array $d): string => (string) ($d['text'] ?? ''), $events['delta'] ?? []));
             $this->assertStringContainsString('](https://waaseyaa.org/', $answer, 'No citation link in answer body for: ' . $question);
         }
     }
@@ -130,7 +130,7 @@ final class DocsChatTest extends TestCase
     {
         $events = $this->sseEvents($this->send(['question' => 'How do I add an entity type?']));
 
-        $answer = implode('', array_map(static fn(array $d): string => (string) ($d['text'] ?? ''), $events['delta'] ?? []));
+        $answer = implode('', array_map(static fn (array $d): string => (string) ($d['text'] ?? ''), $events['delta'] ?? []));
         $this->assertStringContainsString('entity', strtolower($answer));
         $this->assertStringContainsString('/docs/specs/', $answer);
 
