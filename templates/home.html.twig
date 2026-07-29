@@ -22,6 +22,17 @@
 </script>
 <link rel="stylesheet" href="/workspace/assets/workspace-chat.css">
 <style>
+  /* Storage note + clear control under the chat surface. */
+  .chat-f {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    margin-top: 8px; font-size: 12px; color: #46615d;
+  }
+  .chat-f button {
+    border: 1px solid #d4e6e2; background: #fff; color: #0d4f4f;
+    border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer;
+  }
+  .chat-f button:hover { background: #e4f4f1; }
+
   /* Theme the shared chat surface with the site tokens. */
   [data-ws-chat] {
     --ws-accent: #0f766e;
@@ -81,6 +92,10 @@
         intro: 'I answer from the framework spec corpus and cite the spec behind every answer. The same corpus is on /docs, as Markdown, and over MCP.',
         chips: ['How do I add an entity type?', 'What is Bimaaji?', 'How does the OCAP audit log work?'],
       } } only %}
+      <div class="chat-f">
+        <span>Transcripts are stored under a random cookie and deleted after 30 days. No account, no raw IP address.</span>
+        <button type="button" id="chat-clear" title="Delete every conversation stored for this browser">Clear conversation</button>
+      </div>
     </div>
     <div class="doc" id="doc">
       <div class="crumb"><span><a href="/docs/specs/entity-system">docs / specs / entity-system.md</a></span>
@@ -143,6 +158,16 @@ schema time.</div>
       doc.classList.toggle('rawmode', btn.dataset.view === 'md');
       bar.querySelectorAll('button').forEach(function (b) {
         b.classList.toggle('on', b === btn);
+      });
+    });
+  }
+
+  var clearBtn = document.getElementById('chat-clear');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', function () {
+      fetch('/docs-chat/clear', { method: 'POST' }).then(function () {
+        try { localStorage.removeItem('ws.chat.docs.pub'); } catch (e) {}
+        window.location.reload();
       });
     });
   }

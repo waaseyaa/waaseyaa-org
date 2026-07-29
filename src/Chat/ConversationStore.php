@@ -66,6 +66,52 @@ final class ConversationStore
     }
 
     /**
+     * Delete everything the visitor owns. Returns the number of
+     * conversations removed. Powers the user-facing Clear function.
+     */
+    public function deleteAllForVisitor(string $visitor): int
+    {
+        $ids = [];
+        foreach ($this->db->query(
+            'SELECT id FROM ' . ChatSchema::CONVERSATIONS . ' WHERE visitor = ?',
+            [$visitor],
+        ) as $row) {
+            $ids[] = (int) ($row['id'] ?? 0);
+        }
+
+        foreach ($ids as $id) {
+            $this->db->query('DELETE FROM ' . ChatSchema::MESSAGES . ' WHERE conversation_id = ?', [$id]);
+            $this->db->query('DELETE FROM ' . ChatSchema::CONVERSATIONS . ' WHERE id = ?', [$id]);
+        }
+
+        return count($ids);
+    }
+
+    /**
+     * Retention: delete transcripts whose last activity is older than
+     * the cutoff. Returns the number of conversations removed.
+     */
+    public function pruneOlderThan(int $days): int
+    {
+        $cutoff = gmdate('Y-m-d H:i:s', time() - $days * 86400);
+
+        $ids = [];
+        foreach ($this->db->query(
+            'SELECT id FROM ' . ChatSchema::CONVERSATIONS . ' WHERE updated_at < ?',
+            [$cutoff],
+        ) as $row) {
+            $ids[] = (int) ($row['id'] ?? 0);
+        }
+
+        foreach ($ids as $id) {
+            $this->db->query('DELETE FROM ' . ChatSchema::MESSAGES . ' WHERE conversation_id = ?', [$id]);
+            $this->db->query('DELETE FROM ' . ChatSchema::CONVERSATIONS . ' WHERE id = ?', [$id]);
+        }
+
+        return count($ids);
+    }
+
+    /**
      * Newest page of turns per the workspace chat contract: without
      * $before the LAST $limit turns; with $before, the $limit turns
      * older than that message id. Returned oldest first.

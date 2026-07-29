@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Chat\ChatGuard;
+use App\Chat\ChatLimits;
 use App\Chat\ChatPrompt;
 use App\Chat\ConversationStore;
 use App\Chat\DocsRetriever;
@@ -40,11 +42,21 @@ final class DocsChatController
         private readonly ConversationStore $conversations,
         private readonly SiteUrl $urls,
         private readonly ?ProviderInterface $provider,
+        private readonly ?ChatGuard $guard = null,
+        private readonly ChatLimits $limits = new ChatLimits(),
     ) {}
 
     public function send(Request $request): Response
     {
-        $payload = json_decode((string) $request->getContent(), true);
+        $raw = (string) $request->getContent();
+        if (strlen($raw) > $this->limits->maxRequestBytes) {
+            return new JsonResponse([
+                'ok' => false,
+                'error' => 'Request body too large.',
+            ], 413);
+        }
+
+        $payload = json_decode($raw, true);
         $data = is_array($payload) ? $payload : [];
 
         $question = trim((string) ($data['question'] ?? ''));
@@ -58,24 +70,81 @@ final class DocsChatController
 
         [$visitor, $isNewVisitor] = $this->visitor($request);
 
-        $conversationId = (int) ($data['conversation_id'] ?? 0);
-        $conversation = $conversationId > 0 ? $this->conversations->findForVisitor($conversationId, $visitor) : null;
-        if ($conversation === null) {
-            $conversationId = $this->conversations->create($visitor, $this->titleFrom($question));
-            $conversation = ['id' => $conversationId, 'title' => $this->titleFrom($question)];
+        try {
+            if ($this->guard !== null) {
+                $admission = $this->guard->admit($visitor, $request->getClientIp());
+                if (!$admission['allowed']) {
+                    return new JsonResponse([
+                        'ok' => false,
+                        'error' => 'Too many requests. Please slow down and try again shortly.',
+                    ], 429, ['Retry-After' => (string) $admission['retry_after']]);
+                }
+            }
+
+            // Opportunistic retention: roughly one send in twenty pays the
+            // (cheap) prune, so transcripts expire even without a scheduler.
+            if (random_int(1, 20) === 1) {
+                $this->conversations->pruneOlderThan($this->limits->retentionDays);
+                $this->guard?->pruneExpired();
+            }
+
+            $conversationId = (int) ($data['conversation_id'] ?? 0);
+            $conversation = $conversationId > 0 ? $this->conversations->findForVisitor($conversationId, $visitor) : null;
+            if ($conversation === null) {
+                $conversationId = $this->conversations->create($visitor, $this->titleFrom($question));
+                $conversation = ['id' => $conversationId, 'title' => $this->titleFrom($question)];
+            }
+            $this->conversations->addMessage($conversationId, 'user', $question);
+        } catch (\Throwable $e) {
+            \App\Support\OperationalLog::error('chat_store_unavailable', $e);
+
+            return new JsonResponse([
+                'ok' => false,
+                'error' => 'Chat is temporarily unavailable. The docs remain readable at /docs.',
+            ], 503, ['Retry-After' => '60']);
         }
-        $this->conversations->addMessage($conversationId, 'user', $question);
 
         $passages = $this->retriever->retrieve($question);
         $sources = $this->sources($passages);
 
-        $response = $this->provider instanceof StreamingProviderInterface
+        // The model path needs a capacity slot (daily budget, concurrent
+        // stream cap, closed breaker). Without one the answer degrades to
+        // the grounded extractive path: still cited, still honest.
+        $useModel = $this->provider instanceof StreamingProviderInterface
+            && ($this->guard === null || $this->guard->acquireModelSlot());
+
+        $response = $useModel
             ? $this->streamModelAnswer($conversationId, $conversation['title'], $question, $passages, $sources)
             : $this->streamExtractiveAnswer($conversationId, $conversation['title'], $question, $passages, $sources);
 
         if ($isNewVisitor) {
-            $response->headers->setCookie($this->visitorCookie($visitor));
+            $response->headers->setCookie($this->visitorCookie($visitor, $request->isSecure()));
         }
+
+        return $response;
+    }
+
+    /**
+     * User-facing Clear: delete every conversation the visitor owns and
+     * expire the visitor cookie. Idempotent by construction.
+     */
+    public function clear(Request $request): Response
+    {
+        [$visitor, $isNewVisitor] = $this->visitor($request);
+
+        $removed = 0;
+        if (!$isNewVisitor) {
+            try {
+                $removed = $this->conversations->deleteAllForVisitor($visitor);
+            } catch (\Throwable $e) {
+                \App\Support\OperationalLog::error('chat_clear_failed', $e);
+
+                return new JsonResponse(['ok' => false, 'error' => 'Chat is temporarily unavailable.'], 503);
+            }
+        }
+
+        $response = new JsonResponse(['ok' => true, 'cleared' => $removed]);
+        $response->headers->clearCookie(self::VISITOR_COOKIE, '/');
 
         return $response;
     }
@@ -121,26 +190,38 @@ final class DocsChatController
         );
         $conversations = $this->conversations;
         $extractive = $this->extractive;
+        $guard = $this->guard;
+        $streamBudget = $this->limits->modelStreamBudgetSeconds;
 
-        return $this->sse(static function () use ($provider, $messageRequest, $sources, $conversations, $conversationId, $title, $question, $passages, $extractive): void {
+        return $this->sse(static function () use ($provider, $messageRequest, $sources, $conversations, $conversationId, $title, $question, $passages, $extractive, $guard, $streamBudget): void {
             self::emit('meta', ['conversation_id' => $conversationId, 'title' => $title]);
 
             $answer = '';
+            $startedAt = microtime(true);
             try {
-                $provider->streamMessage($messageRequest, static function (StreamChunk $chunk) use (&$answer): void {
+                $provider->streamMessage($messageRequest, static function (StreamChunk $chunk) use (&$answer, $startedAt, $streamBudget): void {
+                    if (microtime(true) - $startedAt > $streamBudget) {
+                        // Wall-clock bound on the provider stream: abort and
+                        // let the fallback finish the answer.
+                        throw new \RuntimeException('chat stream budget exceeded');
+                    }
                     if ($chunk->type === 'text_delta' && $chunk->text !== '') {
                         $clean = ChatPrompt::sanitizeDashes($chunk->text);
                         $answer .= $clean;
                         self::emit('delta', ['text' => $clean]);
                     }
                 });
+                $guard?->recordModelSuccess();
             } catch (\Throwable $e) {
                 // Model unavailable mid-request: fall back to the grounded
                 // extractive answer rather than a dead end.
                 \App\Support\OperationalLog::warning('chat_model_stream_failed', $e);
+                $guard?->recordModelFailure();
                 $fallback = $extractive->answer($question, $passages);
                 $answer = $fallback;
                 self::emit('delta', ['text' => "\n" . $fallback]);
+            } finally {
+                $guard?->releaseModelSlot();
             }
 
             if (trim($answer) === '') {
@@ -221,15 +302,15 @@ final class DocsChatController
         return [bin2hex(random_bytes(16)), true];
     }
 
-    private function visitorCookie(string $token): Cookie
+    private function visitorCookie(string $token, bool $secure): Cookie
     {
         return Cookie::create(self::VISITOR_COOKIE)
             ->withValue($token)
-            ->withExpires(new \DateTimeImmutable('+1 year'))
+            ->withExpires(new \DateTimeImmutable(sprintf('+%d days', $this->limits->visitorCookieDays)))
             ->withPath('/')
             ->withHttpOnly(true)
             ->withSameSite('lax')
-            ->withSecure(false);
+            ->withSecure($secure);
     }
 
     private function sse(callable $body): StreamedResponse

@@ -149,8 +149,11 @@ final class DocsServiceProvider extends ServiceProvider
 
         // Docs chat: grounded on the same corpus and search engine as the
         // MCP tools. Anthropic when a key is configured; honest extractive
-        // quotes otherwise.
+        // quotes otherwise. ChatGuard bounds abuse and spend: per-visitor
+        // and hashed-per-IP rate limits, a daily model budget, a stream
+        // concurrency cap and a failure circuit breaker.
         $anthropicKey = getenv('ANTHROPIC_API_KEY') ?: '';
+        $chatLimits = \App\Chat\ChatLimits::fromEnvironment();
         $chat = new DocsChatController(
             retriever: new DocsRetriever($corpus, $specIndex, $urls),
             prompts: new ChatPrompt(),
@@ -158,6 +161,12 @@ final class DocsServiceProvider extends ServiceProvider
             conversations: new ConversationStore(\App\Support\Db::persistent()),
             urls: $urls,
             provider: $anthropicKey !== '' ? new \Waaseyaa\AI\Agent\Provider\AnthropicProvider($anthropicKey, self::CHAT_MODEL) : null,
+            guard: new \App\Chat\ChatGuard(
+                \App\Support\Db::persistent(),
+                $chatLimits,
+                hashKey: hash('sha256', 'waaseyaa-chat-ip.' . (getenv('WAASEYAA_APP_SECRET') ?: bin2hex(random_bytes(16)))),
+            ),
+            limits: $chatLimits,
         );
 
         $router->addRoute(
@@ -176,6 +185,16 @@ final class DocsServiceProvider extends ServiceProvider
                 ->controller(fn (Request $request, string $id) => $chat->messages($request, $id))
                 ->allowAll()
                 ->methods('GET')
+                ->build(),
+        );
+
+        $router->addRoute(
+            'docs.chat.clear',
+            RouteBuilder::create('/docs-chat/clear')
+                ->controller(fn (Request $request) => $chat->clear($request))
+                ->allowAll()
+                ->methods('POST')
+                ->csrfExempt()
                 ->build(),
         );
 
