@@ -107,6 +107,10 @@ final class DocsServiceProvider extends ServiceProvider
                 ->build(),
         );
 
+        // waaseyaa/ssr registers its own /llms.txt (seo.llms_txt, priority
+        // 10) whose generic body shadowed this corpus index in production.
+        // Same documented override lever as the MCP and sitemap routes.
+        $router->removeRoute('seo.llms_txt');
         $router->addRoute(
             'llms.txt',
             RouteBuilder::create('/llms.txt')
