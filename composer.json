@@ -7,6 +7,7 @@
         "php": ">=8.5",
         "league/commonmark": "^2.8",
         "symfony/dotenv": "^8.0",
+        "waaseyaa/ai-agent": "^0.1.0-alpha.276",
         "waaseyaa/framework": "^0.1.0-alpha.276",
         "waaseyaa/mcp": "^0.1.0-alpha.276",
         "waaseyaa/search": "^0.1.0-alpha.276",

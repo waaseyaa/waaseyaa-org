@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "5b434d759b37ee64d859a35daa5e048e",
+    "content-hash": "4f89a134d7b06f778c4684c1e870664a",
     "packages": [
         {
             "name": "deployer/deployer",
@@ -3794,6 +3794,136 @@
             "support": {
                 "issues": "https://github.com/waaseyaa/admin-surface/issues",
                 "source": "https://github.com/waaseyaa/admin-surface/tree/v0.1.0-alpha.276"
+            },
+            "time": "2026-07-27T17:50:36+00:00"
+        },
+        {
+            "name": "waaseyaa/ai-agent",
+            "version": "v0.1.0-alpha.276",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/waaseyaa/ai-agent.git",
+                "reference": "aa20e92863a6c94f8d94b562c3b844e66256ee00"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/waaseyaa/ai-agent/zipball/aa20e92863a6c94f8d94b562c3b844e66256ee00",
+                "reference": "aa20e92863a6c94f8d94b562c3b844e66256ee00",
+                "shasum": ""
+            },
+            "require": {
+                "php": ">=8.5",
+                "symfony/messenger": "^7.0",
+                "symfony/uid": "^7.0",
+                "waaseyaa/access": "^0.1.0-alpha.276",
+                "waaseyaa/ai-observability": "^0.1.0-alpha.276",
+                "waaseyaa/ai-schema": "^0.1.0-alpha.276",
+                "waaseyaa/ai-tools": "^0.1.0-alpha.276",
+                "waaseyaa/api": "^0.1.0-alpha.276",
+                "waaseyaa/audit": "^0.1.0-alpha.276",
+                "waaseyaa/bimaaji": "^0.1.0-alpha.276",
+                "waaseyaa/config": "^0.1.0-alpha.276",
+                "waaseyaa/database-legacy": "^0.1.0-alpha.276",
+                "waaseyaa/entity": "^0.1.0-alpha.276",
+                "waaseyaa/entity-storage": "^0.1.0-alpha.276",
+                "waaseyaa/foundation": "^0.1.0-alpha.276",
+                "waaseyaa/http-client": "^0.1.0-alpha.276",
+                "waaseyaa/routing": "^0.1.0-alpha.276"
+            },
+            "require-dev": {
+                "phpunit/phpunit": "^10.5"
+            },
+            "suggest": {
+                "waaseyaa/wayfinding": "Provides optional trail tools for AI agents"
+            },
+            "type": "library",
+            "extra": {
+                "waaseyaa": {
+                    "policies": [
+                        "Waaseyaa\\AI\\Agent\\Access\\AgentRunAccessPolicy"
+                    ],
+                    "providers": [
+                        "Waaseyaa\\AI\\Agent\\AiAgentEntityServiceProvider",
+                        "Waaseyaa\\AI\\Agent\\AiAgentServiceProvider",
+                        "Waaseyaa\\AI\\Agent\\Routing\\AgentRouteServiceProvider",
+                        "Waaseyaa\\AI\\Agent\\Mcp\\McpServiceProvider",
+                        "Waaseyaa\\AI\\Agent\\MessagingServiceProvider",
+                        "Waaseyaa\\AI\\Agent\\Broadcast\\AgentRunBroadcasterServiceProvider"
+                    ]
+                },
+                "branch-alias": {
+                    "dev-main": "0.1.x-dev",
+                    "dev-develop/v1.1": "0.1.x-dev"
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Waaseyaa\\AI\\Agent\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "GPL-2.0-or-later"
+            ],
+            "description": "AI agent orchestration and tool execution for Waaseyaa",
+            "support": {
+                "issues": "https://github.com/waaseyaa/ai-agent/issues",
+                "source": "https://github.com/waaseyaa/ai-agent/tree/v0.1.0-alpha.276"
+            },
+            "time": "2026-07-27T17:50:36+00:00"
+        },
+        {
+            "name": "waaseyaa/ai-observability",
+            "version": "v0.1.0-alpha.276",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/waaseyaa/ai-observability.git",
+                "reference": "94f6940cc5e68d9c721c434002c3710d3bf3a31a"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/waaseyaa/ai-observability/zipball/94f6940cc5e68d9c721c434002c3710d3bf3a31a",
+                "reference": "94f6940cc5e68d9c721c434002c3710d3bf3a31a",
+                "shasum": ""
+            },
+            "require": {
+                "php": ">=8.5",
+                "waaseyaa/ai-agent": "^0.1.0-alpha.276",
+                "waaseyaa/database-legacy": "^0.1.0-alpha.276",
+                "waaseyaa/entity": "^0.1.0-alpha.276",
+                "waaseyaa/entity-storage": "^0.1.0-alpha.276",
+                "waaseyaa/foundation": "^0.1.0-alpha.276"
+            },
+            "require-dev": {
+                "phpunit/phpunit": "^10.5",
+                "waaseyaa/access": "^0.1.0-alpha.276"
+            },
+            "type": "library",
+            "extra": {
+                "waaseyaa": {
+                    "providers": [
+                        "Waaseyaa\\AI\\Observability\\AgentTelemetryServiceProvider",
+                        "Waaseyaa\\AI\\Observability\\ObservabilityServiceProvider"
+                    ],
+                    "migrations": "migrations"
+                },
+                "branch-alias": {
+                    "dev-main": "0.1.x-dev"
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Waaseyaa\\AI\\Observability\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "GPL-2.0-or-later"
+            ],
+            "description": "Trace recording, cost tracking, and anomaly detection for Waaseyaa agentic framework",
+            "support": {
+                "issues": "https://github.com/waaseyaa/ai-observability/issues",
+                "source": "https://github.com/waaseyaa/ai-observability/tree/v0.1.0-alpha.276"
             },
             "time": "2026-07-27T17:50:36+00:00"
         },
