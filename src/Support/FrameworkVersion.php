@@ -21,7 +21,9 @@ final class FrameworkVersion
             }
 
             return InstalledVersions::getPrettyVersion('waaseyaa/framework');
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            OperationalLog::warning('framework_version_unresolvable', $e);
+
             return null;
         }
     }

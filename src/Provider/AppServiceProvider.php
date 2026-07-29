@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace App\Provider;
 
+use App\Controller\HealthController;
 use App\Controller\HomeController;
 use App\Controller\StaticPageController;
+use App\Docs\SpecCorpus;
+use App\Health\ReadinessCheck;
+use App\Support\Db;
 use App\Support\SiteUrl;
 use Waaseyaa\Foundation\ServiceProvider\ServiceProvider;
 use Waaseyaa\Routing\RouteBuilder;
@@ -19,6 +23,20 @@ final class AppServiceProvider extends ServiceProvider
     {
         $controller = new HomeController();
         $pages = new StaticPageController(SiteUrl::fromEnvironment());
+        $health = new HealthController(new ReadinessCheck(
+            databasePath: Db::path(),
+            corpus: SpecCorpus::default(),
+            environment: getenv('APP_ENV') ?: 'production',
+        ));
+
+        $router->addRoute(
+            'healthz',
+            RouteBuilder::create('/healthz')
+                ->controller(fn () => $health->healthz())
+                ->allowAll()
+                ->methods('GET')
+                ->build(),
+        );
 
         $router->addRoute(
             'home',

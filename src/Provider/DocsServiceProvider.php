@@ -44,10 +44,12 @@ final class DocsServiceProvider extends ServiceProvider
     public function boot(): void
     {
         // Best effort: the chat tables exist before the first request needs
-        // them; a bare bootstrap (tests, CLI without a DB) skips silently.
+        // them; a bare bootstrap (tests, CLI without a DB) degrades, but
+        // never silently.
         try {
             new ChatSchema(\App\Support\Db::persistent())->ensure();
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            \App\Support\OperationalLog::warning('chat_schema_ensure_failed', $e);
         }
     }
 
@@ -64,7 +66,8 @@ final class DocsServiceProvider extends ServiceProvider
         $specIndex = new SpecIndex($corpus, \App\Support\Db::persistent());
         try {
             $specIndex->ensure();
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            \App\Support\OperationalLog::warning('spec_index_ensure_failed', $e);
         }
         $search = new SpecSearch($corpus, $specIndex);
 

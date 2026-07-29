@@ -134,9 +134,10 @@ final class DocsChatController
                         self::emit('delta', ['text' => $clean]);
                     }
                 });
-            } catch (\Throwable) {
+            } catch (\Throwable $e) {
                 // Model unavailable mid-request: fall back to the grounded
                 // extractive answer rather than a dead end.
+                \App\Support\OperationalLog::warning('chat_model_stream_failed', $e);
                 $fallback = $extractive->answer($question, $passages);
                 $answer = $fallback;
                 self::emit('delta', ['text' => "\n" . $fallback]);
