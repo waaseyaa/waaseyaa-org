@@ -15,11 +15,13 @@ final class OperationalLog
     /** @var callable(string): void|null Test seam; null means error_log(). */
     private static $sink = null;
 
+    /** @param array<string, scalar> $context */
     public static function warning(string $event, \Throwable $e, array $context = []): void
     {
         self::write('warning', $event, $e, $context);
     }
 
+    /** @param array<string, scalar> $context */
     public static function error(string $event, \Throwable $e, array $context = []): void
     {
         self::write('error', $event, $e, $context);

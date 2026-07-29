@@ -1,0 +1,35 @@
+name: Site bug report
+description: Something on waaseyaa.org is broken or wrong.
+labels: [bug]
+body:
+  - type: input
+    id: url
+    attributes:
+      label: URL
+      description: The page or endpoint where you saw the problem.
+      placeholder: https://waaseyaa.org/docs/specs/entity-system
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead. Include the X-Request-Id header value if you got an error page.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open ...
+        2. Click ...
+    validations:
+      required: false
+  - type: input
+    id: agent
+    attributes:
+      label: Browser or client
+      placeholder: Firefox 142 / curl / an MCP client
+    validations:
+      required: false

@@ -69,6 +69,6 @@ final class SpecSearchIndexParityTest extends TestCase
      */
     private function keyset(array $matches): array
     {
-        return array_map(static fn(array $m): string => $m['spec'] . ':' . $m['line'], $matches);
+        return array_map(static fn (array $m): string => $m['spec'] . ':' . $m['line'], $matches);
     }
 }

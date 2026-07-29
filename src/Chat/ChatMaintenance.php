@@ -20,7 +20,9 @@ use Waaseyaa\Scheduler\ScheduleInterface;
  */
 final class ChatMaintenance implements ScheduleEntriesInterface
 {
-    public function __construct(private readonly DatabaseInterface $database) {}
+    public function __construct(private readonly DatabaseInterface $database)
+    {
+    }
 
     public function register(ScheduleInterface $schedule): array
     {

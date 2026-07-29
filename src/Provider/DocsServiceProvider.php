@@ -39,7 +39,9 @@ final class DocsServiceProvider extends ServiceProvider
 {
     public const string CHAT_MODEL = 'claude-sonnet-4-6';
 
-    public function register(): void {}
+    public function register(): void
+    {
+    }
 
     public function boot(): void
     {

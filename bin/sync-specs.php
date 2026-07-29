@@ -58,7 +58,7 @@ foreach (glob($source . '/*.md') ?: [] as $file) {
     ];
 }
 
-usort($specs, fn(array $a, array $b): int => strcmp($a['name'], $b['name']));
+usort($specs, fn (array $a, array $b): int => strcmp($a['name'], $b['name']));
 
 $manifest = [
     'framework_version' => $version,

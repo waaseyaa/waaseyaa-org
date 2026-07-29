@@ -18,7 +18,9 @@ final class ChatSchema
     public const LIMITS = 'docs_chat_limits';
     public const CONTROL = 'docs_chat_control';
 
-    public function __construct(private readonly DatabaseInterface $db) {}
+    public function __construct(private readonly DatabaseInterface $db)
+    {
+    }
 
     public function ensure(): void
     {

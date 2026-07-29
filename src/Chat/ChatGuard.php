@@ -33,7 +33,8 @@ final class ChatGuard
         private readonly ChatLimits $limits,
         private readonly string $hashKey,
         private readonly ?\Closure $clock = null,
-    ) {}
+    ) {
+    }
 
     /**
      * @return array{allowed: bool, retry_after: int}

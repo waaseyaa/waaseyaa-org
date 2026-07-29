@@ -20,7 +20,8 @@ final readonly class McpEndpointController
 {
     public function __construct(
         private McpEndpoint $endpoint,
-    ) {}
+    ) {
+    }
 
     public function handle(AccountInterface $account, HttpRequest $request): HttpResponse
     {

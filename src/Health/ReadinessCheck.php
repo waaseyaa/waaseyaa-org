@@ -25,7 +25,8 @@ final class ReadinessCheck
         private readonly string $databasePath,
         private readonly SpecCorpus $corpus,
         private readonly string $environment,
-    ) {}
+    ) {
+    }
 
     /**
      * @return array{status: 'ok'|'fail', checks: array<string, 'pass'|'fail'>}

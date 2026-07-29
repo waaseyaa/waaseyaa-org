@@ -13,7 +13,8 @@ final class SiteUrl
 {
     public function __construct(
         private readonly string $base,
-    ) {}
+    ) {
+    }
 
     public static function fromEnvironment(): self
     {

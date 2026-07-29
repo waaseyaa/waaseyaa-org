@@ -30,7 +30,8 @@ final readonly class ChatLimits
         public int $breakerCooldownSeconds = 300,
         public int $retentionDays = 30,
         public int $visitorCookieDays = 30,
-    ) {}
+    ) {
+    }
 
     public static function fromEnvironment(): self
     {

@@ -132,7 +132,7 @@ final class SpecIndex
             ];
         }
 
-        usort($candidates, static fn(array $a, array $b): int => [$b['hits'], $b['specificity'], $b['rrf']] <=> [$a['hits'], $a['specificity'], $a['rrf']]);
+        usort($candidates, static fn (array $a, array $b): int => [$b['hits'], $b['specificity'], $b['rrf']] <=> [$a['hits'], $a['specificity'], $a['rrf']]);
 
         $out = [];
         foreach (array_slice($candidates, 0, $limit) as $candidate) {
@@ -178,7 +178,7 @@ final class SpecIndex
      */
     public function rankSpecNames(string $query, int $limit): array
     {
-        return array_map(static fn(array $spec): string => $spec['name'], $this->rankSpecs($query, $limit));
+        return array_map(static fn (array $spec): string => $spec['name'], $this->rankSpecs($query, $limit));
     }
 
     /**

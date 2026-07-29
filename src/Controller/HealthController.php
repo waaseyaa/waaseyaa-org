@@ -18,7 +18,8 @@ final class HealthController
 {
     public function __construct(
         private readonly ReadinessCheck $readiness,
-    ) {}
+    ) {
+    }
 
     public function healthz(): Response
     {

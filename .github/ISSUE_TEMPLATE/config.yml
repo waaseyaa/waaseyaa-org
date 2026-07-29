@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security report (private)
+    url: https://github.com/waaseyaa/waaseyaa-org/security/advisories/new
+    about: Never report security problems in a public issue.
+  - name: Framework bug or question
+    url: https://github.com/waaseyaa/framework/issues
+    about: Issues in Waaseyaa framework packages belong upstream.

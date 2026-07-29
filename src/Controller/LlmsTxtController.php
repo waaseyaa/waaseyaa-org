@@ -18,7 +18,8 @@ final class LlmsTxtController
     public function __construct(
         private readonly SpecCorpus $corpus,
         private readonly SiteUrl $urls,
-    ) {}
+    ) {
+    }
 
     public function serve(): Response
     {

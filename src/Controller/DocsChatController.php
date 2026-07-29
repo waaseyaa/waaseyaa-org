@@ -44,7 +44,8 @@ final class DocsChatController
         private readonly ?ProviderInterface $provider,
         private readonly ?ChatGuard $guard = null,
         private readonly ChatLimits $limits = new ChatLimits(),
-    ) {}
+    ) {
+    }
 
     public function send(Request $request): Response
     {
@@ -232,7 +233,7 @@ final class DocsChatController
             // The client's source pills are plain text; the citation LINKS
             // live in the answer body, so every answer ends with them.
             $links = implode(' · ', array_map(
-                static fn(array $s): string => sprintf('[%s](%s)', $s['title'], $s['source_url']),
+                static fn (array $s): string => sprintf('[%s](%s)', $s['title'], $s['source_url']),
                 $sources,
             ));
             $sourcesLine = "\n\nSources: " . $links;

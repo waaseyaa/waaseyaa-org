@@ -235,7 +235,7 @@ final class ChatHardeningTest extends TestCase
 
         $expired = array_filter(
             $cleared->headers->getCookies(),
-            static fn($c) => $c->getName() === 'waaseyaa_docs_chat' && $c->isCleared(),
+            static fn ($c) => $c->getName() === 'waaseyaa_docs_chat' && $c->isCleared(),
         );
         self::assertNotEmpty($expired, 'clear must expire the visitor cookie');
 
@@ -280,7 +280,7 @@ final class ChatHardeningTest extends TestCase
 
         $cookies = array_filter(
             $response->headers->getCookies(),
-            static fn($c) => $c->getName() === 'waaseyaa_docs_chat',
+            static fn ($c) => $c->getName() === 'waaseyaa_docs_chat',
         );
         self::assertCount(1, $cookies);
         $cookie = array_values($cookies)[0];
@@ -317,7 +317,9 @@ final class FakeStreamingProvider implements StreamingProviderInterface
 {
     public int $calls = 0;
 
-    public function __construct(private readonly bool $fail = false) {}
+    public function __construct(private readonly bool $fail = false)
+    {
+    }
 
     public function sendMessage(MessageRequest $request): MessageResponse
     {

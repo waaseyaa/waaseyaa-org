@@ -21,7 +21,8 @@ final class PiTelemetry
     public function __construct(
         private readonly ?string $filePath = null,
         private readonly ?int $now = null,
-    ) {}
+    ) {
+    }
 
     public static function fromEnvironment(): self
     {

@@ -25,7 +25,8 @@ final class PublicErrorHandlerTest extends TestCase
     {
         $response = PublicErrorHandler::respond(
             new \RuntimeException(self::LEAKY_MESSAGE),
-            static function (string $line): void {},
+            static function (string $line): void {
+            },
         );
 
         $body = (string) $response->getContent();
@@ -51,7 +52,8 @@ final class PublicErrorHandlerTest extends TestCase
     {
         $response = PublicErrorHandler::respond(
             new \RuntimeException('boom'),
-            static function (string $line): void {},
+            static function (string $line): void {
+            },
         );
 
         $header = (string) $response->headers->get('X-Request-Id');
@@ -81,7 +83,8 @@ final class PublicErrorHandlerTest extends TestCase
     #[Test]
     public function response_is_json_api_shaped_and_uncacheable(): void
     {
-        $response = PublicErrorHandler::respond(new \LogicException('x'), static function (string $l): void {});
+        $response = PublicErrorHandler::respond(new \LogicException('x'), static function (string $l): void {
+        });
 
         self::assertSame('application/vnd.api+json', $response->headers->get('Content-Type'));
         self::assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));

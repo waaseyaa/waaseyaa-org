@@ -21,7 +21,8 @@ final class SpecSearch
     public function __construct(
         private readonly SpecCorpus $corpus,
         private readonly ?SpecIndex $index = null,
-    ) {}
+    ) {
+    }
 
     /**
      * @return list<array{spec: string, title: string, section: ?string, line: int, snippet: string}>
@@ -85,7 +86,7 @@ final class SpecSearch
      */
     private function orderedSpecNames(string $query): array
     {
-        $all = array_map(static fn(array $spec): string => $spec['name'], $this->corpus->all());
+        $all = array_map(static fn (array $spec): string => $spec['name'], $this->corpus->all());
         if ($this->index === null) {
             return $all;
         }
@@ -96,7 +97,7 @@ final class SpecSearch
         }
 
         $seen = array_fill_keys($ranked, true);
-        $rest = array_values(array_filter($all, static fn(string $name): bool => !isset($seen[$name])));
+        $rest = array_values(array_filter($all, static fn (string $name): bool => !isset($seen[$name])));
 
         return array_merge($ranked, $rest);
     }

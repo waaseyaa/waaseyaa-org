@@ -24,7 +24,8 @@ final class SpecReadTool extends AbstractAgentTool
     public function __construct(
         private readonly SpecCorpus $corpus,
         private readonly SiteUrl $urls,
-    ) {}
+    ) {
+    }
 
     public function execute(array $arguments, AccountInterface $account): AgentToolResult
     {

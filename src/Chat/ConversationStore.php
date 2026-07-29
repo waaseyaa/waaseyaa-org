@@ -16,7 +16,9 @@ use Waaseyaa\Database\DatabaseInterface;
  */
 final class ConversationStore
 {
-    public function __construct(private readonly DatabaseInterface $db) {}
+    public function __construct(private readonly DatabaseInterface $db)
+    {
+    }
 
     public function create(string $visitor, string $title): int
     {
