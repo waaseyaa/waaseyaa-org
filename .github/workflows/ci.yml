@@ -80,11 +80,14 @@ jobs:
       # logged. PHP ships the opposite defaults (display_errors=On,
       # log_errors=Off) and the base images activate neither shipped php.ini,
       # so the posture is asserted rather than assumed, in both images.
+      # --entrypoint is required: the CI image's ENTRYPOINT ends in `exec php -S`,
+      # so passing `php <script>` as arguments would boot the web server and
+      # hang forever instead of running the script.
       - name: Assert error-reporting posture in both images
         run: |
           for image in waaseyaa-org-prod waaseyaa-org-ci; do
             echo "== $image"
-            docker run --rm "$image" php /app/docker/assert-error-posture.php
+            timeout 60 docker run --rm --entrypoint php "$image" /app/docker/assert-error-posture.php
           done
 
       - name: Boot container (APP_ENV=production, real boot gates)
