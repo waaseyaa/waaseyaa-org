@@ -77,37 +77,14 @@ jobs:
         run: docker build -t waaseyaa-org-prod .
 
       # Diagnostics must never be displayed to visitors and must always be
-      # logged. PHP's own defaults are the opposite (display_errors=On,
+      # logged. PHP ships the opposite defaults (display_errors=On,
       # log_errors=Off) and the base images activate neither shipped php.ini,
-      # so this is asserted rather than assumed, in both images.
+      # so the posture is asserted rather than assumed, in both images.
       - name: Assert error-reporting posture in both images
         run: |
           for image in waaseyaa-org-prod waaseyaa-org-ci; do
             echo "== $image"
-            docker run --rm "$image" php -r '
-              $bad = [];
-              foreach ([
-                  "display_errors" => "",
-                  "display_startup_errors" => "",
-                  "log_errors" => "1",
-              ] as $key => $want) {
-                  $got = ini_get($key);
-                  if ($got !== $want) {
-                      $bad[] = sprintf("%s=%s (wanted %s)", $key, var_export($got, true), var_export($want, true));
-                  }
-              }
-              // error_log must stay unset: setting it makes PHP prefix every
-              // error_log() call with a timestamp, corrupting the app's JSON
-              // log lines. Diagnostics reach the container log via the SAPI.
-              if (ini_get("error_log") !== "") {
-                  $bad[] = sprintf("error_log=%s (must stay unset so JSON log lines are not prefixed)", var_export(ini_get("error_log"), true));
-              }
-              if ($bad !== []) {
-                  fwrite(STDERR, "error-reporting posture wrong: " . implode(", ", $bad) . PHP_EOL);
-                  exit(1);
-              }
-              echo "error-reporting posture ok", PHP_EOL;
-            '
+            docker run --rm "$image" php /app/docker/assert-error-posture.php
           done
 
       - name: Boot container (APP_ENV=production, real boot gates)
