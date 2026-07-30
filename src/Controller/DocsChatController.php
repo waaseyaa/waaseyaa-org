@@ -105,7 +105,15 @@ final class DocsChatController
             ], 503, ['Retry-After' => '60']);
         }
 
-        $passages = $this->retriever->retrieve($question);
+        // Retrieval sits outside the store guard above but must degrade the
+        // same way: an unavailable FTS index answers honestly ("not covered")
+        // and cites the docs index, rather than 500-ing a readable site.
+        try {
+            $passages = $this->retriever->retrieve($question);
+        } catch (\Throwable $e) {
+            \App\Support\OperationalLog::warning('chat_retrieval_failed', $e);
+            $passages = [];
+        }
         $sources = $this->sources($passages);
 
         // The model path needs a capacity slot (daily budget, concurrent
@@ -240,7 +248,18 @@ final class DocsChatController
             $answer .= $sourcesLine;
             self::emit('delta', ['text' => $sourcesLine]);
 
-            $conversations->addMessage($conversationId, 'assistant', $answer, $sources);
+            // This closure runs during Response::send(), after the headers and
+            // the whole answer have gone out and outside the front
+            // controller's error boundary. An escaping throwable here (a
+            // busy SQLite file is the realistic one) would be an uncaught
+            // fatal mid-stream with no boundary left to catch it, and the
+            // client would never receive `done`. Losing the transcript row is
+            // the acceptable degradation; losing the stream is not.
+            try {
+                $conversations->addMessage($conversationId, 'assistant', $answer, $sources);
+            } catch (\Throwable $e) {
+                \App\Support\OperationalLog::warning('chat_transcript_persist_failed', $e);
+            }
             self::emit('done', ['sources' => $sources]);
         });
     }
@@ -252,9 +271,14 @@ final class DocsChatController
     private function streamExtractiveAnswer(int $conversationId, string $title, string $question, array $passages, array $sources): StreamedResponse
     {
         $answer = $this->extractive->answer($question, $passages);
-        $conversations = $this->conversations;
 
-        $conversations->addMessage($conversationId, 'assistant', $answer, $sources);
+        // Same trade as the model path: a storage failure costs the visitor
+        // their transcript history, not the answer they asked for.
+        try {
+            $this->conversations->addMessage($conversationId, 'assistant', $answer, $sources);
+        } catch (\Throwable $e) {
+            \App\Support\OperationalLog::warning('chat_transcript_persist_failed', $e);
+        }
 
         return $this->sse(static function () use ($conversationId, $title, $answer, $sources): void {
             self::emit('meta', ['conversation_id' => $conversationId, 'title' => $title]);
