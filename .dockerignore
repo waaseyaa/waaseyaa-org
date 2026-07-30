@@ -8,3 +8,10 @@ phpunit.xml.dist
 *.md
 .claude
 .cursor
+
+# Secrets reach the container through the runtime env, never through a build
+# layer. `COPY . /app` would otherwise bake a developer's local .env.local
+# (the file .env.example tells you to create) into the image.
+.env
+.env.*
+!.env.example
