@@ -14,6 +14,11 @@ RUN composer install --no-dev --no-interaction --no-progress --prefer-dist \
 FROM php:8.5-cli-alpine
 RUN apk add --no-cache sqlite-libs icu-libs
 
+# Same error-reporting posture as the production image, so the gate
+# validates the configuration that actually ships rather than a laxer one.
+RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
+COPY docker/php/error-reporting.ini "$PHP_INI_DIR/conf.d/zz-error-reporting.ini"
+
 WORKDIR /app
 COPY . /app
 COPY --from=deps /src/vendor /app/vendor
