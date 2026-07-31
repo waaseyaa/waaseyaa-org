@@ -7,6 +7,7 @@ namespace App\Provider;
 use App\Cli\ContentSyncHandler;
 use App\Content\ContentReader;
 use App\Controller\ReleasesController;
+use App\Controller\RoadmapController;
 use App\Docs\SpecCorpus;
 use App\Entity\CaseStudy;
 use App\Entity\Release;
@@ -76,6 +77,17 @@ final class ContentServiceProvider extends ServiceProvider implements ProvidesCo
             'releases.show',
             RouteBuilder::create('/releases/{version}')
                 ->controller(fn (Request $request, string $version) => $releases->show($request, $version))
+                ->allowAll()
+                ->methods('GET')
+                ->build(),
+        );
+
+        $roadmap = new RoadmapController($reader, $corpus, $urls);
+
+        $router->addRoute(
+            'roadmap',
+            RouteBuilder::create('/roadmap')
+                ->controller(fn (Request $request) => $roadmap->page($request))
                 ->allowAll()
                 ->methods('GET')
                 ->build(),

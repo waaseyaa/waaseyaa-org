@@ -7,6 +7,7 @@ namespace App\Tests\Integration;
 use App\Content\ContentReader;
 use App\Content\ContentSync;
 use App\Controller\ReleasesController;
+use App\Controller\RoadmapController;
 use App\Docs\SpecCorpus;
 use App\Support\SiteUrl;
 use App\Tests\Support\ContentEntityHarness;
@@ -71,6 +72,24 @@ final class ContentPagesTest extends TestCase
 
         $missing = $this->releases()->show(Request::create('/releases/v9.9.9'), 'v9.9.9');
         self::assertSame(404, $missing->getStatusCode());
+    }
+
+    #[Test]
+    public function roadmap_renders_grouped_horizons(): void
+    {
+        $controller = new RoadmapController(
+            new ContentReader($this->manager),
+            SpecCorpus::default(),
+            new SiteUrl('https://waaseyaa.org'),
+        );
+        $html = (string) $controller->page(Request::create('/roadmap'))->getContent();
+
+        self::assertStringContainsString('Now', $html);
+        self::assertStringContainsString('Curated guides tier on waaseyaa.org', $html);
+        self::assertStringContainsString('stage-based', $html);
+
+        $md = $controller->page(Request::create('/roadmap', server: ['HTTP_ACCEPT' => 'text/markdown']));
+        self::assertStringStartsWith('text/markdown', (string) $md->headers->get('Content-Type'));
     }
 
     #[Test]
