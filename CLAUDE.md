@@ -27,8 +27,10 @@ see `tests/Unit/ContentHonestyTest.php`).
 This app registers three entity types (`release`, `roadmap_item`,
 `case_study` in `src/Entity/`), all revisionable, `group: 'content'`,
 `api: true`. They are the proof engine: real entities the site dogfoods.
-The ONLY writer is `content:sync` (a one-shot deploy step); there is no
-admin surface, no accounts, and no runtime write path. Publishing is a
+The framework auto-registers admin-surface and JSON:API write routes for
+these types, but both require authentication and account registration is
+never enabled, so no account exists to use them. `content:sync` (a
+one-shot deploy step) remains the only reachable writer, and publishing is a
 git push: author frontmatter markdown under `content/{releases,roadmap,
 case-studies}/`, and the sync creates entities, saves a new revision on
 change, and unpublishes (status=false) when a file is deleted.
