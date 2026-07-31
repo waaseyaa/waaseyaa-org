@@ -1,0 +1,40 @@
+{% extends "base.html.twig" %}
+
+{% block title %}Waaseyaa releases: the changelog, served from entities{% endblock %}
+{% block description %}Every tracked waaseyaa/framework release with honest notes. Served from revisionable entities synced from git, also available as Markdown and over MCP.{% endblock %}
+
+{% block nav %}
+  <a href="/start">Start</a>
+  <a href="/docs">Docs</a>
+  <a href="/releases" aria-current="page">Releases</a>
+  <a href="/roadmap">Roadmap</a>
+  <a href="/production">Production</a>
+  <a href="/why">Why</a>
+  <a href="/compare">Compare</a>
+  <a href="https://github.com/waaseyaa/framework">GitHub</a>
+{% endblock %}
+
+{% block head %}
+<link rel="canonical" href="{{ canonical_base }}/releases">
+{% endblock %}
+
+{% block content %}
+<main class="page">
+  <h1>Releases</h1>
+  <p>Framework {{ framework_version|default('alpha') }}. Each entry below is a revisionable entity synced from a markdown file in git; the same data is available as Markdown on this URL (Accept: text/markdown), per release at its .md URL, over JSON:API at <code>/api/release</code>, and over MCP via <code>release_list</code>.</p>
+
+  {% if releases is empty %}
+  <p>No releases have been synced yet. The corpus lives in <code>content/releases/</code> and is synced at deploy by <code>content:sync</code>.</p>
+  {% endif %}
+
+  <ul class="spec-list">
+    {% for release in releases %}
+    <li>
+      <a href="/releases/{{ release.version }}">{{ release.version }}</a>
+      <span class="spec-name">{{ release.released_at }}{% if release.breaking %} &middot; breaking{% endif %}</span>
+      <p>{{ release.summary }}</p>
+    </li>
+    {% endfor %}
+  </ul>
+</main>
+{% endblock %}
