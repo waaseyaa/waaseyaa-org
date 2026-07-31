@@ -196,6 +196,19 @@ that clones this repo at a pinned `WAASEYAA_ORG_REF`, a Caddy vhost
 
 ## Known gaps
 
+- **Anonymous JSON:API reads return empty data** for the three content types:
+  `GET /api/release` is 200 with `data: []` and show 404s, because the
+  framework routes anonymous `view` through the protected-entity-read path,
+  whose subject only carries `status` when a field declares
+  `settings: ['authorizationInput' => true]` with `read: Protected` (the
+  `Node` pattern). Our `status` fields are `Public`, so
+  `PublishedContentAccessPolicy` never sees them and the decision is Neutral
+  (denied). Verified in the production-shaped container. Reclassifying
+  `status` cascades into the field-read guard on our own `get('status')`
+  calls (ContentSync, ContentReader) and into serialization, so it is a
+  deliberate follow-up decision, not a quick fix. The data-bearing read
+  surfaces (HTML, Markdown negotiation, MCP tools) are unaffected and
+  tested; the home page demo advertises only those.
 - **Chat retrieval quality:** retrieval now ranks specs via `SpecIndex`
   (waaseyaa/search FTS5 with the spec title weighted above the body), so "how do
   I add an entity type?" surfaces entity-system. The remaining refinements are a

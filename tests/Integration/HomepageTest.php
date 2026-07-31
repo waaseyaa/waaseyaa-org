@@ -110,13 +110,13 @@ final class HomepageTest extends TestCase
     }
 
     #[Test]
-    public function the_demo_section_shows_tested_api_and_mcp_commands(): void
+    public function the_demo_section_shows_tested_markdown_and_mcp_commands(): void
     {
         $response = new HomeController(new PiTelemetry(null))->index();
         $html = (string) $response->getContent();
 
         $this->assertStringContainsString('This site is the demo', $html);
-        $this->assertStringContainsString('curl -s https://waaseyaa.org/api/release', $html);
+        $this->assertStringContainsString("curl -s -H 'Accept: text/markdown' https://waaseyaa.org/releases", $html);
         $this->assertStringContainsString('"name":"release_list"', $html);
     }
 }

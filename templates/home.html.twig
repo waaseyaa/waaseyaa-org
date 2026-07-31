@@ -83,8 +83,8 @@
 
   <section class="demo">
     <h2>This site is the demo</h2>
-    <p>waaseyaa.org is a Waaseyaa application. The releases, roadmap, and case studies are revisionable entities synced from markdown in git at deploy time; the framework serves them over JSON:API and MCP with no extra code. Both commands below are covered by this site's test suite.</p>
-    <div class="cmd">$ curl -s https://waaseyaa.org/api/release</div>
+    <p>waaseyaa.org is a Waaseyaa application. The releases, roadmap, and case studies are revisionable entities synced from markdown in git at deploy time, published as HTML, Markdown, and MCP, and write-locked by an explicit access policy: content:sync is the only writer. Both commands below are covered by this site's test suite.</p>
+    <div class="cmd">$ curl -s -H 'Accept: text/markdown' https://waaseyaa.org/releases</div>
     <div class="cmd">$ curl -s -X POST https://waaseyaa.org/mcp -H 'Content-Type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"release_list","arguments":{}}}'</div>
   </section>
