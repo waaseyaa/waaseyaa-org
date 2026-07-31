@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Content\ContentReader;
 use App\Docs\SpecCorpus;
 use App\Support\SiteUrl;
 use Symfony\Component\HttpFoundation\Response;
@@ -18,6 +19,7 @@ final class LlmsTxtController
     public function __construct(
         private readonly SpecCorpus $corpus,
         private readonly SiteUrl $urls,
+        private readonly ?ContentReader $content = null,
     ) {
     }
 
@@ -48,6 +50,24 @@ final class LlmsTxtController
                 $this->urls->specMarkdown($spec['name']),
                 $description !== null ? ': ' . $description : '',
             );
+        }
+
+        $lines[] = '';
+        $lines[] = '## Releases';
+        $lines[] = '';
+        $lines[] = sprintf('- [Releases index](%s): every tracked framework release, negotiable as Markdown', $this->urls->to('/releases'));
+        foreach ($this->content?->releases() ?? [] as $release) {
+            $lines[] = sprintf('- [%s](%s): %s', $release->get('version'), $this->urls->to('/releases/' . $release->get('version') . '.md'), $release->get('summary'));
+        }
+        $lines[] = '';
+        $lines[] = '## Roadmap';
+        $lines[] = '';
+        $lines[] = sprintf('- [Roadmap](%s): stage-based horizons, negotiable as Markdown', $this->urls->to('/roadmap'));
+        $lines[] = '';
+        $lines[] = '## Production';
+        $lines[] = '';
+        foreach ($this->content?->caseStudies() ?? [] as $study) {
+            $lines[] = sprintf('- [%s](%s): %s', $study->get('title'), $this->urls->to('/production/' . $study->get('slug')), $study->get('summary'));
         }
 
         return new Response(implode("\n", $lines) . "\n", 200, [
