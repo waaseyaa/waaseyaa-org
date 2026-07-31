@@ -117,6 +117,12 @@ a { color: inherit; }
   padding: 7px 14px;
 }
 
+/* Demo section: proves the pipeline with tested commands */
+.demo { max-width: 820px; margin: 6px auto 26px; padding: 0 8%; text-align: center; }
+.demo h2 { font-size: 18px; margin-bottom: 8px; }
+.demo p { font-size: 13.5px; color: var(--muted); line-height: 1.6; margin-bottom: 12px; }
+.demo .cmd { text-align: left; margin-bottom: 8px; }
+
 /* Docs surface: two panes, chat beside doc */
 .surface {
   margin: 6px 5% 30px;

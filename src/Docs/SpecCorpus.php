@@ -44,6 +44,13 @@ final class SpecCorpus
         return is_string($version) ? $version : null;
     }
 
+    public function sourceReleasedAt(): ?string
+    {
+        $releasedAt = $this->manifest()['source_released_at'] ?? null;
+
+        return is_string($releasedAt) ? substr($releasedAt, 0, 10) : null;
+    }
+
     /**
      * @return list<array{name: string, title: string}>
      */
