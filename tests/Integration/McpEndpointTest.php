@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration;
 
+use App\Content\ContentReader;
 use App\Docs\SpecCorpus;
 use App\Docs\SpecSearch;
 use App\Mcp\McpEndpointController;
@@ -11,6 +12,8 @@ use App\Mcp\PublicServerCard;
 use App\Mcp\PublicSpecsAuth;
 use App\Mcp\SpecReaderAccount;
 use App\Mcp\SpecToolRegistry;
+use App\Mcp\Tool\ReleaseListTool;
+use App\Mcp\Tool\RoadmapReadTool;
 use App\Mcp\Tool\SpecListTool;
 use App\Mcp\Tool\SpecReadTool;
 use App\Mcp\Tool\SpecSearchTool;
@@ -30,11 +33,14 @@ final class McpEndpointTest extends TestCase
     {
         self::$corpus = SpecCorpus::default();
         $urls = new SiteUrl('https://waaseyaa.org');
+        $content = new ContentReader(null);
 
         self::$registry = new SpecToolRegistry([
             new SpecListTool(self::$corpus, $urls),
             new SpecSearchTool(self::$corpus, new SpecSearch(self::$corpus), $urls),
             new SpecReadTool(self::$corpus, $urls),
+            new ReleaseListTool($content, self::$corpus, $urls),
+            new RoadmapReadTool($content, $urls),
         ]);
 
         self::$controller = new McpEndpointController(
@@ -66,13 +72,13 @@ final class McpEndpointTest extends TestCase
     }
 
     #[Test]
-    public function tools_list_exposes_exactly_the_three_read_only_spec_tools(): void
+    public function tools_list_exposes_exactly_the_five_read_only_tools(): void
     {
         $result = $this->rpc('tools/list');
 
         $names = array_column($result['result']['tools'] ?? [], 'name');
         sort($names);
-        $this->assertSame(['spec_list', 'spec_read', 'spec_search'], $names);
+        $this->assertSame(['release_list', 'roadmap_read', 'spec_list', 'spec_read', 'spec_search'], $names);
 
         foreach ($result['result']['tools'] as $tool) {
             $this->assertNotEmpty($tool['description']);

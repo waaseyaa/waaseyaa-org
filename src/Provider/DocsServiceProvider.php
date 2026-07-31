@@ -21,6 +21,8 @@ use App\Mcp\PublicServerCard;
 use App\Mcp\PublicSpecsAuth;
 use App\Mcp\SpecReaderAccount;
 use App\Mcp\SpecToolRegistry;
+use App\Mcp\Tool\ReleaseListTool;
+use App\Mcp\Tool\RoadmapReadTool;
 use App\Mcp\Tool\SpecListTool;
 use App\Mcp\Tool\SpecReadTool;
 use App\Mcp\Tool\SpecSearchTool;
@@ -133,6 +135,8 @@ final class DocsServiceProvider extends ServiceProvider
             new SpecListTool($corpus, $urls),
             new SpecSearchTool($corpus, $search, $urls),
             new SpecReadTool($corpus, $urls),
+            new ReleaseListTool($content, $corpus, $urls),
+            new RoadmapReadTool($content, $urls),
         ]);
         $mcp = new McpEndpointController(new McpEndpoint(new PublicSpecsAuth(), $registry));
 

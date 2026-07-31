@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Mcp;
 
+use App\Mcp\Tool\ReleaseListTool;
+use App\Mcp\Tool\RoadmapReadTool;
 use App\Mcp\Tool\SpecListTool;
 use App\Mcp\Tool\SpecReadTool;
 use App\Mcp\Tool\SpecSearchTool;
@@ -14,9 +16,10 @@ use Waaseyaa\AI\Tools\ToolNotFoundException;
 use Waaseyaa\AI\Tools\ToolRegistryInterface;
 
 /**
- * The complete tool surface of the public MCP endpoint: three read-only
- * spec tools, nothing else. Tool metadata is read from each class's own
- * #[AsAgentTool] attribute so it cannot drift from the implementation.
+ * The complete tool surface of the public MCP endpoint: five read-only
+ * tools over the specs and content corpora, nothing else. Tool metadata
+ * is read from each class's own #[AsAgentTool] attribute so it cannot
+ * drift from the implementation.
  *
  * Hand-built rather than the framework AttributeToolRegistry for the
  * same reason as fnpi-waaseyaa: on this framework line nothing binds
@@ -44,7 +47,13 @@ final class SpecToolRegistry implements ToolRegistryInterface
      */
     public static function toolClasses(): array
     {
-        return [SpecListTool::class, SpecSearchTool::class, SpecReadTool::class];
+        return [
+            SpecListTool::class,
+            SpecSearchTool::class,
+            SpecReadTool::class,
+            ReleaseListTool::class,
+            RoadmapReadTool::class,
+        ];
     }
 
     public function register(AgentTool $tool): void
