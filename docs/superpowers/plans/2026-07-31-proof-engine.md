@@ -21,7 +21,7 @@ rewritten.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make waaseyaa.org dogfood the entity pipeline it advertises: git-authored releases, roadmap, and case studies become real revisionable entities served as HTML, Markdown, JSON:API, and MCP.
+**Goal:** Make waaseyaa.org dogfood the entity pipeline it advertises: git-authored releases, roadmap, and case studies become real revisionable entities served as HTML, Markdown, ~~JSON:API,~~ and MCP (JSON:API withdrawn before merge, see the addendum above; waaseyaa/framework#2159).
 
 **Architecture:** Frontmatter markdown under `content/` is synced into three `ContentEntityBase` entity types by an idempotent `content:sync` CLI command (create / new-revision-on-change / unpublish-on-delete). A read-side `ContentReader` gateway feeds new controllers (`/releases`, `/roadmap`, `/production`), the sitemap, llms.txt, and two new MCP tools. ~~Anonymous JSON:API read comes from the framework: `api: true` + `group: 'content'` + `status = true` triggers the kernel's `PublishedContentAccessPolicy`.~~ Withdrawn before merge, see the addendum at the top of this document (waaseyaa/framework#2159); the shipped machine read surfaces are Markdown negotiation and MCP.
 

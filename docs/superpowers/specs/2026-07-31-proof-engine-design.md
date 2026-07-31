@@ -124,8 +124,9 @@ Machine surfaces:
 Home page updates:
 
 - Hero stage line becomes live: version, release date, link to `/releases`.
-- New section "This site is the demo": copy-pasteable `curl` for the JSON:API
-  latest-release call and the MCP call, both covered by integration tests so
+- New section "This site is the demo": copy-pasteable `curl` for the
+  ~~JSON:API latest-release call~~ Markdown-negotiation releases call (per the
+  addendum) and the MCP call, both covered by integration tests so
   they cannot rot (same guarantee as `/start`).
 - Nav gains Releases and Roadmap. Proof chips updated.
 
@@ -137,8 +138,10 @@ Testing:
   unpublish-on-delete, loud failure on malformed frontmatter.
 - Route tests for all new pages in HTML and Markdown renderings; 404s for
   unknown slugs.
-- JSON:API: anonymous can read the three types; POST/PATCH/DELETE are
-  rejected (executable security boundary).
+- ~~JSON:API: anonymous can read the three types; POST/PATCH/DELETE are
+  rejected (executable security boundary).~~ Superseded by the addendum:
+  `ApiAbsenceTest` proves `/api/{type}` is NOT exposed, and
+  `ContentWriteProtectionTest` carries the write boundary.
 - MCP tests for `release_list` / `roadmap_read` through the same
   production-shaped harness as the spec tools.
 - `ContentHonestyTest` extended to new templates and content files. New
