@@ -80,6 +80,13 @@ return [
     // Allowed CORS origins for the admin SPA.
     'cors_origins' => ['http://localhost:3000', 'http://127.0.0.1:3000'],
 
+    // JSON:API closed world: ONLY these entity types are exposed under /api,
+    // read-only in practice because the site has no accounts (write routes
+    // 401 for anonymous). Any other api-capable type stays dark.
+    'api' => [
+        'entity_type_allowlist' => ['release', 'roadmap_item', 'case_study'],
+    ],
+
     // Locale negotiation defaults used by public SSR path resolution.
     'i18n' => [
         'languages' => [
