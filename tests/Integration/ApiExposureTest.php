@@ -45,11 +45,31 @@ final class ApiExposureTest extends TestCase
         self::assertSame('api.release.index', $getRouter->match('/api/release')['_route']);
         self::assertSame('api.release.show', $getRouter->match('/api/release/1')['_route']);
 
+        $getRoutes = $getRouter->getRouteCollection();
+        self::assertNotNull($getRoutes->get('api.release.index'), 'route must be registered');
+        self::assertNotNull($getRoutes->get('api.release.show'), 'route must be registered');
+        self::assertNull(
+            $getRoutes->get('api.release.index')->getOption('_authenticated'),
+            'read route api.release.index must not carry the authentication gate',
+        );
+        self::assertNull(
+            $getRoutes->get('api.release.show')->getOption('_authenticated'),
+            'read route api.release.show must not carry the authentication gate',
+        );
+
         $post = new RequestContext();
         $post->setMethod('POST');
         $postRouter = new WaaseyaaRouter($post);
         (new JsonApiRouteProvider($manager))->registerRoutes($postRouter);
         self::assertSame('api.release.store', $postRouter->match('/api/release')['_route']);
+
+        $storeRoute = $postRouter->getRouteCollection()->get('api.release.store');
+        self::assertNotNull($storeRoute, 'route must be registered');
+        self::assertSame(
+            true,
+            $storeRoute->getOption('_authenticated'),
+            'write route api.release.store must require authentication (RouteBuilder::requireAuthentication)',
+        );
     }
 
     #[Test]
