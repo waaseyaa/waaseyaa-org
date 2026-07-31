@@ -6,12 +6,8 @@ namespace App\Controller;
 
 use App\Docs\MarkdownNegotiation;
 use App\Docs\SpecCorpus;
+use App\Support\Markdown;
 use App\Support\SiteUrl;
-use League\CommonMark\Environment\Environment;
-use League\CommonMark\Extension\Autolink\AutolinkExtension;
-use League\CommonMark\Extension\CommonMark\CommonMarkCoreExtension;
-use League\CommonMark\Extension\Table\TableExtension;
-use League\CommonMark\MarkdownConverter;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Waaseyaa\SSR\SsrServiceProvider;
@@ -24,8 +20,6 @@ use Waaseyaa\SSR\SsrServiceProvider;
  */
 final class DocsController
 {
-    private ?MarkdownConverter $converter = null;
-
     public function __construct(
         private readonly SpecCorpus $corpus,
         private readonly SiteUrl $urls,
@@ -63,7 +57,7 @@ final class DocsController
         return $this->render('docs-spec.html.twig', [
             'name' => $name,
             'title' => $this->corpus->title($name) ?? $name,
-            'body' => $this->converter()->convert($markdown)->getContent(),
+            'body' => Markdown::toHtml($markdown),
             'markdown_url' => '/docs/specs/' . $name . '.md',
             'canonical_url' => $this->urls->spec($name),
             'framework_version' => $this->corpus->frameworkVersion(),
@@ -132,22 +126,5 @@ final class DocsController
             'Content-Type' => 'text/html; charset=UTF-8',
             'Vary' => 'Accept',
         ]);
-    }
-
-    private function converter(): MarkdownConverter
-    {
-        if ($this->converter !== null) {
-            return $this->converter;
-        }
-
-        $environment = new Environment([
-            'html_input' => 'allow',
-            'allow_unsafe_links' => false,
-        ]);
-        $environment->addExtension(new CommonMarkCoreExtension());
-        $environment->addExtension(new TableExtension());
-        $environment->addExtension(new AutolinkExtension());
-
-        return $this->converter = new MarkdownConverter($environment);
     }
 }

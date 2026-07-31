@@ -32,7 +32,7 @@ final class PiTelemetry
     }
 
     /**
-     * @return array{uptime_days: int, temp_c: float}|null
+     * @return array{uptime_days: int, temp_c: float, response_ms: ?float}|null
      */
     public function read(): ?array
     {
@@ -68,9 +68,12 @@ final class PiTelemetry
             return null;
         }
 
+        $responseMs = $data['response_ms'] ?? null;
+
         return [
             'uptime_days' => (int) $uptimeDays,
             'temp_c' => round((float) $tempC, 1),
+            'response_ms' => is_numeric($responseMs) ? round((float) $responseMs, 1) : null,
         ];
     }
 }

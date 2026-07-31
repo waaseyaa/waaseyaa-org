@@ -1,0 +1,49 @@
+{% extends "base.html.twig" %}
+
+{% block title %}Waaseyaa roadmap: stage-based horizons{% endblock %}
+{% block description %}The Waaseyaa framework roadmap grouped by stage-based horizons (now, next, later), with honest status notes and links into the specs each item depends on.{% endblock %}
+
+{% block nav %}
+  <a href="/start">Start</a>
+  <a href="/docs">Docs</a>
+  <a href="/releases">Releases</a>
+  <a href="/roadmap" aria-current="page">Roadmap</a>
+  <a href="/production">Production</a>
+  <a href="/why">Why</a>
+  <a href="/compare">Compare</a>
+  <a href="https://github.com/waaseyaa/framework">GitHub</a>
+{% endblock %}
+
+{% block head %}
+<link rel="canonical" href="{{ canonical_base }}/roadmap">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Waaseyaa roadmap: stage-based horizons",
+  "url": "{{ canonical_base }}/roadmap",
+  "isPartOf": { "@type": "WebSite", "name": "Waaseyaa", "url": "{{ canonical_base }}/" }
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<main class="page">
+  <h1>Roadmap</h1>
+  <p>Horizons are stage-based, not dated: Waaseyaa is alpha, and honest sequencing beats invented deadlines. Every item links to the specs it depends on. Items are roadmap_item entities synced from git; the same data is served over MCP via <code>roadmap_read</code>.</p>
+
+  {% for horizon, label in {'now': 'Now', 'next': 'Next', 'later': 'Later'} %}
+  <h2>{{ label }}</h2>
+  {% if roadmap[horizon] is empty %}<p>Nothing in this horizon.</p>{% endif %}
+  <ul class="why-list">
+    {% for item in roadmap[horizon] %}
+    <li>
+      <strong>{{ item.title }}.</strong> {{ item.status_note }}.
+      {{ item.body_html|raw }}
+      {% for spec in item.specs %}<a href="/docs/specs/{{ spec }}">{{ spec }}.md</a>{% if not loop.last %} &middot; {% endif %}{% endfor %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endfor %}
+</main>
+{% endblock %}

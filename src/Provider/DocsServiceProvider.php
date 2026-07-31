@@ -9,6 +9,7 @@ use App\Chat\ChatSchema;
 use App\Chat\ConversationStore;
 use App\Chat\DocsRetriever;
 use App\Chat\ExtractiveAnswerer;
+use App\Content\ContentReader;
 use App\Controller\DocsChatController;
 use App\Controller\DocsController;
 use App\Controller\LlmsTxtController;
@@ -20,6 +21,8 @@ use App\Mcp\PublicServerCard;
 use App\Mcp\PublicSpecsAuth;
 use App\Mcp\SpecReaderAccount;
 use App\Mcp\SpecToolRegistry;
+use App\Mcp\Tool\ReleaseListTool;
+use App\Mcp\Tool\RoadmapReadTool;
 use App\Mcp\Tool\SpecListTool;
 use App\Mcp\Tool\SpecReadTool;
 use App\Mcp\Tool\SpecSearchTool;
@@ -59,6 +62,7 @@ final class DocsServiceProvider extends ServiceProvider
     {
         $corpus = SpecCorpus::default();
         $urls = SiteUrl::fromEnvironment();
+        $content = new ContentReader($entityTypeManager);
 
         // Title-weighted FTS5 ranking over the synced corpus, shared by the MCP
         // spec_search tool and the docs chat. ensure() is idempotent and rebuilds
@@ -74,7 +78,7 @@ final class DocsServiceProvider extends ServiceProvider
         $search = new SpecSearch($corpus, $specIndex);
 
         $docs = new DocsController($corpus, $urls);
-        $llms = new LlmsTxtController($corpus, $urls);
+        $llms = new LlmsTxtController($corpus, $urls, $content);
 
         $router->addRoute(
             'docs.index',
@@ -94,7 +98,7 @@ final class DocsServiceProvider extends ServiceProvider
                 ->build(),
         );
 
-        $sitemap = new \App\Controller\SitemapController($corpus, $urls);
+        $sitemap = new \App\Controller\SitemapController($corpus, $urls, $content);
         // waaseyaa/ssr registers its own entity-driven /sitemap.xml
         // (seo.sitemap_xml, priority 10) which would shadow this corpus
         // sitemap with an empty urlset on a site that registers no
@@ -131,6 +135,8 @@ final class DocsServiceProvider extends ServiceProvider
             new SpecListTool($corpus, $urls),
             new SpecSearchTool($corpus, $search, $urls),
             new SpecReadTool($corpus, $urls),
+            new ReleaseListTool($content, $corpus, $urls),
+            new RoadmapReadTool($content, $urls),
         ]);
         $mcp = new McpEndpointController(new McpEndpoint(new PublicSpecsAuth(), $registry));
 

@@ -57,7 +57,7 @@
   <section class="hero">
     <h1>Sovereign content platforms,<br><em>readable by humans and agents alike.</em></h1>
     <p class="lede">Spec-driven inside, agent-readable outside. One docs corpus, three renderings: HTML pages, clean Markdown at the same URLs, and an MCP server your agent can call.</p>
-    <p class="stage">{{ framework_version|default('alpha') }} &middot; alpha &middot; in production at First Nations Procurement Inc.</p>
+    <p class="stage">{{ framework_version|default('alpha') }} &middot; alpha{% if release_date %} &middot; released {{ release_date }}{% endif %} &middot; <a href="/releases">what changed</a> &middot; in production at First Nations Procurement Inc.</p>
   </section>
 
   <section class="installs">
@@ -77,8 +77,16 @@
     <div>7 enforced layers</div>
     <div>Spec-driven, natively</div>
     <div>OCAP audit log in core</div>
-    <div>CI-gated conventions</div>
+    <div>Real entities under this site</div>
     <div>Production on a Raspberry Pi</div>
+  </section>
+
+  <section class="demo">
+    <h2>This site is the demo</h2>
+    <p>waaseyaa.org is a Waaseyaa application. The releases, roadmap, and case studies are revisionable entities synced from markdown in git at deploy time, published as HTML, Markdown, and MCP, and write-locked by an explicit access policy: content:sync is the only writer. Both commands below are covered by this site's test suite.</p>
+    <div class="cmd">$ curl -s -H 'Accept: text/markdown' https://waaseyaa.org/releases</div>
+    <div class="cmd">$ curl -s -X POST https://waaseyaa.org/mcp -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"release_list","arguments":{}}}'</div>
   </section>
 
   <section class="surface">

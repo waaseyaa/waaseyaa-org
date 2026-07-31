@@ -4,11 +4,15 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration;
 
+use App\Content\ContentReader;
+use App\Content\ContentSync;
 use App\Controller\LlmsTxtController;
 use App\Docs\SpecCorpus;
 use App\Support\SiteUrl;
+use App\Tests\Support\ContentEntityHarness;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use Waaseyaa\SSR\SsrServiceProvider;
 
 final class LlmsTxtTest extends TestCase
 {
@@ -17,8 +21,17 @@ final class LlmsTxtTest extends TestCase
 
     public static function setUpBeforeClass(): void
     {
+        $provider = new SsrServiceProvider();
+        $provider->setKernelContext(dirname(__DIR__, 2), [], []);
+        $provider->boot();
+
         self::$corpus = SpecCorpus::default();
-        $response = new LlmsTxtController(self::$corpus, new SiteUrl('https://waaseyaa.org'))->serve();
+
+        $manager = ContentEntityHarness::entityTypeManager();
+        // Sync the REAL repo corpus so tests cover the shipped content.
+        new ContentSync($manager, dirname(__DIR__, 2) . '/content')->sync();
+
+        $response = new LlmsTxtController(self::$corpus, new SiteUrl('https://waaseyaa.org'), new ContentReader($manager))->serve();
         self::$body = (string) $response->getContent();
     }
 
@@ -43,6 +56,15 @@ final class LlmsTxtTest extends TestCase
                 $spec['name'],
             );
         }
+    }
+
+    #[Test]
+    public function llms_txt_indexes_content_surfaces(): void
+    {
+        $this->assertStringContainsString('## Releases', self::$body);
+        $this->assertStringContainsString('/releases/v0.1.0-alpha.276.md', self::$body);
+        $this->assertStringContainsString('## Roadmap', self::$body);
+        $this->assertStringContainsString('## Production', self::$body);
     }
 
     #[Test]

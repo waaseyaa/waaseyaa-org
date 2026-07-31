@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Content\ContentReader;
 use App\Docs\SpecCorpus;
 use App\Support\SiteUrl;
 use Symfony\Component\HttpFoundation\Response;
@@ -17,6 +18,7 @@ final class SitemapController
     public function __construct(
         private readonly SpecCorpus $corpus,
         private readonly SiteUrl $urls,
+        private readonly ?ContentReader $content = null,
     ) {
     }
 
@@ -25,6 +27,18 @@ final class SitemapController
         $paths = ['/', '/start', '/why', '/compare', '/docs'];
         foreach ($this->corpus->all() as $spec) {
             $paths[] = '/docs/specs/' . $spec['name'];
+        }
+
+        if ($this->content !== null) {
+            $paths[] = '/releases';
+            $paths[] = '/roadmap';
+            $paths[] = '/production';
+            foreach ($this->content->releases() as $release) {
+                $paths[] = '/releases/' . $release->get('version');
+            }
+            foreach ($this->content->caseStudies() as $study) {
+                $paths[] = '/production/' . $study->get('slug');
+            }
         }
 
         $xml = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";

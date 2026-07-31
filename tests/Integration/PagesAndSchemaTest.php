@@ -4,15 +4,19 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration;
 
+use App\Content\ContentReader;
+use App\Content\ContentSync;
 use App\Controller\DocsController;
 use App\Controller\SitemapController;
 use App\Controller\StaticPageController;
 use App\Docs\SpecCorpus;
 use App\Provider\AppServiceProvider;
 use App\Support\SiteUrl;
+use App\Tests\Support\ContentEntityHarness;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Request;
+use Waaseyaa\Entity\EntityTypeManager;
 use Waaseyaa\Routing\WaaseyaaRouter;
 use Waaseyaa\SSR\SsrServiceProvider;
 
@@ -20,6 +24,7 @@ final class PagesAndSchemaTest extends TestCase
 {
     private static StaticPageController $pages;
     private static SpecCorpus $corpus;
+    private static EntityTypeManager $manager;
 
     public static function setUpBeforeClass(): void
     {
@@ -29,6 +34,10 @@ final class PagesAndSchemaTest extends TestCase
 
         self::$pages = new StaticPageController(new SiteUrl('https://waaseyaa.org'));
         self::$corpus = SpecCorpus::default();
+
+        self::$manager = ContentEntityHarness::entityTypeManager();
+        // Sync the REAL repo corpus so tests cover the shipped content.
+        new ContentSync(self::$manager, dirname(__DIR__, 2) . '/content')->sync();
     }
 
     /**
@@ -124,7 +133,7 @@ final class PagesAndSchemaTest extends TestCase
     #[Test]
     public function sitemap_lists_every_page(): void
     {
-        $xml = (string) new SitemapController(self::$corpus, new SiteUrl('https://waaseyaa.org'))->serve()->getContent();
+        $xml = (string) new SitemapController(self::$corpus, new SiteUrl('https://waaseyaa.org'), new ContentReader(self::$manager))->serve()->getContent();
 
         $this->assertStringContainsString('<loc>https://waaseyaa.org/</loc>', $xml);
         $this->assertStringContainsString('<loc>https://waaseyaa.org/why</loc>', $xml);
@@ -132,6 +141,12 @@ final class PagesAndSchemaTest extends TestCase
         foreach (self::$corpus->all() as $spec) {
             $this->assertStringContainsString('/docs/specs/' . $spec['name'] . '</loc>', $xml);
         }
+
+        $this->assertStringContainsString('<loc>https://waaseyaa.org/releases</loc>', $xml);
+        $this->assertStringContainsString('<loc>https://waaseyaa.org/releases/v0.1.0-alpha.276</loc>', $xml);
+        $this->assertStringContainsString('<loc>https://waaseyaa.org/roadmap</loc>', $xml);
+        $this->assertStringContainsString('<loc>https://waaseyaa.org/production</loc>', $xml);
+        $this->assertStringContainsString('<loc>https://waaseyaa.org/production/fnpi</loc>', $xml);
 
         $parsed = simplexml_load_string($xml);
         $this->assertNotFalse($parsed, 'sitemap.xml is well-formed XML');

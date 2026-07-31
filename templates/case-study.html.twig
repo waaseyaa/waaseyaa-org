@@ -1,0 +1,39 @@
+{% extends "base.html.twig" %}
+
+{% block title %}{{ study.title }}{% endblock %}
+{% block description %}{{ study.summary }}{% endblock %}
+
+{% block nav %}
+  <a href="/start">Start</a>
+  <a href="/docs">Docs</a>
+  <a href="/releases">Releases</a>
+  <a href="/roadmap">Roadmap</a>
+  <a href="/production" aria-current="page">Production</a>
+  <a href="/why">Why</a>
+  <a href="/compare">Compare</a>
+  <a href="https://github.com/waaseyaa/framework">GitHub</a>
+{% endblock %}
+
+{% block head %}
+<link rel="canonical" href="{{ canonical_base }}/production/{{ study.slug }}">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": {{ study.title|json_encode|raw }},
+  "url": "{{ canonical_base }}/production/{{ study.slug }}",
+  "isPartOf": { "@type": "WebSite", "name": "Waaseyaa", "url": "{{ canonical_base }}/" }
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<main class="page page-spec spec-body">
+  <p class="provenance">content/case-studies/{{ study.slug }}.md{% if revisions %} &middot; revision {{ revisions }}{% endif %} &middot; <a href="/production/{{ study.slug }}.md">markdown</a></p>
+  <h1>{{ study.title }}</h1>
+  <p><strong>{{ study.org }}</strong></p>
+  <p>{{ study.summary }}</p>
+  {{ study.body_html|raw }}
+  {% if study.site_url %}<p><a href="{{ study.site_url }}">{{ study.site_url }}</a></p>{% endif %}
+</main>
+{% endblock %}

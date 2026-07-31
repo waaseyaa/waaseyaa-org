@@ -26,7 +26,7 @@ final readonly class PublicServerCard
         $card = [
             'name' => 'waaseyaa.org',
             'version' => $this->corpus->frameworkVersion() ?? '0.1.0',
-            'description' => 'Read-only MCP access to the Waaseyaa framework spec corpus. Tools: spec_list, spec_search, spec_read. No authentication required.',
+            'description' => 'Read-only MCP access to the Waaseyaa framework spec corpus and site content. Tools: spec_list, spec_search, spec_read, release_list, roadmap_read. No authentication required.',
             'endpoint' => '/mcp',
             'endpoint_url' => $this->urls->to('/mcp'),
             'transport' => 'streamable-http',

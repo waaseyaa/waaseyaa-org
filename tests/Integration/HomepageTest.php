@@ -98,4 +98,25 @@ final class HomepageTest extends TestCase
             @unlink($file);
         }
     }
+
+    #[Test]
+    public function hero_carries_the_release_date_and_links_to_releases(): void
+    {
+        $response = new HomeController(new PiTelemetry(null))->index();
+        $html = (string) $response->getContent();
+
+        $this->assertStringContainsString('released 2026-07-27', $html);
+        $this->assertStringContainsString('href="/releases"', $html);
+    }
+
+    #[Test]
+    public function the_demo_section_shows_tested_markdown_and_mcp_commands(): void
+    {
+        $response = new HomeController(new PiTelemetry(null))->index();
+        $html = (string) $response->getContent();
+
+        $this->assertStringContainsString('This site is the demo', $html);
+        $this->assertStringContainsString("curl -s -H 'Accept: text/markdown' https://waaseyaa.org/releases", $html);
+        $this->assertStringContainsString('"name":"release_list"', $html);
+    }
 }

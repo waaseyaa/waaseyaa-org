@@ -1,0 +1,40 @@
+{% extends "base.html.twig" %}
+
+{% block title %}{{ release.title }}{% endblock %}
+{% block description %}{{ release.summary }}{% endblock %}
+
+{% block nav %}
+  <a href="/start">Start</a>
+  <a href="/docs">Docs</a>
+  <a href="/releases" aria-current="page">Releases</a>
+  <a href="/roadmap">Roadmap</a>
+  <a href="/production">Production</a>
+  <a href="/why">Why</a>
+  <a href="/compare">Compare</a>
+  <a href="https://github.com/waaseyaa/framework">GitHub</a>
+{% endblock %}
+
+{% block head %}
+<link rel="canonical" href="{{ canonical_base }}/releases/{{ release.version }}">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": {{ release.title|json_encode|raw }},
+  "datePublished": "{{ release.released_at }}",
+  "url": "{{ canonical_base }}/releases/{{ release.version }}",
+  "isPartOf": { "@type": "WebSite", "name": "Waaseyaa", "url": "{{ canonical_base }}/" }
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<main class="page page-spec spec-body">
+  <p class="provenance">content/releases/{{ release.version }}.md &middot; released {{ release.released_at }}{% if revisions %} &middot; revision {{ revisions }}{% endif %} &middot; <a href="/releases/{{ release.version }}.md">markdown</a></p>
+  <h1>{{ release.title }}</h1>
+  {% if release.breaking %}<p><strong>Contains breaking changes.</strong></p>{% endif %}
+  <p>{{ release.summary }}</p>
+  {{ release.body_html|raw }}
+  {% if release.tag_url %}<p><a href="{{ release.tag_url }}">Release tag on GitHub</a></p>{% endif %}
+</main>
+{% endblock %}

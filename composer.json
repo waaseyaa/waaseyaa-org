@@ -58,7 +58,8 @@
         "waaseyaa": {
             "providers": [
                 "App\\Provider\\AppServiceProvider",
-                "App\\Provider\\DocsServiceProvider"
+                "App\\Provider\\DocsServiceProvider",
+                "App\\Provider\\ContentServiceProvider"
             ]
         }
     },

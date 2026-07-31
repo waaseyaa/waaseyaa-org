@@ -22,14 +22,33 @@ in production on a Raspberry Pi (live at https://waaseyaa.org). Be honest in all
 copy: no em dashes, no "cutting edge", stage labels accurate (enforced by tests,
 see `tests/Unit/ContentHonestyTest.php`).
 
-## This app has NO entities
+## Entities: git-sourced, read-only at runtime
 
-It is a read-only public site over a synced file corpus plus a docs chat. There
-are no `EntityType`s; `src/Entity`, `src/Access`, `src/Seed` etc. are empty
-skeleton stubs. Chat transcripts are stored in plain tables via
-`DatabaseInterface` (`src/Chat/ChatSchema.php`), which is the correct layer for
-non-entity tables. Do not add entities unless a feature genuinely needs the
-entity pipeline.
+This app registers three entity types (`release`, `roadmap_item`,
+`case_study` in `src/Entity/`), all revisionable, `group: 'content'`. They
+are the proof engine: real entities the site dogfoods. JSON:API is
+deliberately NOT exposed for these types (`api: true` and
+`config/waaseyaa.php`'s `api.entity_type_allowlist` were both withdrawn
+before merge) until waaseyaa/framework#2159 is fixed: on framework
+alpha.276, anonymous JSON:API reads of these types return 200 with empty
+data because the protected-entity-read subject never carries `status`
+unless a field declares `Protected` + `authorizationInput`, and ours are
+`Public`. The machine read surfaces for these types are Markdown
+negotiation and the `release_list`/`roadmap_read` MCP tools;
+`tests/Integration/ApiAbsenceTest.php` proves the framework's own
+not-exposed diagnostic answers `/api/{type}` instead. The framework
+auto-registers admin-surface write routes for every content type
+regardless of API exposure, but `ContentWriteProtectionPolicy`
+(`src/Access/`) explicitly denies create/update/delete on all three for
+every account, including administrators, so those routes can never be
+used even if an account existed; account registration also stays
+disabled. `content:sync` (a one-shot deploy step) remains the sole
+mutation path, so runtime state cannot diverge from git. Publishing is a
+git push: author frontmatter markdown under `content/{releases,roadmap,
+case-studies}/`, and the sync creates entities, saves a new revision on
+change, and unpublishes (status=false) when a file is deleted. Chat
+transcripts remain plain tables via `DatabaseInterface`
+(`src/Chat/ChatSchema.php`).
 
 ## Architecture
 
@@ -52,16 +71,29 @@ src/
 │   ├── PublicSpecsAuth.php     resolves every request to SpecReaderAccount
 │   ├── SpecReaderAccount.php   one capability: site.specs.read
 │   ├── SpecToolRegistry.php    the ONLY tools exposed (explicit list = security boundary)
-│   ├── Tool/{SpecListTool,SpecSearchTool,SpecReadTool}.php
+│   ├── Tool/{SpecListTool,SpecSearchTool,SpecReadTool,ReleaseListTool,RoadmapReadTool}.php
 │   ├── McpEndpointController.php  adapts framework McpEndpoint -> Symfony Response
 │   └── PublicServerCard.php    /.well-known/mcp.json (auth: none)
-├── Controller/  HomeController, DocsController, DocsChatController,
-│                LlmsTxtController, SitemapController, StaticPageController
-├── Provider/    AppServiceProvider (home/why/compare), DocsServiceProvider (docs/markdown/llms/mcp/chat)
+├── Content/     The proof engine's content pipeline
+│   ├── FrontMatter.php         `---`-delimited YAML-lite front matter parser
+│   ├── ContentReader.php       reads release/roadmap_item/case_study entities for controllers + MCP tools
+│   ├── ContentSync.php         content/*.md -> entities: create, revise on change, unpublish on delete
+│   ├── ContentSyncReport.php   summary value object returned by ContentSync::sync()
+│   └── ContentSyncException.php
+├── Cli/         ContentSyncHandler.php  `content:sync` command handler (one-shot deploy step)
+├── Entity/      Release.php, RoadmapItem.php, CaseStudy.php  revisionable, group: 'content', no JSON:API (waaseyaa/framework#2159)
+├── Controller/  HomeController, DocsController, DocsChatController, LlmsTxtController,
+│                SitemapController, StaticPageController, ReleasesController, RoadmapController,
+│                ProductionController
+├── Provider/    AppServiceProvider (home/why/compare), DocsServiceProvider (docs/markdown/llms/mcp/chat),
+│                ContentServiceProvider (entity types, content:sync command, releases/roadmap/production routes)
 └── Support/     SpecCorpus URLs (SiteUrl), FrameworkVersion, PiTelemetry, Db
 resources/specs/ synced corpus + manifest.json (committed; do not hand-edit)
+content/         git-authored source of truth for entities: releases/, roadmap/, case-studies/
+                 (frontmatter markdown; the only writer of the entities is content:sync)
 templates/       base, home, docs-index, docs-spec, why, compare (schema.org JSON-LD in heads)
-bin/sync-specs.php  build-time corpus sync (see below)
+bin/sync-specs.php      build-time corpus sync (see below)
+bin/scaffold-release.php  scaffold a new content/releases/*.md front matter file
 ```
 
 ### Routes (all `allowAll()`, GET unless noted)
@@ -77,6 +109,11 @@ bin/sync-specs.php  build-time corpus sync (see below)
 | server card | `/.well-known/mcp.json` | PublicServerCard | " |
 | chat send | `/docs-chat/send` (POST, csrfExempt) | DocsChatController::send | " |
 | chat messages | `/docs-chat/{id}/messages` | DocsChatController::messages | " |
+| releases index | `/releases` | ReleasesController::index | `ContentServiceProvider` |
+| release show | `/releases/{version}` | ReleasesController::show | " |
+| roadmap | `/roadmap` | RoadmapController::page | " |
+| production index | `/production` | ProductionController::index | " |
+| production show | `/production/{slug}` | ProductionController::show | " |
 
 `DocsServiceProvider` overrides the framework's default `/mcp` and
 `mcp.server_card` routes (`removeRoute()` then re-add) because the framework
@@ -91,6 +128,12 @@ title/sha1). The vendor dist is the canonical source — it is version-locked by
 composer, so provenance is exact. **Rerun `php bin/sync-specs.php` after every
 `composer update` of `waaseyaa/framework`** and commit the result. v1 ships
 specs close to as-is behind the index + chat; editorial rewrites are later.
+**Every framework bump also needs a new release note**: run `php
+bin/scaffold-release.php vX.Y.Z-alpha.N` for the locked version, then edit the
+summary and body by hand and commit it under `content/releases/`.
+`tests/Unit/ReleaseHonestyTest.php` enforces that the newest release note's
+`version` matches `manifest.json`'s `framework_version` exactly, so a
+framework bump without a matching release note fails CI.
 
 ## Chat
 
@@ -113,6 +156,10 @@ composer install
 php -S 127.0.0.1:8098 -t public public/index.php   # dev server (port 8098)
 ./vendor/bin/phpunit                                # tests (must stay green)
 php bin/sync-specs.php                              # re-sync corpus after a framework bump
+php bin/scaffold-release.php vX.Y.Z-alpha.N         # scaffold a content/releases/*.md front matter file
+APP_ENV=local vendor/bin/waaseyaa content:sync      # sync content/*.md into release/roadmap_item/case_study
+                                                     # entities (APP_ENV=local for the same reason as db:init
+                                                     # below: production won't boot against a fresh DB)
 ```
 
 `.env`: `APP_URL`/`WAASEYAA_ORG_CANONICAL_URL` set the canonical origin (falls
@@ -134,6 +181,13 @@ that clones this repo at a pinned `WAASEYAA_ORG_REF`, a Caddy vhost
   a missing SQLite file, and that abort precedes `db:init` registration. The
   deploy workflow runs the one-shot `db:init` with `-e APP_ENV=local` so the DB
   is created/migrated; the long-running container stays production.
+- **`content:sync` follow-up (required before the next deploy, not yet
+  landed):** `deploy-waaseyaa-org.yml` in `waaseyaa-infra` must also run the
+  one-shot `content:sync` right after `db:init`, with the same `-e
+  APP_ENV=local` pattern and for the same reason (production won't boot
+  against the freshly-created DB). Without this the entities never get
+  created/updated from `content/*.md` on a real deploy; `ReleaseHonestyTest`
+  only guards the corpus, not the running database.
 - Secrets (incl. `ANTHROPIC_API_KEY`) come from the `waaseyaa-infra` ansible
   vault, never committed. Caddyfile changes need `docker compose up -d
   --force-recreate caddy` (not `restart`).
