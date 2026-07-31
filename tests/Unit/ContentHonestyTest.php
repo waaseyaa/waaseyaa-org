@@ -64,6 +64,7 @@ final class ContentHonestyTest extends TestCase
             glob($root . '/templates/**/*.twig') ?: [],
             glob($root . '/public/css/*.css') ?: [],
             glob($root . '/src/**/*.php') ?: [],
+            glob($root . '/content/*/*.md') ?: [],
         );
 
         $this->assertNotEmpty($files, 'Authored content files must be discoverable');

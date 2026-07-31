@@ -26,7 +26,7 @@ final class FrontMatter
         $end = strpos($raw, "\n---\n", 3);
         if ($end === false) {
             // Allow a file that is nothing but front matter ending in "\n---".
-            if (str_ends_with(rtrim($raw, "\n"), "\n---") && substr_count($raw, "---") >= 2) {
+            if (str_ends_with(rtrim($raw, "\n"), "\n---") && substr_count($raw, '---') >= 2) {
                 $end = strrpos($raw, "\n---");
                 $bodyStart = strlen($raw);
             } else {
