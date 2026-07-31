@@ -26,7 +26,10 @@ final class ContentEntitiesTest extends TestCase
         foreach ($byId as $id => $type) {
             self::assertTrue($type->isRevisionable(), $id . ' must be revisionable');
             self::assertSame('content', $type->getGroup(), $id . ' must be in the content group for public read');
-            self::assertTrue($type->isApiExposed(), $id . ' must declare api: true');
+            // JSON:API is deliberately withdrawn pending waaseyaa/framework#2159
+            // (anonymous reads return empty data on alpha.276); flip this back
+            // to assertTrue once the framework fix lands and api: true returns.
+            self::assertFalse($type->isApiExposed(), $id . ' must not declare api: true while framework#2159 is open');
         }
     }
 

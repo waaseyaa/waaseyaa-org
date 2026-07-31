@@ -21,8 +21,21 @@ expect_200() {
     if [ "$code" = "200" ]; then pass "$path -> 200"; else fail "$path -> $code (wanted 200)"; fi
 }
 
-for p in / /start /docs /docs/specs/entity-system /sitemap.xml /llms.txt /healthz /.well-known/mcp.json; do
+expect_404() {
+    path="$1"
+    code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE$path")
+    if [ "$code" = "404" ]; then pass "$path -> 404"; else fail "$path -> $code (wanted 404)"; fi
+}
+
+for p in / /start /docs /docs/specs/entity-system /sitemap.xml /llms.txt /healthz /.well-known/mcp.json /releases /roadmap /production; do
     expect_200 "$p"
+done
+
+# JSON:API is deliberately withdrawn for the proof-engine content types
+# pending waaseyaa/framework#2159 (anonymous reads returned empty data on
+# alpha.276 rather than erroring); these must 404, not serve a real route.
+for p in /api/release /api/roadmap_item /api/case_study; do
+    expect_404 "$p"
 done
 
 # llms.txt: current framework version and a real corpus index.
@@ -37,10 +50,10 @@ if [ "$LINKS" -ge 80 ]; then pass "llms.txt links $LINKS specs (>=80)"; else fai
 URLS=$(curl -s "$BASE/sitemap.xml" | grep -c '<url>' || true)
 if [ "$URLS" -ge 80 ]; then pass "sitemap has $URLS urls (>=80)"; else fail "sitemap has only $URLS urls"; fi
 
-# MCP tools/list exposes exactly the three read-only spec tools.
+# MCP tools/list exposes the five read-only spec + content tools.
 TOOLS=$(curl -s -X POST "$BASE/mcp" -H 'Content-Type: application/json' \
     -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')
-for tool in spec_list spec_search spec_read; do
+for tool in spec_list spec_search spec_read release_list roadmap_read; do
     echo "$TOOLS" | grep -q "\"$tool\"" && pass "MCP exposes $tool" || fail "MCP missing $tool"
 done
 

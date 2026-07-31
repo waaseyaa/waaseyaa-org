@@ -1,10 +1,29 @@
 # Proof Engine Implementation Plan
 
+## Addendum (2026-07-31): JSON:API withdrawn before merge
+
+Before this mission merged, the `api: true` attribute on `Release`,
+`RoadmapItem`, and `CaseStudy` and `config/waaseyaa.php`'s
+`api.entity_type_allowlist` (added by Task 12) were removed. On framework
+alpha.276, anonymous JSON:API reads of these types return 200 with empty
+data (protected-entity-read subject never carries `status` because our
+fields are `Public`, not `Protected` + `authorizationInput`) rather than
+serving real data, and shipping an enabled surface that returns empty data
+was judged worse than not shipping it. It is withdrawn pending
+waaseyaa/framework#2159. The shipped machine surfaces are HTML, Markdown
+negotiation, and the `release_list` / `roadmap_read` MCP tools;
+`tests/Integration/ApiAbsenceTest.php` (formerly `ApiExposureTest.php`)
+proves the framework's own not-exposed diagnostic answers `/api/{type}`
+instead of a real route. Every JSON:API reference in the task bodies below
+describes the pre-withdrawal plan as originally executed and is superseded
+by this addendum; task step bodies are kept as-is for history rather than
+rewritten.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make waaseyaa.org dogfood the entity pipeline it advertises: git-authored releases, roadmap, and case studies become real revisionable entities served as HTML, Markdown, JSON:API, and MCP.
 
-**Architecture:** Frontmatter markdown under `content/` is synced into three `ContentEntityBase` entity types by an idempotent `content:sync` CLI command (create / new-revision-on-change / unpublish-on-delete). A read-side `ContentReader` gateway feeds new controllers (`/releases`, `/roadmap`, `/production`), the sitemap, llms.txt, and two new MCP tools. Anonymous JSON:API read comes from the framework: `api: true` + `group: 'content'` + `status = true` triggers the kernel's `PublishedContentAccessPolicy`.
+**Architecture:** Frontmatter markdown under `content/` is synced into three `ContentEntityBase` entity types by an idempotent `content:sync` CLI command (create / new-revision-on-change / unpublish-on-delete). A read-side `ContentReader` gateway feeds new controllers (`/releases`, `/roadmap`, `/production`), the sitemap, llms.txt, and two new MCP tools. ~~Anonymous JSON:API read comes from the framework: `api: true` + `group: 'content'` + `status = true` triggers the kernel's `PublishedContentAccessPolicy`.~~ Withdrawn before merge, see the addendum at the top of this document (waaseyaa/framework#2159); the shipped machine read surfaces are Markdown negotiation and MCP.
 
 **Tech Stack:** PHP 8.5, Waaseyaa framework v0.1.0-alpha.276 (exact pin), symfony/yaml (already installed), league/commonmark, PHPUnit, Twig.
 
@@ -2336,13 +2355,19 @@ git commit -m "feat(proof-engine): release_list and roadmap_read MCP tools on th
 
 ### Task 12: JSON:API exposure, allowlist, and access posture tests
 
+> Superseded by the addendum at the top of this document
+> (waaseyaa/framework#2159): the allowlist this task added was withdrawn
+> before merge, and `ApiExposureTest.php` was reworked into
+> `tests/Integration/ApiAbsenceTest.php`, an absence proof. Kept below as
+> executed history, not current state.
+
 **Files:**
 - Modify: `config/waaseyaa.php` (add `api.entity_type_allowlist`)
 - Test: `tests/Integration/ApiExposureTest.php`
 
 **Interfaces:**
 - Consumes: harness, `Waaseyaa\Api\JsonApiRouteProvider`, `Waaseyaa\Api\EntityTypeApiExposurePolicy`, `Waaseyaa\Access\Policy\PublishedContentAccessPolicy`.
-- Produces: a closed-world API allowlist and executable proof of the anonymous read/write posture.
+- Produces: a closed-world API allowlist and executable proof of the anonymous read/write posture. (Withdrawn before merge; see addendum.)
 
 - [ ] **Step 1: Failing tests**
 

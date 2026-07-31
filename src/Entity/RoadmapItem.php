@@ -14,7 +14,7 @@ use Waaseyaa\Entity\FieldReadLevel;
  * One roadmap item, grouped by stage-based horizon (now / next / later),
  * never by date. Git-authored via content/roadmap/*.md.
  */
-#[ContentEntityType(id: 'roadmap_item', label: 'Roadmap item', description: 'A stage-based roadmap item for the Waaseyaa framework.', api: true)]
+#[ContentEntityType(id: 'roadmap_item', label: 'Roadmap item', description: 'A stage-based roadmap item for the Waaseyaa framework.')]
 #[ContentEntityKeys(label: 'title', revision: 'revision_id')]
 final class RoadmapItem extends ContentEntityBase
 {

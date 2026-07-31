@@ -22,10 +22,13 @@ use Waaseyaa\Entity\ContentEntityBase;
 
 /**
  * Proves ContentWriteProtectionPolicy makes git-only publishing structural:
- * runtime write routes exist (JSON:API + admin, both authenticated per
- * ApiExposureTest), but no account, including one holding "administer
- * content", can ever use them, because this policy denies every write
- * operation for the three git-authored content types by design.
+ * admin-surface write routes exist and require authentication (JSON:API
+ * write routes do not exist at all for these three types today, because
+ * `api: true` is deliberately withdrawn pending waaseyaa/framework#2159,
+ * see ApiAbsenceTest), but no account, including one holding "administer
+ * content", can ever use the routes that do exist, because this policy
+ * denies every write operation for the three git-authored content types
+ * by design.
  *
  * The EntityAccessHandler is composed here exactly the way the kernel ends
  * up composing it for a request touching a content-group entity type:
@@ -96,13 +99,14 @@ final class ContentWriteProtectionTest extends TestCase
      * both a directly-constructed entity and one hydrated via ContentSync +
      * the repository), so the compiled subject is always empty and
      * PublishedContentProtectedEntityReadPolicy returns Neutral regardless of
-     * published status. That is a pre-existing read-wiring gap in this app,
-     * orthogonal to write protection (JsonApiController::show() already
-     * 404s a Neutral view for anonymous today, independent of this change),
-     * out of scope here; ApiExposureTest already pins the invariant that
-     * PublishedContentAccessPolicy::access() itself grants published view
-     * directly. What THIS test guards is narrower and directly relevant to
-     * this policy: view must never become Forbidden.
+     * published status. This read-wiring gap (root-caused to
+     * waaseyaa/framework#2159) is why JSON:API is withdrawn for these three
+     * types entirely rather than shipped read-only; it is orthogonal to
+     * write protection and out of scope here. ApiAbsenceTest pins both that
+     * withdrawal and the invariant that PublishedContentAccessPolicy::access()
+     * itself grants published view directly. What THIS test guards is
+     * narrower and directly relevant to this policy: view must never become
+     * Forbidden.
      */
     #[Test]
     #[DataProvider('contentTypes')]

@@ -14,11 +14,15 @@ use Waaseyaa\Entity\EntityInterface;
  * Makes git-only publishing of `release`, `roadmap_item`, and `case_study`
  * structural rather than incidental.
  *
- * The framework auto-registers admin-surface and JSON:API write routes for
- * every `api: true` content type, and both write surfaces require
- * authentication (see tests/Integration/ApiExposureTest.php). Before this
- * policy existed, "no account exists today" was the only thing standing
- * between those routes and a runtime write: registering one account with
+ * The framework auto-registers admin-surface write routes for every content
+ * type regardless of API exposure, and would additionally register
+ * authenticated JSON:API write routes for these three types if they were
+ * ever declared `api: true` (they are not, pending
+ * waaseyaa/framework#2159; see tests/Integration/ApiAbsenceTest.php). Either
+ * way, this policy denies runtime writes regardless of which surface reaches
+ * it: "no account exists today" was the only thing standing between the
+ * admin-surface routes and a runtime write before this policy existed.
+ * Registering one account with
  * `administer content` (kernel default {@see \Waaseyaa\Access\Policy\ContentAdminAccessPolicy},
  * which never returns Forbidden by design) would immediately open a second
  * publishing path alongside `content:sync`, and runtime state could then

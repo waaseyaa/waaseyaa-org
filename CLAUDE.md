@@ -25,21 +25,30 @@ see `tests/Unit/ContentHonestyTest.php`).
 ## Entities: git-sourced, read-only at runtime
 
 This app registers three entity types (`release`, `roadmap_item`,
-`case_study` in `src/Entity/`), all revisionable, `group: 'content'`,
-`api: true`. They are the proof engine: real entities the site dogfoods.
-The framework auto-registers admin-surface and JSON:API write routes for
-these types, but `ContentWriteProtectionPolicy` (`src/Access/`) explicitly
-denies create/update/delete on all three for every account, including
-administrators, so those routes can never be used even if an account existed;
-account registration also stays disabled. `content:sync` (a one-shot deploy
-step) remains the sole mutation path, so runtime state cannot diverge from
-git. Publishing is a git push: author frontmatter markdown under
-`content/{releases,roadmap,
+`case_study` in `src/Entity/`), all revisionable, `group: 'content'`. They
+are the proof engine: real entities the site dogfoods. JSON:API is
+deliberately NOT exposed for these types (`api: true` and
+`config/waaseyaa.php`'s `api.entity_type_allowlist` were both withdrawn
+before merge) until waaseyaa/framework#2159 is fixed: on framework
+alpha.276, anonymous JSON:API reads of these types return 200 with empty
+data because the protected-entity-read subject never carries `status`
+unless a field declares `Protected` + `authorizationInput`, and ours are
+`Public`. The machine read surfaces for these types are Markdown
+negotiation and the `release_list`/`roadmap_read` MCP tools;
+`tests/Integration/ApiAbsenceTest.php` proves the framework's own
+not-exposed diagnostic answers `/api/{type}` instead. The framework
+auto-registers admin-surface write routes for every content type
+regardless of API exposure, but `ContentWriteProtectionPolicy`
+(`src/Access/`) explicitly denies create/update/delete on all three for
+every account, including administrators, so those routes can never be
+used even if an account existed; account registration also stays
+disabled. `content:sync` (a one-shot deploy step) remains the sole
+mutation path, so runtime state cannot diverge from git. Publishing is a
+git push: author frontmatter markdown under `content/{releases,roadmap,
 case-studies}/`, and the sync creates entities, saves a new revision on
-change, and unpublishes (status=false) when a file is deleted.
-`config/waaseyaa.php` closes the JSON:API world to exactly these three
-types (`api.entity_type_allowlist`). Chat transcripts remain plain
-tables via `DatabaseInterface` (`src/Chat/ChatSchema.php`).
+change, and unpublishes (status=false) when a file is deleted. Chat
+transcripts remain plain tables via `DatabaseInterface`
+(`src/Chat/ChatSchema.php`).
 
 ## Architecture
 
@@ -72,7 +81,7 @@ src/
 │   ├── ContentSyncReport.php   summary value object returned by ContentSync::sync()
 │   └── ContentSyncException.php
 ├── Cli/         ContentSyncHandler.php  `content:sync` command handler (one-shot deploy step)
-├── Entity/      Release.php, RoadmapItem.php, CaseStudy.php  revisionable, group: 'content', api: true
+├── Entity/      Release.php, RoadmapItem.php, CaseStudy.php  revisionable, group: 'content', no JSON:API (waaseyaa/framework#2159)
 ├── Controller/  HomeController, DocsController, DocsChatController, LlmsTxtController,
 │                SitemapController, StaticPageController, ReleasesController, RoadmapController,
 │                ProductionController
@@ -196,19 +205,6 @@ that clones this repo at a pinned `WAASEYAA_ORG_REF`, a Caddy vhost
 
 ## Known gaps
 
-- **Anonymous JSON:API reads return empty data** for the three content types:
-  `GET /api/release` is 200 with `data: []` and show 404s, because the
-  framework routes anonymous `view` through the protected-entity-read path,
-  whose subject only carries `status` when a field declares
-  `settings: ['authorizationInput' => true]` with `read: Protected` (the
-  `Node` pattern). Our `status` fields are `Public`, so
-  `PublishedContentAccessPolicy` never sees them and the decision is Neutral
-  (denied). Verified in the production-shaped container. Reclassifying
-  `status` cascades into the field-read guard on our own `get('status')`
-  calls (ContentSync, ContentReader) and into serialization, so it is a
-  deliberate follow-up decision, not a quick fix. The data-bearing read
-  surfaces (HTML, Markdown negotiation, MCP tools) are unaffected and
-  tested; the home page demo advertises only those.
 - **Chat retrieval quality:** retrieval now ranks specs via `SpecIndex`
   (waaseyaa/search FTS5 with the spec title weighted above the body), so "how do
   I add an entity type?" surfaces entity-system. The remaining refinements are a

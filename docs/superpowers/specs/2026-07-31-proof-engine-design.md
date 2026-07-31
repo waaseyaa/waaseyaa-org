@@ -4,6 +4,25 @@ Date: 2026-07-31
 Status: approved design, pre-implementation
 Scope: first of three missions taking waaseyaa.org from skeleton to great for 2026+
 
+## Addendum (2026-07-31): JSON:API withdrawn before merge
+
+Before this mission merged, the `api: true` attribute on all three entity
+types and `config/waaseyaa.php`'s `api.entity_type_allowlist` were removed.
+On framework alpha.276, anonymous JSON:API reads of these types return 200
+with empty data: the framework routes anonymous `view` through the
+protected-entity-read path, whose subject only carries `status` when a field
+declares `Protected` + `settings: ['authorizationInput' => true]` (the
+`Node` pattern); our `status` fields are `Public`, so the decision is
+Neutral (denied) and the collection/show endpoints come back empty or 404
+instead of erroring. Shipping an enabled JSON:API surface that returns
+empty data was judged worse than not shipping it, so it is withdrawn
+pending waaseyaa/framework#2159. The shipped machine surfaces for these
+types are HTML, Markdown negotiation (`Accept: text/markdown` / `.md`), and
+the `release_list` / `roadmap_read` MCP tools. Every "JSON:API" reference
+below in the body of this design document describes the pre-withdrawal
+design as originally approved and is superseded by this addendum; it is
+kept as-is for history rather than rewritten.
+
 ## Context and goal
 
 The site today is a solid but thin skeleton: five pages, 83 specs published
@@ -91,8 +110,10 @@ spec pages (same URL serves `.md` suffix or `Accept: text/markdown`).
 
 Machine surfaces:
 
-- JSON:API comes from the framework because the types are `api: true`. This
-  is the site's first real JSON:API surface. Anonymous read only.
+- ~~JSON:API comes from the framework because the types are `api: true`. This
+  is the site's first real JSON:API surface. Anonymous read only.~~
+  Withdrawn before merge, see the addendum at the top of this document
+  (waaseyaa/framework#2159); machine reads are Markdown negotiation and MCP.
 - MCP: two new tools added to the explicit whitelist in the
   `SpecToolRegistry` style: `release_list` and `roadmap_read`, same
   `SpecReaderAccount` capability, read-only. Case studies stay HTML/MD-only
