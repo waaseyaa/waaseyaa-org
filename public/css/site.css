@@ -252,6 +252,7 @@ a { color: inherit; }
 .spec-list p { font-size: 13px; margin: 4px 0 0; }
 .page-spec { max-width: 860px; }
 .provenance { font-family: var(--mono); font-size: 11.5px; color: var(--faint); margin: 10px 0 4px; }
+.pi-block { border: 1.5px solid var(--card-line); border-radius: 14px; padding: 14px 18px; background: var(--wash); font-size: 13.5px; }
 .spec-body { margin-top: 12px; overflow-x: clip; }
 .spec-body h1 { font-size: 30px; font-weight: 800; letter-spacing: -.8px; margin: 18px 0 10px; }
 .spec-body h2 { font-size: 21px; margin: 26px 0 8px; }

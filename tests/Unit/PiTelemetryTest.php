@@ -50,10 +50,27 @@ final class PiTelemetryTest extends TestCase
         try {
             $reading = new PiTelemetry($file, now: 5060)->read();
 
-            $this->assertSame(['uptime_days' => 41, 'temp_c' => 47.3], $reading);
+            $this->assertSame(['uptime_days' => 41, 'temp_c' => 47.3, 'response_ms' => null], $reading);
         } finally {
             @unlink($file);
         }
+    }
+
+    #[Test]
+    public function response_ms_passes_through_when_present(): void
+    {
+        $file = tempnam(sys_get_temp_dir(), 'pi');
+        file_put_contents($file, json_encode(['uptime_days' => 3, 'temp_c' => 51.2, 'generated_at' => 1000, 'response_ms' => 41.5]));
+        $data = new \App\Support\PiTelemetry($file, now: 1100)->read();
+        self::assertSame(41.5, $data['response_ms']);
+    }
+
+    #[Test]
+    public function response_ms_is_null_when_absent(): void
+    {
+        $file = tempnam(sys_get_temp_dir(), 'pi');
+        file_put_contents($file, json_encode(['uptime_days' => 3, 'temp_c' => 51.2, 'generated_at' => 1000]));
+        self::assertNull(new \App\Support\PiTelemetry($file, now: 1100)->read()['response_ms']);
     }
 
     /**

@@ -6,12 +6,14 @@ namespace App\Provider;
 
 use App\Cli\ContentSyncHandler;
 use App\Content\ContentReader;
+use App\Controller\ProductionController;
 use App\Controller\ReleasesController;
 use App\Controller\RoadmapController;
 use App\Docs\SpecCorpus;
 use App\Entity\CaseStudy;
 use App\Entity\Release;
 use App\Entity\RoadmapItem;
+use App\Support\PiTelemetry;
 use App\Support\SiteUrl;
 use Symfony\Component\HttpFoundation\Request;
 use Waaseyaa\CLI\Command\HandlerCommand;
@@ -88,6 +90,26 @@ final class ContentServiceProvider extends ServiceProvider implements ProvidesCo
             'roadmap',
             RouteBuilder::create('/roadmap')
                 ->controller(fn (Request $request) => $roadmap->page($request))
+                ->allowAll()
+                ->methods('GET')
+                ->build(),
+        );
+
+        $production = new ProductionController($reader, PiTelemetry::fromEnvironment(), $corpus, $urls);
+
+        $router->addRoute(
+            'production.index',
+            RouteBuilder::create('/production')
+                ->controller(fn (Request $request) => $production->index($request))
+                ->allowAll()
+                ->methods('GET')
+                ->build(),
+        );
+
+        $router->addRoute(
+            'production.show',
+            RouteBuilder::create('/production/{slug}')
+                ->controller(fn (Request $request, string $slug) => $production->show($request, $slug))
                 ->allowAll()
                 ->methods('GET')
                 ->build(),

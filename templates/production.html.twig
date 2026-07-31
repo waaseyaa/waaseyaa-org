@@ -1,0 +1,58 @@
+{% extends "base.html.twig" %}
+
+{% block title %}Waaseyaa in production{% endblock %}
+{% block description %}Where the Waaseyaa framework runs today, stated factually: production deployments served from case-study entities synced from git, plus live telemetry from the Raspberry Pi serving this page.{% endblock %}
+
+{% block nav %}
+  <a href="/start">Start</a>
+  <a href="/docs">Docs</a>
+  <a href="/releases">Releases</a>
+  <a href="/roadmap">Roadmap</a>
+  <a href="/production" aria-current="page">Production</a>
+  <a href="/why">Why</a>
+  <a href="/compare">Compare</a>
+  <a href="https://github.com/waaseyaa/framework">GitHub</a>
+{% endblock %}
+
+{% block head %}
+<link rel="canonical" href="{{ canonical_base }}/production">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Waaseyaa in production",
+  "url": "{{ canonical_base }}/production",
+  "isPartOf": { "@type": "WebSite", "name": "Waaseyaa", "url": "{{ canonical_base }}/" }
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<main class="page">
+  <h1>In production</h1>
+  <p>Where Waaseyaa runs today, stated factually. Each write-up is a case_study entity synced from git.</p>
+
+  {% if pi %}
+  <div class="pi-block">
+    <p><strong>Live from the Raspberry Pi serving this page:</strong>
+      up {{ pi.uptime_days }} days &middot; {{ pi.temp_c }}&deg;C
+      {%- if pi.response_ms %} &middot; {{ pi.response_ms }} ms median response{% endif %}
+      &middot; framework {{ framework_version }}</p>
+  </div>
+  {% endif %}
+
+  {% if studies is empty %}
+  <p>No case studies have been synced yet. The corpus lives in <code>content/case-studies/</code>.</p>
+  {% endif %}
+
+  <ul class="spec-list">
+    {% for study in studies %}
+    <li>
+      <a href="/production/{{ study.slug }}">{{ study.title }}</a>
+      <span class="spec-name">{{ study.org }}</span>
+      <p>{{ study.summary }}</p>
+    </li>
+    {% endfor %}
+  </ul>
+</main>
+{% endblock %}
