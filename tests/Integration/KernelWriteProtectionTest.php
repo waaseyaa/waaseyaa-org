@@ -59,7 +59,7 @@ use Waaseyaa\Routing\WaaseyaaRouter;
  * reproduced is the middleware stack that populates `_account` /
  * `_authorization_principal` on the Request (HttpKernel::handle() reads
  * superglobals and cannot be handed a Request), so those two attributes are
- * set directly, exactly as SessionMiddleware/AuthorizationMiddleware would.
+ * set directly, exactly as the auth middleware stack (FieldReadContextMiddleware derives the principal) would.
  * That substitution can only make the test STRICTER: it hands the write path a
  * fully authenticated `administer content` principal, which is precisely the
  * account ContentWriteProtectionPolicy exists to stop.
@@ -70,7 +70,7 @@ use Waaseyaa\Routing\WaaseyaaRouter;
  * which has an `error.status` key but no `statusCode` key, and
  * ControllerDispatcher::handleCallable() maps an array result with
  * `$result['statusCode'] ?? 200`
- * (vendor/waaseyaa/foundation/src/Http/ControllerDispatcher.php:137). So the
+ * (vendor/waaseyaa/foundation/src/Http/ControllerDispatcher.php:141). So the
  * wire response is HTTP 200 carrying `{"ok":false,"error":{"status":403,...}}`.
  * The write is refused either way, which is the security property; the
  * transport shape is pinned separately in
@@ -275,7 +275,7 @@ final class KernelWriteProtectionTest extends TestCase
      * holder.
      *
      * `_account` / `_authorization_principal` are the two attributes
-     * SessionMiddleware and AuthorizationMiddleware set on a real request; the
+     * the auth middleware stack (FieldReadContextMiddleware) sets on a real request; the
      * admin-surface host reads exactly these via
      * DecisionAccountResolver::resolve() in
      * GenericAdminSurfaceHost::resolveSession().
