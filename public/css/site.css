@@ -11,7 +11,11 @@
   --ink: #0c1f1d;
   --ink-soft: #2c4440;
   --muted: #46615d;
-  --faint: #6b8682;
+  /* Must clear WCAG AA 4.5:1 on every background it is used over, because it
+     is applied at 11px to 12px (never large text): --bg 4.97, white 5.08,
+     --wash 4.63, --chat-bg 4.81. It was #6b8682, which measured 3.83 on --bg
+     and failed. */
+  --faint: #5b7370;
   --bg: #fafdfc;
   --line: #e3efec;
   --card-line: #d4e6e2;
@@ -39,6 +43,32 @@ body {
 }
 
 a { color: inherit; }
+
+/* Skip link: first focusable element, off-screen until focused, so keyboard
+   and screen-reader users can jump the nav instead of tabbing it on every
+   page. Visible on focus only, never hidden with display:none (which would
+   take it out of the tab order and defeat the point). */
+.skip {
+  position: absolute;
+  left: 8px;
+  top: -48px;
+  z-index: 10;
+  padding: 10px 14px;
+  background: var(--teal-700);
+  color: #fff;
+  font-size: 13.5px;
+  font-weight: 600;
+  border-radius: 0 0 6px 6px;
+  transition: top 120ms ease-in;
+}
+
+.skip:focus {
+  top: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skip { transition: none; }
+}
 
 /* Top bar */
 .top {
