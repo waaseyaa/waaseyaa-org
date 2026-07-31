@@ -15,7 +15,7 @@ use Waaseyaa\Entity\FieldReadLevel;
  * content/case-studies/*.md.
  */
 #[ContentEntityType(id: 'case_study', label: 'Case study', description: 'A production Waaseyaa deployment.', api: true)]
-#[ContentEntityKeys(label: 'title', revision: 'vid')]
+#[ContentEntityKeys(label: 'title', revision: 'revision_id')]
 final class CaseStudy extends ContentEntityBase
 {
     /**

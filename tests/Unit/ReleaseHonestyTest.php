@@ -24,12 +24,19 @@ final class ReleaseHonestyTest extends TestCase
         $locked = $manifest['framework_version'] ?? null;
         self::assertIsString($locked);
 
+        // Tie-break deterministically on [released_at, version] rather than
+        // relying on glob() file order: two release notes dated the same
+        // day must not let filesystem order pick which one counts as
+        // "newest". Version compares descending as a plain string, which
+        // matches how releases are named (alpha.NNN increments as a run
+        // of digits) without pulling in a version-comparison library.
         $newest = null;
-        $newestDate = '';
+        $newestKey = ['', ''];
         foreach (glob($root . '/content/releases/*.md') ?: [] as $file) {
             $meta = FrontMatter::parse((string) file_get_contents($file))['meta'];
-            if ((string) $meta['released_at'] >= $newestDate) {
-                $newestDate = (string) $meta['released_at'];
+            $key = [(string) $meta['released_at'], (string) $meta['version']];
+            if ($key > $newestKey) {
+                $newestKey = $key;
                 $newest = (string) $meta['version'];
             }
         }

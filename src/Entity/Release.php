@@ -15,7 +15,7 @@ use Waaseyaa\Entity\FieldReadLevel;
  * content/releases/{version}.md by content:sync; never written at runtime.
  */
 #[ContentEntityType(id: 'release', label: 'Release', description: 'A tracked waaseyaa/framework release.', api: true)]
-#[ContentEntityKeys(label: 'title', revision: 'vid')]
+#[ContentEntityKeys(label: 'title', revision: 'revision_id')]
 final class Release extends ContentEntityBase
 {
     /**

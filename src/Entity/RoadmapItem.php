@@ -15,7 +15,7 @@ use Waaseyaa\Entity\FieldReadLevel;
  * never by date. Git-authored via content/roadmap/*.md.
  */
 #[ContentEntityType(id: 'roadmap_item', label: 'Roadmap item', description: 'A stage-based roadmap item for the Waaseyaa framework.', api: true)]
-#[ContentEntityKeys(label: 'title', revision: 'vid')]
+#[ContentEntityKeys(label: 'title', revision: 'revision_id')]
 final class RoadmapItem extends ContentEntityBase
 {
     /**

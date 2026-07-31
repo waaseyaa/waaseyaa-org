@@ -49,7 +49,7 @@ final class ReleasesController
         }
 
         return $this->render('releases-index.html.twig', [
-            'releases' => array_map($this->view(...), $releases),
+            'releases' => array_map($this->summaryView(...), $releases),
             'framework_version' => $this->corpus->frameworkVersion(),
             'canonical_base' => $this->urls->base(),
         ]);
@@ -91,9 +91,13 @@ final class ReleasesController
     }
 
     /**
+     * Fields the index listing needs. No Markdown::toHtml() here: the
+     * index never renders body_html, so running it per release on every
+     * listing would be wasted work.
+     *
      * @return array<string, mixed>
      */
-    private function view(EntityInterface $release): array
+    private function summaryView(EntityInterface $release): array
     {
         return [
             'version' => (string) $release->get('version'),
@@ -101,6 +105,18 @@ final class ReleasesController
             'released_at' => (string) $release->get('released_at'),
             'summary' => (string) $release->get('summary'),
             'breaking' => (bool) $release->get('breaking'),
+        ];
+    }
+
+    /**
+     * Full fields for the single-release page, including the rendered
+     * body and tag URL that only show() needs.
+     *
+     * @return array<string, mixed>
+     */
+    private function view(EntityInterface $release): array
+    {
+        return $this->summaryView($release) + [
             'tag_url' => (string) $release->get('tag_url'),
             'body_html' => Markdown::toHtml((string) $release->get('body')),
         ];
