@@ -270,8 +270,13 @@ a { color: inherit; }
 .doc.rawmode .md { display: block; }
 .doc.rawmode .htmlview { display: none; }
 
-/* Prose pages (docs, why, compare) */
-.page { max-width: 760px; margin: 0 auto; padding: 40px 5% 60px; }
+/* Page shells. Index and overview pages use the desktop canvas; long-form
+   content opts into a narrower reading measure with .page-prose/.page-spec. */
+.page {
+  width: min(100%, 1180px);
+  margin: 0 auto;
+  padding: 48px clamp(24px, 4vw, 56px) 72px;
+}
 .page h1 { font-size: 34px; font-weight: 800; letter-spacing: -1px; margin-bottom: 10px; }
 .page h2 { font-size: 20px; margin: 28px 0 8px; }
 .page p { font-size: 15px; line-height: 1.7; color: var(--muted); margin-bottom: 12px; }
@@ -286,7 +291,7 @@ a { color: inherit; }
 .spec-list a:hover { color: var(--teal-700); }
 .spec-name { font-family: var(--mono); font-size: 11px; color: var(--faint); margin-left: 8px; }
 .spec-list p { font-size: 13px; margin: 4px 0 0; }
-.page-spec { max-width: 860px; }
+.page-prose, .page-spec { max-width: 980px; }
 .provenance { font-family: var(--mono); font-size: 11.5px; color: var(--faint); margin: 10px 0 4px; }
 .pi-block { border: 1.5px solid var(--card-line); border-radius: 14px; padding: 14px 18px; background: var(--wash); font-size: 13.5px; }
 .spec-body { margin-top: 12px; overflow-x: clip; }
@@ -318,7 +323,7 @@ a { color: inherit; }
 .why-list { list-style: none; margin: 8px 0 16px; }
 .why-list li { font-size: 14.5px; line-height: 1.7; color: var(--ink-soft); padding: 10px 0; border-bottom: 1px solid var(--line); }
 .why-list a, .page a { color: var(--teal-700); }
-.page-compare { max-width: 980px; }
+.page-compare { max-width: 1180px; }
 .cmp { border-collapse: collapse; width: 100%; margin: 18px 0 26px; display: block; overflow-x: auto; }
 .cmp th, .cmp td { border: 1px solid var(--card-line); padding: 9px 12px; font-size: 13.5px; line-height: 1.55; text-align: left; vertical-align: top; color: var(--ink-soft); min-width: 130px; }
 .cmp thead th { background: var(--wash); font-weight: 600; color: var(--ink); }
