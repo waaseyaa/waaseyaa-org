@@ -1,13 +1,13 @@
 {
-    "framework_version": "v0.1.0-alpha.276",
-    "source_released_at": "2026-07-27T17:50:36+00:00",
-    "corpus_sha1": "316d7cf359a4e5cefb7cf4768d484416e97d660c",
+    "framework_version": "v0.1.0-alpha.285",
+    "source_released_at": "2026-08-03T00:44:07+00:00",
+    "corpus_sha1": "fe37b87e0cdcb58dbe51d170a92f205467f7d39a",
     "source": "vendor/waaseyaa/framework/docs/specs",
     "specs": [
         {
             "name": "access-control",
             "title": "Access Control",
-            "sha1": "7c67c8a40b79b02a2a848d66385816ae11fc4032"
+            "sha1": "31d531faea2aa7255b5c973dcad28a15f9ac234b"
         },
         {
             "name": "admin-spa",
@@ -27,7 +27,7 @@
         {
             "name": "ai-integration",
             "title": "AI Integration",
-            "sha1": "0526e1aa2700c645bc7aa86e18f3d49ec6908ba0"
+            "sha1": "83f2d9753db5c5301774a3eb0b25b75f890f2bc5"
         },
         {
             "name": "ai-schema",
@@ -82,7 +82,7 @@
         {
             "name": "cli-kernel",
             "title": "CLI Console",
-            "sha1": "b67d24fc7fedce5d1b029e9db82c0d26a8f4a158"
+            "sha1": "ff7a97ef8df2a35d6abed3c9e1e8d40a1dd98409"
         },
         {
             "name": "cli-symfony-console-migration-plan",
@@ -98,6 +98,11 @@
             "name": "config-management-v1",
             "title": "Configuration Management v1 \u2014 Active/Sync Store Split",
             "sha1": "32b31adb73309db406842a3c9865ed0c1ed01765"
+        },
+        {
+            "name": "content-publishing",
+            "title": "Content Publishing v1 \u2014 agent-operable editorial CRUD over the entity substrate",
+            "sha1": "df9171b5e41e346c5fcbc91ca2c75253e10e064a"
         },
         {
             "name": "content-workflow",
@@ -127,7 +132,7 @@
         {
             "name": "entity-field-read-boundary",
             "title": "Entity Field-Read Boundary",
-            "sha1": "0c71b64242774495383fc6bca104332742bb1817"
+            "sha1": "838681dbbc237fa127712f7fa7dd4433c0bc5cc3"
         },
         {
             "name": "entity-storage-translatable-revisions",
@@ -152,7 +157,7 @@
         {
             "name": "entity-system",
             "title": "Entity System",
-            "sha1": "89d32b619d0a06897b81e6df355fbddf1abdfc39"
+            "sha1": "c38eca8510bb0b3df5eb712e6d8d822a5a22e39d"
         },
         {
             "name": "extension-author-onboarding",
@@ -217,7 +222,7 @@
         {
             "name": "infrastructure",
             "title": "Infrastructure",
-            "sha1": "1520fc0788d6f2b6728804cab1477d9d9ef06ca3"
+            "sha1": "9f413832f158a9155ded1d0834c0d9adff232bc3"
         },
         {
             "name": "ingestion-defaults",
@@ -252,12 +257,12 @@
         {
             "name": "listing-pipeline-v1",
             "title": "Listing Pipeline v1 \u2014 Views-equivalent surface for entity listings",
-            "sha1": "28406bfa7a1c20b06e3b7482e9b918e22d1171d6"
+            "sha1": "74876ef1a65125f2b58b5e02a1b5ea6a802571b2"
         },
         {
             "name": "mcp-endpoint",
             "title": "MCP Endpoint",
-            "sha1": "4011f77e5f7d26c101ef5c7324c8476dc567c7a9"
+            "sha1": "072a615263a1dd5ff60becde9cfbfe70b373d18c"
         },
         {
             "name": "messaging",
@@ -267,7 +272,7 @@
         {
             "name": "middleware-pipeline",
             "title": "Middleware Pipeline",
-            "sha1": "db8330b5b854e12ff26b320f34ac25c03a74dc56"
+            "sha1": "52afd35bff6d48a18fa0e110de5b8f5038ad9672"
         },
         {
             "name": "migration-platform",

@@ -105,7 +105,7 @@ final class HomepageTest extends TestCase
         $response = new HomeController(new PiTelemetry(null))->index();
         $html = (string) $response->getContent();
 
-        $this->assertStringContainsString('released 2026-07-27', $html);
+        $this->assertStringContainsString('released 2026-08-03', $html);
         $this->assertStringContainsString('href="/releases"', $html);
     }
 

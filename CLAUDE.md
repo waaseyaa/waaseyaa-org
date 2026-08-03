@@ -5,7 +5,7 @@ Guidance for Claude Code (and any agent) working in this repository.
 ## Overview
 
 **waaseyaa.org** is the Waaseyaa framework's own public site, built as a Waaseyaa
-consuming app (composer-depends on `waaseyaa/framework`, alpha.203). It is the
+consuming app (composer-depends on `waaseyaa/framework`, alpha.285). It is the
 source of truth for humans *and* agents and is meant to dogfood the framework.
 
 The architecture is **one docs corpus, three renderings**:
@@ -29,8 +29,8 @@ This app registers three entity types (`release`, `roadmap_item`,
 are the proof engine: real entities the site dogfoods. JSON:API is
 deliberately NOT exposed for these types (`api: true` and
 `config/waaseyaa.php`'s `api.entity_type_allowlist` were both withdrawn
-before merge) until waaseyaa/framework#2159 is fixed: on framework
-alpha.276, anonymous JSON:API reads of these types return 200 with empty
+before merge) until waaseyaa/framework#2159 is fixed: through framework
+alpha.285, anonymous JSON:API reads of these types return 200 with empty
 data because the protected-entity-read subject never carries `status`
 unless a field declares `Protected` + `authorizationInput`, and ours are
 `Public`. The machine read surfaces for these types are Markdown
@@ -137,7 +137,7 @@ framework bump without a matching release note fails CI.
 
 ## Chat
 
-Reuses the shared `waaseyaa/workspace` SSE chat client (alpha.203), mounted on
+Reuses the shared `waaseyaa/workspace` SSE chat client (alpha.285), mounted on
 the home docs surface and themed with site CSS tokens. Backend implements the
 `workspace-chat-surface.md` contract (SSE `meta`/`delta`/`done`, paginated
 `messages`). Retrieval (`DocsRetriever`) ranks specs through `SpecIndex`, the
@@ -181,13 +181,10 @@ that clones this repo at a pinned `WAASEYAA_ORG_REF`, a Caddy vhost
   a missing SQLite file, and that abort precedes `db:init` registration. The
   deploy workflow runs the one-shot `db:init` with `-e APP_ENV=local` so the DB
   is created/migrated; the long-running container stays production.
-- **`content:sync` follow-up (required before the next deploy, not yet
-  landed):** `deploy-waaseyaa-org.yml` in `waaseyaa-infra` must also run the
-  one-shot `content:sync` right after `db:init`, with the same `-e
-  APP_ENV=local` pattern and for the same reason (production won't boot
-  against the freshly-created DB). Without this the entities never get
-  created/updated from `content/*.md` on a real deploy; `ReleaseHonestyTest`
-  only guards the corpus, not the running database.
+- **`content:sync` deploy step:** waaseyaa-infra PR #36 added the one-shot
+  `content:sync` immediately after `db:init`, with the same `APP_ENV=local`
+  pattern. Keep that ordering: malformed git-authored content must abort the
+  candidate before the running container is swapped.
 - Secrets (incl. `ANTHROPIC_API_KEY`) come from the `waaseyaa-infra` ansible
   vault, never committed. Caddyfile changes need `docker compose up -d
   --force-recreate caddy` (not `restart`).

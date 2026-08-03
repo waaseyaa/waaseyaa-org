@@ -149,6 +149,20 @@ This mission ships the listing pipeline and the cache tag/context substrate it r
 
 ### 3.6 ListingResult shape
 
+- **FR-021a (#2167)** The requested page is read from
+  `RequestContext::getQueryParams()['page']`, so **that context must be the
+  live request's**. `packages/listing`'s ServiceProvider binds an anonymous
+  default for CLI and unit construction, and consults the kernel-services bus
+  inside that binding so a real request wins — necessary because
+  `ServiceProvider::resolve()` checks local bindings before the bus. Until
+  #2167 no kernel supplied one, so `?page=` was never observed and every
+  listing rendered page 1 while `hasNext` still reported `true`. One
+  consequence for callers: a `RequestContext` is per-request, so **every
+  listing resolved during one request shares one page number**. An application
+  wanting independently paged listings on a single page needs either separate
+  routes or its own scoping; resolving several paged listings in one request
+  advances all of them together.
+
 - **FR-022** `ListingResult` MUST be a `final readonly class` exposing: `iterable $rows` (iterable of entity instances), `Pagination $pagination`, `array $cacheTags` (`string[]`), `array $cacheContexts` (`string[]`). Internals are not stable surface; only the four accessors are.
 - **FR-023** `cacheTags()` MUST include at minimum: `entity:<type>` for the listing's entity type, and `entity:<type>:<id>` for every entity present in the returned rows. Translatable entity types MUST also add `entity:<type>:<id>:<langcode>` per row.
 - **FR-024** `cacheContexts()` MUST include BOTH `user.id` AND `user.roles` whenever the per-row access gate runs for the resolution — i.e. whenever the FR-032 fast path is NOT taken (`!canUseAccessFastPath()`), which includes the default `$accessOps === ['view']` path against any policy that has not opted into `SUPPORTS_LISTING_FAST_PATH`. This binds an account-dependent (role- or owner-filtered) result to the acting account so it is never served to a different user from cache (audit #28). It MUST include `url.query.page` whenever `$pageSize` is non-null; MUST include `url.query.<param>` for each `exposedParam` declared in filters; MUST include `language.content` whenever the entity type is translatable. Note: `ListingDefinition::effectiveContexts()` stays a pure function of the definition (it still adds `user.roles` only for non-default `$accessOps`); the gate-aware `user.id`/`user.roles` binding is applied by `ListingResolver::computeCacheContexts()`, which alone knows whether the fast path applies.
@@ -202,6 +216,20 @@ This mission ships the listing pipeline and the cache tag/context substrate it r
 - **FR-051** Validation rules: (a) entity type must exist in `EntityTypeManager`; (b) bundle (if set) must be a valid bundle for that type; (c) every filter/sort field must be a field on the entity type or a derived attribute; (d) every filter/sort field must report `supportsQuery: true` on its bound storage backend; (e) every operator must be compatible with the field's typed-data type (e.g., `BETWEEN` requires comparable type); (f) langcode filters/contexts may only appear on translatable types.
 - **FR-052** Validation runs in `PackageManifestCompiler::warm()` after entity-type registration but before route dispatch. In dev, it runs on every request; in prod, only when `var/manifest.php` is rebuilt.
 - **FR-053** Validation failures MUST be fail-fast: the kernel refuses to boot, with the exception's full message in the error log. No silent "broken listing" state.
+
+#### What FR-051(d) does and does not promise (#2157)
+
+Rule (d) — "Rule G" in `ListingDefinitionValidator` — checks the field **declaration**, not the physical table. Three properties are easy to conflate, and conflating them produced a silent failure before #2157:
+
+| Property | Means | Established by |
+|---|---|---|
+| **Queryable** | The field may be filtered and sorted on. **This is all Rule G checks.** | `FieldStorage::Column` on the field definition |
+| **Physically materialised** | The field is a real database column. | The *entity type's* primary storage backend being `sql-column` — never the field alone |
+| **Physically indexed** | That column additionally carries a B-tree index. | `indexed: true` **and** the `sql-column` backend |
+
+A field declared `FieldStorage::Column` on an entity type whose backend resolves to `sql-blob` (the default) passes Rule G, lives in the `_data` JSON blob, and is filtered over the blob with no index. That is supported and remains the behaviour of every shipped listing — `node`'s article listings work exactly this way.
+
+A facet that must be *physically indexed* requires its entity type to declare `storageBackend: PrimaryStorageBackend::SQL_COLUMN` on `#[ContentEntityType]` and `indexed: true` on the `#[Field]`. Declaring `indexed: true` on a type whose backend cannot materialise it raises `UnmaterializableIndexException` at schema-sync time rather than failing silently — see [`entity-system.md`](entity-system.md) §"Selecting a backend from the attribute (#2157)".
 
 ### 3.14 Error model
 
