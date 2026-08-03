@@ -1,5 +1,7 @@
 # Infrastructure
+<!-- Spec reviewed 2026-07-30 - #2154 (follow-up to #2146): a session.stateless_paths entry of exactly "/" now means the ROOT PATH only, not a prefix of every path. Prefix-matching it made every anonymous GET stateless including /admin/login (a GET that must mint a CSRF token, withheld when no session exists), so an app could not express a cookie-free homepage without silently breaking its own authentication. Named prefixes are unchanged. See middleware-pipeline.md "Stateless path gate". -->
 
+<!-- Spec reviewed 2026-07-30 - #2146 stateless session paths: SessionMiddleware gains an opt-in session.stateless_paths gate (anonymous GET/HEAD on configured prefixes skip session_start; session-cookie-carrying requests resume; other methods unchanged; default [] is exact behavior parity). Access-control semantics unchanged: skipped sessions resolve to AnonymousUser under deny-unless-granted. Full contract in middleware-pipeline.md "SessionMiddleware". -->
 <!-- Spec reviewed 2026-07-25 - #2122 maintenance-mode pre-boot gate: `HttpKernel::handle()` now runs `maintenanceGate()` BEFORE `boot()`. When the canonical flag file (`storage/maintenance.flag`, resolved by `MaintenanceSettings::fromEnvironment()`) reads active — via the fail-closed `MaintenanceState::read()` — the kernel returns a branded `503` + `Retry-After` from `MaintenanceModeMiddleware::maintenanceResponse()` without opening or querying the database, so maintenance survives a DB mid-swap (the SFN live-SQLite-swap incident). The gate request is built with `HttpRequest::create(server: $_SERVER)` (NOT `createFromGlobals()`), so `php://input` is never consumed and POST bodies survive for non-maintenance requests. Loopback (`REMOTE_ADDR`) and a configurable health path are exempt; the localhost exemption is disabled with `WAASEYAA_MAINTENANCE_TRUST_LOCALHOST=false` for same-host reverse-proxy topologies. `MaintenanceModeMiddleware` deliberately carries NO `#[AsMiddleware]` attribute, so `PackageManifestCompiler` never discovers it into the post-boot pipeline — single invocation path. No existing infrastructure contract surface changed; the gate is a new pre-boot short-circuit. Substantive operator surface: docs/specs/operations-playbooks.md "Playbook I" + docs/specs/middleware-pipeline.md "Pre-boot maintenance gate". Acceptance: HttpKernelMaintenanceGateTest, MaintenanceModeMiddlewareTest, MaintenanceStateTest. -->
 <!-- Spec reviewed 2026-07-25 - #2124 ServiceProvider merge resolution root: `ServiceProvider::mergeChildProvider()` previously copied only binding definitions, leaving each provider with its own private `$resolved` singleton cache. Because a child binding closure captures the child's `$this`, `$this->resolve('A')` inside one binding forked a second instance of a `singleton`-declared service away from the one external consumers resolved against the merge root — silent split-brain at the DI seam. Merged children now delegate `resolve()` to the single merge root (transitively for nested grandchildren) via a private `$mergeRoot` link, so every resolution — including those inside the child's own binding closures — resolves against and caches in one place; a shared binding is exactly one instance across the composed stack. Pre-merge-resolved entries are adopted into the root; a genuine conflict (same abstract already resolved to a different instance) or a self-merge throws rather than forking silently. Standalone, never-merged providers are byte-for-byte unchanged (the delegation branch is inert while `$mergeRoot` is null). Audit: zero production callers — latent hardening. Acceptance: MergeChildProviderResolutionTest, KernelServicesInterfaceTest. -->
 <!-- Spec reviewed 2026-07-19 - Sheguiandah gap batch: media upload and entity-gated download resolve the canonical top-level files_dir when legacy files_root is absent. Explicit files_root retains precedence for backward compatibility; otherwise the existing storage/files fallback remains. The media download's source_uri authority is canonical in entity-field-read-boundary.md. -->
@@ -269,6 +271,47 @@ The provider list is read through a closure accessor so resolution sees the live
 **Hardcoded bus cases shadow sibling-provider bindings.** Inside `ProviderRegistryKernelServices::get()`, every abstract in the table above (including `GateInterface`, G-014, and `FieldDefinitionRegistryInterface`, #2047) is checked and returned BEFORE the fallthrough loop over sibling providers' `getBindings()` ever runs — the loop is only reached for abstracts none of the named cases matched. A host provider that binds one of these abstracts intending it to be resolvable by sibling providers through the bus is shadowed: every bus consumer still gets the kernel-owned service. In particular, the existing duplicate `FieldServiceProvider` registry binding is shadowed for sibling consumers; removing or reconciling that duplicate is a documented follow-up and is not required for #2047 because the real kernel path proves the canonical manager registry is authoritative. This does not affect resolution *within* the host provider itself — `ServiceProvider::resolve()`'s local-bindings-first rule (previous paragraph) still means a provider resolving an abstract it bound locally gets its own binding, never the bus. The shadowing only applies to *other* providers resolving that abstract through `KernelServicesInterface::get()`.
 
 **Propagation through `mergeChildProvider()`.** When a stack provider merges a child via `mergeChildProvider()`, the child receives the same `KernelServicesInterface` instance so `resolve()` keeps working inside the child’s `register()`.
+
+### Per-request state on the kernel-services bus (#2167)
+
+Most bus entries are process-scoped (the entity-type manager, the database, the
+dispatcher). `RequestContext` is the exception: it is **per-request**, and the
+kernel supplies it.
+
+- `HttpKernel::requestContextForProviders()` builds one from the live request's
+  query parameters.
+- `AbstractKernel` returns `null`, so console and CLI kernels leave consumers
+  with whatever anonymous default their own provider binds.
+- `ProviderRegistry::discoverAndRegister()` threads it into the bus that
+  providers actually receive. There are several bus construction sites; this is
+  the one whose instance reaches provider bindings, and wiring only the others
+  leaves the value unreachable.
+
+**A provider that binds a per-request service locally must consult the bus
+inside its own binding.** `ServiceProvider::resolve()` checks local bindings
+**first** and only then falls back to the bus, so a local binding that ignores
+the bus wins every time. Before #2167 `packages/listing` bound
+`new RequestContext()` and its comment promised a kernel override that could
+therefore never have taken effect however it was written — `?page=` reached no
+listing in any application, while `Pagination::hasNext` still reported `true`.
+
+The correct shape:
+
+```php
+$this->singleton(
+    RequestContext::class,
+    function (): RequestContext {
+        $fromKernel = $this->kernelServices?->get(RequestContext::class);
+
+        return $fromKernel instanceof RequestContext ? $fromKernel : new RequestContext();
+    },
+);
+```
+
+`RequestContext::getQueryParams()` is `array<string, string>`. Bracketed and
+nested array values reduce to their last scalar leaf rather than widening the
+declared type for every consumer; repeated scalars follow PHP's own last-wins
+semantics.
 
 ### HTTP service resolver (SSR controller-method DI)
 
@@ -602,6 +645,7 @@ The query builder binds all **values** as parameters (never interpolated), so `$
 - **Builder-owned identifier paths are quoted** via the platform's `quoteIdentifier` (cross-driver; splits a qualified `alias.column` on `.` and quotes each part; doubles embedded quotes so a reserved word like `key`/`count`/`order`, or a metacharacter-bearing name, is rendered inert): `fields()` / `addField()` columns and the `AS` alias, `join()` / `leftJoin()` `$table` and `$alias`, the WHERE-field of `DBALUpdate` / `DBALDelete`, and **(WP6)** the `$field` of `DBALSelect::condition()` / `orderBy()` / `isNull()` / `isNotNull()`. `*` in `fields()`/`addField()` is left unquoted. A caller may therefore pass a raw, unquoted column name (`order`, `count`) to these `Select` methods safely.
 - **Raw-expression seams** `whereRaw(string $expression, array $parameters = [])` and `orderByRaw(string $expression, string $direction)` emit the expression **verbatim** with positional `?` parameters bound left-to-right (an array entry binds as a multi-value `IN` list). This is the only place a SQL *expression* (e.g. `json_extract(_data, '$.x')`, `COALESCE(a, 0)`, a `CAST` wrapper) may flow into a `Select` WHERE/ORDER BY — quoting an expression as an identifier would corrupt it. Same **developer-supplied-only** contract as the `join()` ON-condition: **never pass user input as `$expression`**; bind values through `?` + `$parameters`.
 - **Entity read engine routing (WP6).** `SqlEntityQuery::resolveField()` and `SqlStorageDriver::resolveField()` now return a `ResolvedField` value object (`packages/entity-storage/src/ResolvedField.php`) carrying the SQL text plus shape (`isExpression()` / `isJsonExtract()`). A plain/qualified column is a **bare** identifier (no longer pre-quoted) routed through the auto-quoting `condition()`/`orderBy()`/`isNull()`/`isNotNull()` path; a `_data` `json_extract(...)` field is an **expression** routed through `whereRaw()`/`orderByRaw()`. The K3 native-type `CAST(json_extract(...) AS TEXT)` casting for `IN`/comparison on JSON `_data` fields (mission #1257 WP05) is preserved inside the `whereRaw()` path. Acceptance: `IdentifierQuotingTest` (reserved-word + metacharacter inert through every quoted path incl. `condition`/`orderBy`/`isNull`/`isNotNull`; `whereRaw`/`orderByRaw` verbatim + bound params) plus the entity-storage query suites (json_extract filter/sort + K3 casting still green via the raw seams).
+- **Schema *introspection* must read identifiers back canonically (#2163).** The bullets above concern *emitting* quoted identifiers; the inverse direction has its own trap. Doctrine keys `AbstractSchemaManager::listTableColumns()` by the column's **quoted** name whenever the identifier needs quoting — a column named `key` arrives under the array key `'"key"'`, while the `Column` object's `getName()` is the canonical `'key'`. `DBALSchema::fieldExists()` originally did `isset($columns[$field])` and therefore reported **every reserved-word column as absent**. Two callers acted on that: `SqlColumnSchemaBuilder::addFieldColumn()`'s existence guard was defeated (a second `db:init` aborted with `ColumnAlreadyExists`, so a deploy could create the schema once and never re-sync it), and `SqlBlobBackend::read()`/`write()` — which use the same call to choose between a real column and the `_data` blob — silently stored and fetched a reserved-word field inside `_data` even though its column existed. `fieldExists()` now treats `Column::getName()` as the authority, keeping the direct-key fast path for ordinary identifiers **with a name check** so a quoted string such as `'"key"'` no longer matches (that is an identifier literal, not a column name). Any new `listTableColumns()` consumer must compare against `getName()`, never the array key. Note deliberately **no** quote-character handling and **no** reserved-word list: which identifiers need quoting is the platform's business, and `getName()` answers it portably for every driver. Acceptance: `DBALSchemaReservedWordColumnTest`, `BlobBackendReservedWordColumnTest`, and `BuiltinBackendsAreRegisteredTest::repeated_db_init_is_idempotent` (which now asserts exit code 0 on each of three real `db:init` runs, with a `key` column in its fixture).
 - **Raw `PRAGMA` callers outside the query builder** must quote the same way. `Waaseyaa\Foundation\Diagnostic\HealthChecker`'s three `PRAGMA table_info(...)` probes (foundation, WP6 layer-gate scope batch) build the SQL string directly rather than going through `SelectInterface`, so they call `DatabaseInterface::quoteIdentifier($tableName)` themselves before interpolating — a hand-built `"{$tableName}"` literal does not double embedded `"` characters the way `quoteIdentifier()` does, so it is not equivalent. See `docs/specs/operator-diagnostics.md` "Schema Drift Detection".
 
 ## Discovery Response Caching (v1.0)

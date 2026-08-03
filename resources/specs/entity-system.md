@@ -3,6 +3,7 @@
 <!-- Spec reviewed 2026-07-19 - Sheguiandah gap batch: EntityValueContainer gains internal rawProjection(list<string>) for closed, fixed-shape authorities. It releases only the named values through the existing RestrictedEntityValue view binding, never exports the whole value bag, and is consumed through hard-coded EntityBase-bound projectors by the relationship directory; ordinary get()/toArray()/serialization and missing-context behavior are unchanged. Canonical authorization contract: entity-field-read-boundary.md. -->
 
 <!-- Spec reviewed 2026-07-17 - #2064 WP1 adds dormant FieldReadLevel metadata, immutable EntityStructure, preflight data/result skeletons, and the future EntitySerializationForbidden type. No EntityBase accessor, toArray(), serialization, hydration, query, or boot path is wired or changed. Canonical contract: entity-field-read-boundary.md. -->
+<!-- Spec reviewed 2026-08-02 - #2171 `FieldAccessPreflightData::CURRENT_SCANNER_VERSION` (currently 2) is now a contract, not a recorded value. The scanner generation determines WHAT a preflight swept — v2 narrowed the schema fingerprint from every physical table to entity storage only (#2143) — so an artifact from a different generation answers a different question than the running framework asks. `scanner_version` was previously parsed and never compared; because it sits inside `canonicalData()` a hand-edited value was caught by the checksum, but an artifact legitimately produced by another generation is self-consistent and its fingerprint can coincide where the two table sets match. `FieldAccessActivationPreflight::assertReady()` now refuses any mismatch in BOTH directions: a newer artifact is as unverifiable as an older one. Bump the constant when the MEANING of a scan changes, not when its implementation does. Correction to the #2171 report: the pre-existing missing/malformed/framework-version/schema-fingerprint/checksum/readiness checks already failed CLOSED and are unchanged. Acceptance: FieldAccessActivationFailsClosedTest. -->
 
 <!-- Spec reviewed 2026-07-14 - #2018 authoring spine: integer fields with settings.subtype=timestamp now derive AtLeastOneOf(Type(int), Type(DateTimeInterface)) so unix-backed storage values and cast-aware domain values are both valid while unrelated scalar/container types remain rejected. This corrects the documented cast-aware validation contract; no validation path is disabled. -->
 <!-- Spec reviewed 2026-07-21 - #2101 WP-3: taxonomy hierarchy remains guarded at EntityRepository's PRE_SAVE boundary, while taxonomy_term.vid now carries an additive restrictive foreign key to taxonomy_vocabulary.vid so direct, batch, and concurrent vocabulary deletes cannot orphan terms. -->
@@ -1880,6 +1881,129 @@ composition root's explicit framework allowlist.
 
 `ReservedBackendIds` holds the canonical string constants for the two built-in
 backends: `SQL_BLOB = 'sql-blob'` and `SQL_COLUMN = 'sql-column'`.
+
+#### `FieldStorage::Data` under `sql-column`: the hint follows the physical shape (#2165)
+
+`FieldStorage::Data` says where a value *should* live. It does not say where it
+*does*, and on `sql-column` the two differ: `EntitySchemaSync` selects
+entity-level fields by **backend**, so it materialises a real column for every
+declared field and creates no `_data` blob at all.
+
+Both storage sides now resolve the hint against the physical shape rather than
+against the hint alone:
+
+- `SqlStorageDriver::splitForWrite()` routes a Data-declared value to `_data`
+  **only when a `_data` column exists**; otherwise it writes to the column that
+  was created for it.
+- `SqlEntityQuery::resolveField()` emits `json_extract(<table>._data, …)` under
+  the same condition, so a filter or sort on a Data-declared field works on
+  `sql-column` instead of querying a column that is not there.
+
+Before #2165 the write half honoured the hint unconditionally and flushed its
+JSON bucket only `if ($hasDataColumn)` — so on a blob-less table the bucket was
+**silently discarded**. `save()` returned success, nothing was logged, and the
+column stayed `NULL`. The read path was never broken, which made the symptom
+look like a lost reload rather than a write that never happened.
+
+Anything genuinely unstorable now raises `UnstorableFieldException` rather than
+vanishing: a value with no column *and* no blob, or a non-scalar bound for a
+column this driver cannot encode and reload faithfully.
+
+`splitForWrite()` has a single caller, so create, update and revision writes
+inherit this from one boundary. When adding a storage path, resolve `stored:`
+against the table's real shape — a `_data` column is a property of the backend,
+not of the field.
+
+#### Backend registration is what makes any of this work (#2160)
+
+`AbstractKernel::validateQueryDefinitions()` builds a `BackendRegistrar` from
+`$manifest->providers`, keeping only classes implementing
+`HasFieldStorageBackendsV2Interface`. **`FrameworkFieldStorageBackendProvider`
+(`packages/entity-storage`) is the class that registers `sql-blob` and
+`sql-column`**, declared through the ordinary `extra.waaseyaa.providers` key. It
+implements `IsFrameworkBackendProviderV2Interface`, without which
+`BackendRegistrar::registerV2()` rejects both ids as reserved ids claimed by a
+third party.
+
+Before #2160 that provider did not exist and nothing else implemented the
+interface, so the registrar was **empty in every application**. Nothing noticed,
+because `DefinitionValidator::validateType()` skips every field that is not
+`isIndexed()` and `BackendResolver::resolve()` — the registrar's only live
+consumer — is reached only for indexed fields. #2157 made `indexed: true`
+declarable, and the first application to use it aborted `db:init` with
+`UnknownBackendException`, naming `sql-blob` just as readily as `sql-column`.
+
+**Registered instances are query-support only.** `BackendRegistrar` constructs
+providers with `new $fqcn()` and keys gateways by backend id alone, so a
+registered backend is global and cannot carry the table name, id key or entity
+type id that read/write/delete need. Both backends therefore expose
+`forQuerySupport()` for that role, and IO through a registry-obtained gateway
+throws rather than issuing SQL against an empty table name. Per-entity-type
+instances are constructed directly, with a real database, by the storage layer
+that knows the table.
+
+When adding a new backend, register it from a provider the manifest discovers;
+do not construct a registrar by hand. A test that constructs `EntitySchemaSync`
+directly bypasses this entire path — which is exactly how #2160 shipped.
+
+#### Selecting a backend from the attribute (#2157)
+
+`#[ContentEntityType(storageBackend: PrimaryStorageBackend::SQL_COLUMN)]`
+selects the primary storage backend for an attribute-defined content entity
+type, and `#[Field(indexed: true)]` requests a physical B-tree index on a
+materialised column. Both flow through `EntityMetadataReader` and
+`EntityType::fromClass()`; the `@internal` `_fieldDefinitions` constructor slot
+is NOT involved and remains reserved for the factory.
+
+`Waaseyaa\Entity\Storage\PrimaryStorageBackend` holds the ids usable from the
+attribute. It deliberately MIRRORS `ReservedBackendIds` rather than importing
+it, because `packages/entity` must not depend on `packages/entity-storage`; the
+two are pinned together by a test in entity-storage, which can see both.
+
+**Omitting `storageBackend` preserves the historical default exactly.** Every
+entity type that does not declare one resolves to `sql-blob`, with non-key
+fields in `_data`, unchanged.
+
+#### Three properties that are easy to conflate
+
+| Property | Determined by | Notes |
+|---|---|---|
+| **Queryable / filterable** | the field's declared `FieldStorage` | What Listing Rule G checks. A blob-backed field can still be filtered and sorted through the backend's query support. This is the default and stays fully supported |
+| **Physically materialised** | the ENTITY TYPE's primary storage backend | Only `sql-column` creates real columns. A field declared `FieldStorage::Column` on a `sql-blob` type passes Rule G and still lives in `_data` |
+| **Physically indexed** | `indexed: true` **and** the `sql-column` backend | Declaring an index the backend cannot create raises `UnmaterializableIndexException` at schema-sync time |
+
+Declaring `FieldStorage::Column` alone has never guaranteed a database column,
+and Rule G has never promised one. Before #2157 that divergence was silent;
+`indexed: true` now makes the intent explicit and the unmaterializable case loud.
+
+#### `indexed: true` requires `FieldStorage::Column` — as a contract, not a physics claim
+
+`#[Field]` rejects `indexed: true` alongside `FieldStorage::Data` at
+construction. State the reason precisely, because the obvious justification is
+wrong:
+
+- `indexed: true` is contractually permitted **only** with
+  `stored: FieldStorage::Column`.
+- The rule exists so that requesting an index is always an explicit declaration
+  of indexable intent, on a field the developer has also declared column-shaped.
+- A `Data` declaration is therefore non-indexable **by API contract**, even
+  though the current `sql-column` backend does in fact materialise a column for
+  it (see the note immediately below).
+- That backend behaviour is pre-existing and may change. The attribute API does
+  not promise it either way, which is precisely why the contract is stated in
+  terms of the declaration rather than in terms of what the storage layer
+  happens to do today.
+
+Do **not** describe the combination as physically impossible. Under `sql-column`
+the column exists.
+
+**Note on `FieldStorage::Data` under `sql-column`.** `EntitySchemaSync` selects
+entity-level fields by backend rather than per-field `stored`, so on a
+`sql-column` type ALL declared fields are materialised as columns and no `_data`
+blob is created. `FieldStorage::Data` therefore has no effect on that backend.
+This is pre-existing behaviour, pinned by
+`AttributeSelectedColumnBackendTest::on_the_column_backend_every_declared_field_is_materialised_and_there_is_no_blob`,
+and is a candidate for a follow-up rather than part of #2157.
 
 The registrar returns only `FieldStorageBackendGateway`; it has no raw backend
 accessor. Each operation reserves a value-free descriptor before fingerprint

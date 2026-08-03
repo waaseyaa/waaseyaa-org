@@ -81,9 +81,9 @@ final class ContentMcpToolsTest extends TestCase
         $payload = json_decode($result['result']['content'][0]['text'], true, 16, JSON_THROW_ON_ERROR);
 
         self::assertGreaterThanOrEqual(1, $payload['count']);
-        self::assertSame('v0.1.0-alpha.276', $payload['releases'][0]['version']);
-        self::assertSame('https://waaseyaa.org/releases/v0.1.0-alpha.276', $payload['releases'][0]['canonical_url']);
-        self::assertSame('https://waaseyaa.org/releases/v0.1.0-alpha.276.md', $payload['releases'][0]['markdown_url']);
+        self::assertSame('v0.1.0-alpha.285', $payload['releases'][0]['version']);
+        self::assertSame('https://waaseyaa.org/releases/v0.1.0-alpha.285', $payload['releases'][0]['canonical_url']);
+        self::assertSame('https://waaseyaa.org/releases/v0.1.0-alpha.285.md', $payload['releases'][0]['markdown_url']);
     }
 
     #[Test]
