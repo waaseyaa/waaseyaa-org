@@ -25,7 +25,6 @@ use Waaseyaa\AI\Agent\Provider\MessageResponse;
 use Waaseyaa\AI\Agent\Provider\StreamChunk;
 use Waaseyaa\AI\Agent\Provider\StreamingProviderInterface;
 use Waaseyaa\Database\DatabaseInterface;
-use Waaseyaa\Database\DBALDatabase;
 
 /**
  * Abuse, spend and retention bounds for the public docs chat. No test
@@ -39,7 +38,7 @@ final class ChatHardeningTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->db = DBALDatabase::createSqlite(':memory:');
+        $this->db = \App\Tests\Support\SearchDatabase::create();
         new ChatSchema($this->db)->ensure();
         $this->fake = new FakeStreamingProvider();
     }

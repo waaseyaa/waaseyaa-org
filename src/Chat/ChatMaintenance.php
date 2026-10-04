@@ -26,13 +26,10 @@ final class ChatMaintenance implements ScheduleEntriesInterface
 
     public function register(ScheduleInterface $schedule): array
     {
-        $database = $this->database;
         $task = new ScheduledTask(
             name: 'docs-chat-retention',
             expression: '10 4 * * *',
-            command: static function () use ($database): void {
-                self::prune($database, ChatLimits::fromEnvironment());
-            },
+            command: new ChatRetentionCommand($this->database),
             preventOverlap: true,
             description: 'Delete docs-chat transcripts past retention and lapsed rate-limit rows.',
         );

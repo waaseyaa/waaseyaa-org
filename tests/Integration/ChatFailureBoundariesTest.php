@@ -53,7 +53,7 @@ final class ChatFailureBoundariesTest extends TestCase
         $this->corpus = SpecCorpus::default();
         $this->urls = new SiteUrl('https://waaseyaa.org');
 
-        $this->db = DBALDatabase::createSqlite(':memory:');
+        $this->db = \App\Tests\Support\SearchDatabase::create();
         new ChatSchema($this->db)->ensure();
 
         $this->index = new SpecIndex($this->corpus, $this->db);

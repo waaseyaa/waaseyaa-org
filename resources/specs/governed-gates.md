@@ -1,0 +1,444 @@
+# Governed Gates: Preflight, Refresh, and Recorded-Artifact Identity
+
+<!-- Spec reviewed 2026-09-05 - #2641: bin/check-stale-spec-deferrals is a
+nightly warn-only scan of live spec deferrals to closed issues. It must not
+enter tools/preflight-gates.json: issue state changes elsewhere, and
+resolution needs network or an injected snapshot. -->
+
+Status: LIVE (introduced by #2400)
+Related: `docs/specs/workflow.md` (workflow rules), `docs/specs/s1-schema-authority.md` (DDL roster
+semantics), `docs/governance/m11-steady-state-conformance-loop.md` (governed-change loop)
+
+## Why this spec exists
+
+PR #2399 surfaced the failure shape this spec eliminates: two stale recorded rosters and one stale
+spec appeared as **five red CI jobs** (the same failures repeated across `ci/unit-tests`,
+`ci/random-order`, `ci/coverage`, `support/s1-contract`, and `spec-drift`), the repair commands had
+to be discovered by reading verifier sources, and the local run matrix (`--testsuite Unit` +
+`--testsuite Integration`) never executed the Architecture suite that CI runs. The structural
+causes: no single local preflight, no single refresh command, heterogeneous state semantics
+(worktree scanners vs committed-ref diffs), an advisory-local/blocking-CI split for spec drift, no
+fast CI job gating the long test jobs, and roster entries whose identity binds line numbers and
+whole-file hashes.
+
+## The contract
+
+### Hosted execution profiles
+
+`ci.yml` exposes two event-selected profiles. An ordinary push to `main` runs
+the bounded global and static controls and publishes `ci/main-feedback`.
+Pull-request runs and explicit dispatches run the complete graph and publish
+`ci/full-qualification`. Expensive PHPUnit, random-order, package-isolation,
+consumer, browser, platform, and release-integrity jobs are not started by the
+main-feedback profile. This is event selection, not changed-package selection.
+
+The two decisions are not interchangeable. Release-cut dispatches
+`profile=full` on the exact release candidate and `bin/wait-for-green-ci`
+requires the visible `ci/full-qualification` job to conclude successfully.
+A successful main-feedback workflow cannot satisfy that publication boundary.
+The tracked CI inventory and governed roster record the profile conditions.
+
+### 1. `bin/check-pr-preflight` — one local command mirroring CI's repo-state gates
+
+Runs every fast **repo-state** gate that hosted CI reports, using the same commands CI uses,
+with the `run_gate` accumulator pattern from the `ci/verify-gates` job: every gate runs, all
+failures are reported in one pass, each failure names its exact repair command, and the script
+exits non-zero if any gate failed. Test suites (Unit / Integration / Architecture / frontend /
+e2e) and hosted consumer/runtime lanes remain the long half of verification.
+They are never executed by local preflight. A hosted-only manifest entry may
+inventory a long lane's controls and report its owning check as
+`hosted-required`, but cannot turn that lane into a local pass. Local preflight does not download or
+execute FrankenPHP; missing the binary on a developer laptop must not become a
+skip inside the hosted job. The preflight's job is that the long half never
+discovers what the fast half could have said in seconds. The nightly
+warn-only stale-spec-deferral scan (`bin/check-stale-spec-deferrals`,
+`.github/workflows/nightly.yml` job `nightly/stale-spec-deferrals`) is also
+**not** a preflight gate: it needs GitHub issue state (or an injected
+snapshot), and the drift appears when an issue closes elsewhere rather than
+when a batch lands.
+
+Profiles:
+
+- **default (`bin/check-pr-preflight`)** — every fast repo-state gate: composer policy, portable
+  paths, the portable null device, package layers, symfony imports, the four S1 roster/contract gates, support contract,
+  surface parity, changelog shape and fragment validation, ingestion defaults, secrets, governed secret access, runtime-policy custody, dispatcher
+  keys, getquery bindings, admin coercion patterns, admin dist freshness, admin dist acceptance
+  manifest, field guards, access hardening, contract-suite coverage, openapi, phpstan/phpunit path checks, distribution
+  extensions, PHPUnit skip policy, delivery-agent event schema and append-only
+  custody, repository-root hygiene, spec drift, changelog discipline, cs-check.
+- **`--full`** — adds the phpstan-engine gates (`composer phpstan`, `bin/check-dead-code`) and
+  reports the hosted-only `ci/split-artifact-acceptance` owner without launching its consumer build. These
+  are in CI's blocking set; they are separated locally only because the PHPStan worker layer is
+  environment-sensitive (documented WSL crashes) and cache-cold runs are minutes long. `--full` is
+  the documented pre-landing command.
+
+The gate list is **data, not prose**: `tools/preflight-gates.json` maps each gate id to its
+command, repair command, profile, and the CI surface that enforces it. Schema 2 also resolves
+execution owner (`local` or `hosted-only`), supported hosts, required capabilities, owning hosted check, relevant path selectors, cost class,
+and evidence inputs for every gate. Common conservative values live in `gate_defaults`; a gate
+override can narrow them but cannot remove its hosted owner. A self-test
+(`tests/Architecture/PreflightParityTest`) asserts (a) every manifest gate resolves to a runnable
+command, and (b) every gate names a CI enforcement surface that actually exists in the workflow
+files — so the manifest cannot silently drift from CI.
+
+Before launching a selected gate, preflight identifies the native host and the available PHP,
+Git, Bash, Composer, and Node command capabilities. A supported and applicable gate runs normally.
+A gate declared `hosted-only` is never launched on any local host. It is reported as
+`hosted-required` with its owning check even on Linux, because a Linux workstation is not the
+governed exact-SHA hosted runner. Its command and control inventory are executable ownership data,
+not permission to substitute a local run for hosted proof.
+A gate whose host or required capability is unavailable is `hosted-required`: it is not launched,
+its owning hosted check is named, it is never printed as `ok`, and the ordinary command exits 3.
+`--allow-hosted-required` exists only for the pre-push adapter: it permits publication so the
+named hosted owner can run while preserving the incomplete result in stdout. It does not make the
+gate pass, qualify a candidate, satisfy branch protection, or alter release-cut. A gate with an
+explicit selector that matches no candidate path is `not-applicable`, also never printed as a
+pass. Defects remain `failed` and exit 1.
+
+Successful gate evidence is stored outside the checkout below Git's common directory. Its key
+binds the complete selected path set, entry types and bytes, resolved base for base-relative gates,
+`composer.lock`, native host and toolchain capabilities, profile, selectors, evidence inputs, and
+the effective gate definition. The receipt separately retains the exact HEAD/tree and dirty-byte
+identity on which the gate actually ran. An identical candidate prints `reused exact identity`; a
+different candidate with the same material key prints `reused equivalent inputs from <origin>` and
+the machine report preserves that origin. It never claims the gate ran on the new head. A changed
+selected byte or gate definition invalidates only the affected receipt. `**` remains the
+conservative selector default. Narrow selectors must include the command implementation,
+configuration, dependency inputs, and complete data surface of that gate. Failed,
+hosted-required, not-applicable, corrupt, or stale receipts are never reusable. `--no-reuse`
+forces execution, `--evidence-dir` supplies an isolated store for tests, and `--report-json` writes
+the four-state machine-readable report. Hosted CI and exact-SHA release gates do not consume local
+receipts.
+
+Vendor-freshness precondition (#2926): before any gate runs, preflight calls the shared,
+dependency-free `bin/lib/vendor-freshness.php` against the repository root. It compares
+`composer.lock` (packages and packages-dev — by name, version, and source/dist reference)
+with `vendor/composer/installed.json`, and the PSR-4 namespaces a fresh dump must carry —
+the root `composer.json`'s autoload and autoload-dev plus every locked package's autoload
+(Composer never dumps a dependency's autoload-dev) — with `vendor/composer/autoload_psr4.php`. A stale or missing `vendor/`
+short-circuits with `VENDOR_FRESHNESS_EXIT_CODE` (3 — distinct from 0 pass, 1 defect, 2 gate
+infrastructure, 255 PHP fatal) and one actionable `vendor/ is stale relative to composer.lock —
+run composer install` message; **no gate runs**, because their results against a stale
+checkout would misreport environment faults as repository defects (an uncaught
+`Opis\JsonSchema\Validator` fatal in the delivery-ledger gate; an "orphaned" public-surface
+declaration whose repair is a CHANGELOG directive). The gates that dereference locked packages
+or the autoloader — `bin/check-delivery-agent-events`, `tools/check-surface-parity.php`,
+`bin/generate-surface-map` — run the same precondition themselves, so they behave identically
+when invoked directly or by CI's `run_gate`. The precondition is deliberately **not** a manifest
+gate: hosted CI installs fresh and can never observe this state, so a manifest entry would be a
+no-op in CI while still needing an `enforced_by` surface; `bin/check-vendor-fresh` remains the
+standalone local guard over the same library. `--list` does not require a fresh `vendor/`.
+
+First-party source binding (#2972) is part of that same precondition. Package
+identity alone cannot distinguish two checkouts with equal lock files, so the
+guard also inspects the generated PSR-4, optimized classmap, and autoload-files
+paths in Composer's compatibility maps (when Composer emits the optional files
+map) and the runtime-static maps named by `autoload_real.php`. Candidate ownership comes from the root manifest and
+from path-package lock entries whose declared path is lexically inside the
+candidate; it never comes from a package or namespace naming convention. A
+candidate-owned path package stays first-party when its source path is a
+symlink, and fails when that symlink resolves outside the checkout. Every
+first-party generated path, including a more-specific generated PSR-4 prefix
+that could shadow an owned parent prefix, must likewise resolve inside the
+canonical candidate root. A more-specific prefix declared by a third-party
+package retains that ownership. Candidate-internal symlinks are valid;
+Composer-valid missing PSR-4 leaf directories are contained through their
+closest existing canonical ancestor. A donor symlink ancestor or dangling
+symlink remains a refusal. Raw path components reach `realpath` before lexical
+normalization, so `link/../missing` follows the link target's parent rather than
+being collapsed inside the candidate. Autoload-file and classmap targets must exist.
+Unrelated third-party package mappings are outside this containment rule. The guard reads generated
+array declarations without invoking `vendor/autoload.php` or any autoloaded
+file. A refusal identifies the map plane, owned declaration, observed path,
+and expected candidate root. If `vendor/` itself is a symlink, its repair is
+`unlink vendor && composer install`, affecting the candidate link only; the
+guard never rewrites or regenerates the donor checkout. A nested
+`vendor/composer` symlink is likewise unlinked in the candidate before install;
+an ambiguous generated-metadata escape requires restoring that candidate
+directory before running Composer.
+
+State semantics: preflight evaluates the committed range against `origin/main` (or
+`WAASEYAA_DRIFT_BASE`) **plus staged, unstaged, and untracked worktree files**. Spec-review
+trailers remain commit metadata: a committed trailer cannot pre-approve a later worktree source
+change, so that source change requires a corresponding worktree spec edit. Hosted CI omits the
+worktree mode because its checkout is already an exact immutable hosted head.
+
+Delivery-ledger custody has explicit local and hosted modes (#2900). The local
+roster passes `--branch-base={base}` so unrelated main appends do not reject an
+unchanged branch ledger. The dedicated `ci/verify-gates` step instead validates
+committed candidate bytes against pinned accepted history, preserving the full
+push baseline and binding PR merge parents. Strict native GitHub checks enforce
+freshness for optional pinned-head PR landings. Direct sprint batches retain the
+same local custody check and are observed by main CI. See
+[delivery-telemetry.md](./delivery-telemetry.md).
+
+### 2. `bin/refresh-governance-artifacts` — one refresh command
+
+For every governed recorded artifact, one command knows how to repair it:
+
+- **Mechanical artifacts** (regenerable with no human judgment): the four S1 rosters
+  (`support/s1-*-roster.json`) and the dispatcher-key baseline. Refresh regenerates them via the
+  verifiers' own write modes, then prints the resulting `git diff --stat` so the operator reviews
+  what changed before committing.
+- **Judgment artifacts** (entries need human-authored rationale): getquery-bindings baseline
+  (entries require `# reason` comments), dead-code baseline (policy: shrink-only), public surface
+  declarations (`packages/<pkg>/public-surface.php` — a `surface-parity` failure means a missing
+  declaration or an unauthorized removal/downgrade, which only a human can settle; the tracked
+  `docs/public-surface-map.php`/`.md` aggregates those declarations compose into are mechanical,
+  regenerated by `bin/generate-surface-map --write` at the release cut, and the refresh instruction
+  names that command — FW-DELIVERY-SURFACE-01 / #2901), symfony-import allowlist, access-hardening,
+  governed-secret-access and runtime-policy-custody baselines,
+  php-coverage baseline. Refresh does **not** rewrite these; it detects staleness and prints the
+  exact regeneration or hand-edit instruction for each.
+
+- **Policy authority** (the value is the policy, not a recording of code): `support/s1-v1.json`.
+  `bin/check-support-contract` owns the contract's schema and invariants and derives every
+  runtime, packaging, CI, and documentation expectation from the parsed contract (#2852); it
+  carries no policy values of its own, so a support-policy change is one contract edit plus the
+  real-surface change. Refresh prints that instruction; it never rewrites policy. The gate takes
+  `--root=DIR` and `--contract=PATH` so `tests/Architecture/CheckSupportContractGateTest.php` can
+  prove drift, malformed contracts, widening, and stale evidence fail closed against fixtures.
+
+Refresh only touches artifacts whose gate currently fails — a clean tree is a no-op.
+
+### 3. Worktree-inclusive local checks
+
+Local gate runs must see what the developer sees:
+
+- The S1 scanners (`bin/lib/s1-roster.php`) and `bin/check-access-hardening` derive their file
+  list from git, not from a filesystem walk: `bin/lib/repository-files.php` runs
+  `git ls-files -z --cached --others --exclude-standard [-- <scan root>...]`, so a scan sees
+  tracked files plus untracked files git would add — and nothing else. The repository's ignore
+  boundary is the exclusion *by construction*: nested git worktrees (`.worktrees/`,
+  `.claude/worktrees/`), `packages/*/vendor/`, `node_modules/`, `storage/`, `tmp/` build caches
+  and `.git/` itself never enter a scan, and git never descends into another repository's work
+  tree, so a nested checkout is invisible whether or not it is ignored. There is no
+  hand-maintained path denylist in any scanner (#2925 replaced the one #2865/#2866 kept
+  extending — a filesystem walk minus a list re-creates the ignore boundary by hand and missed
+  `.worktrees/` outright, producing 24,780 phantom findings in one developer clone). A root git
+  cannot enumerate fails closed with a clear error; the scanners never fall back to a walk.
+  Every git child the gates run drops git's repository-selecting environment
+  (`REPOSITORY_LOCAL_GIT_ENVIRONMENT`: `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE`,
+  `GIT_COMMON_DIR`, ... — git's own `local_repo_env` list), because a pre-push hook run from a
+  linked worktree exports `GIT_DIR=<main>/.git/worktrees/<name>`: without the scrub, `ls-files`
+  would enumerate the hook's repository instead of the scan root, and the access-hardening
+  self-test's fixture `git init` would reinitialise the developer's own gitdir as bare.
+  `--exclude-standard` also honours the developer's global `core.excludesFile`, so a personal
+  ignore can hide an *untracked* new file from a local scan until it is added (tracked files are
+  unaffected; CI has no such file). Consequence for the mechanical rosters: `--write-*-roster`
+  composes the scan, so it cannot record a non-repository path (a nested worktree, a nested
+  `vendor/`, an ignored tree).
+- Drift and changelog discipline combine the committed PR range with staged, unstaged, and
+  untracked paths when invoked by preflight. A spec changed in an earlier commit does not cover a
+  later uncommitted source edit; the spec must also change in the worktree. This preserves trailer
+  provenance while making local results describe the tree the developer is actually reviewing.
+
+### 4. Pre-push parity
+
+`bin/project-hooks pre_push` runs `bin/check-pr-preflight` (default profile), **blocking**. The
+advisory-local/blocking-CI split for spec drift is removed: drift failure blocks the push exactly
+as a hosted diagnostic. The escape hatch for environmental failures (not real findings) remains
+`git push --no-verify`, documented in CLAUDE.md; the phpstan-engine gates live in `--full`/CI per
+§1 and are the one intentional difference between the pre-push profile and CI's blocking set —
+recorded here, in the manifest, and in the hook's output, not implicit.
+
+### 5. CI ordering — fast contracts gate the long jobs
+
+The `support/s1-contract` job (~30s: support contract + all four S1 roster gates) and `spec-drift`
+job are `needs:` prerequisites of the PHPUnit shard plan/execution and the random-order job.
+The required `ci/unit-tests` and `ci/coverage` contexts aggregate the same shard result and Clover
+evidence without executing PHPUnit again. A stale roster or spec therefore fails in its owning
+fast job, and the long jobs never start or re-report the same failure. On non-PR events `spec-drift` completes
+with an explicit no-PR-diff result, so push and dispatch runs retain the same dependency graph.
+Required-check names remain unchanged. Pull-request concurrency cancels superseded revisions;
+push/main evidence is never cancelled.
+
+### 6. Recorded-roster identity: semantic, not positional
+
+S1 roster entries (schema version 2) bind exactly what makes an occurrence *that occurrence*:
+
+```
+{ path, pattern, class, match_sha256, occurrence }
+```
+
+- `match_sha256` — hash of the normalized matched text (the semantic content).
+- `occurrence` — 1-based index of this `(path, pattern, match_sha256)` triple within the file, so
+  multiplicity is preserved (two identical matches are two entries).
+- **Dropped entirely**: `line`, `line_sha256`, `source_sha256`. They were derived display data
+  bound into identity; storing them made every unrelated edit to a rostered file (even a new
+  import line) invalidate the roster. Failure output derives live line numbers at report time —
+  fresh by construction, never stored.
+
+Consequence: a roster changes **iff the governed surface changes** — a match added, removed, or
+moved across files/patterns. Whitespace, comments, imports, and unrelated edits in rostered files
+no longer require regeneration commits. The verifiers still fail closed on unclassified
+candidates, and all semantic anchors / contract assertions are unchanged.
+
+Applies to all four S1 rosters: `s1-configuration-activation`, `s1-configuration-authority`,
+`s1-schema-authority`, `s1-sqlite-construction`.
+
+### 7. Repository-root hygiene — stricter than `.gitignore`, sees what `git status` cannot
+
+`bin/check-repo-root-hygiene` (#2927) fails when the repository root holds any entry that is
+neither Git-tracked nor on its explicit, source-annotated allowlist of expected local entries
+(`vendor/`, `node_modules/`, `tmp/`, `build/`, `node-compile-cache/`, `.worktrees/`, `.kittify/`,
+`.env`, tool caches, IDE and agent-CLI directories, the `support-contract-evidence.json` the
+`support/s1-contract` job writes — every entry cites its `.gitignore` or `ci.yml` origin). Two
+design points are load-bearing:
+
+- It enumerates the **literal filesystem** (`scandir`), never `git status` or `git ls-files`
+  alone, so an **empty untracked directory** is a finding. 363 of the 734 stray entries that
+  motivated the gate were empty `waaseyaa_loader_test_*` directories, and `git status --porcelain`
+  was empty with all of them present.
+- It is **deliberately stricter than `.gitignore`**. The leak families ignored at `.gitignore`
+  lines 110-135 (plus the older `waaseyaa-sync-*` / `waaseyaa_oidc_jwks_*` rules) hide leaks from
+  `git status`, which is exactly why they accumulated; the gate reports them as
+  "known leak family" findings with the producer label.
+
+It runs in `ci/composer-policy` on the pristine checkout and again **after** each PHPUnit shard and
+random-order shard, so a test that leaks into the root fails the run that leaked. Locally it is in
+the default preflight profile (pre-push). It has no recorded baseline, so
+`bin/refresh-governance-artifacts` has nothing to regenerate: the repair is to delete the stray
+entry, or — only for a genuinely expected local artifact — to add it to `EXPECTED_LOCAL_ENTRIES`
+with its source. Fixture proof: `tests/Architecture/CheckRepoRootHygieneGateTest.php`.
+
+The gate's one git child (`git -C <root> ls-files -z`) runs with git's repository-selecting
+environment scrubbed (`REPOSITORY_LOCAL_GIT_ENVIRONMENT` in the script: `GIT_DIR`,
+`GIT_WORK_TREE`, `GIT_INDEX_FILE`, `GIT_COMMON_DIR`, `GIT_OBJECT_DIRECTORY`, `GIT_CONFIG*`,
+`GIT_PREFIX`, `GIT_NAMESPACE`, and the rest of git's own `local_repo_env`). Git hooks export
+`GIT_DIR` (a pre-push from a linked worktree carries `GIT_DIR=<main>/.git/worktrees/<name>`),
+and `bin/project-hooks` runs the preflight — hence this gate — with that environment intact;
+without the scrub, `git -C <root>` enumerated the hook's repository, so a stray root entry that
+happened to be tracked there passed. The fixture test's hostile-`GIT_DIR` case proves the
+enumeration is the target repository's and the target's `core.bare` stays `false`.
+
+**Producer trace (recorded so nobody repeats it).** The only in-repo producer of the
+`waaseyaa_loader_test_*` name is `packages/foundation/tests/Unit/Migration/MigrationLoaderArrayFormTest.php`
+(`sys_get_temp_dir() . '/waaseyaa_loader_test_' . uniqid()`), unchanged since authored (`git log -S`)
+and byte-identical in every worktree; `waaseyaa_test_lock_*` is the same shape in
+`packages/cli/tests/Unit/Command/Import/Import*CommandTest.php`. Neither writes to the root as
+written: `sys_get_temp_dir()` resolves to `/tmp` on the host today, `TMPDIR` is unset, and no
+`TMPDIR`/`sys_temp_dir` override exists in `bin/`, `tools/`, `Taskfile.yml`, `phpunit.xml.dist`,
+or any workflow. The reproducible **mechanism** is a relative `TMPDIR`: PHP returns the value
+verbatim (`TMPDIR=.` → `sys_get_temp_dir() === '.'`), so every scratch path lands in the process
+working directory, and a run killed before `tearDown()` (OOM at the default `memory_limit`, or a
+harness timeout) leaves the empty directories behind. That both `waaseyaa_loader_test_6a0d*` and
+`waaseyaa_test_lock_6a0d*` (same `uniqid()` prefix, i.e. the same run) were later found together in a
+*different* project root corroborates an environment-bound trigger rather than a code defect. The
+exact invocation that set it during the 2026-05-22..24 accumulation window was not recoverable (no
+session transcripts survive from that period). Source-level fix: `tests/bootstrap.php` now refuses
+to start the suite when `sys_get_temp_dir()` is non-absolute or IS the repository root
+(`tests/Support/TempDirGuard.php`, proven by `tests/Architecture/PhpunitTempDirGuardTest.php`), so
+"absolute" is decided by the platform the process runs on, not by the shape of the string: on
+POSIX only a leading `/` qualifies (a `TMPDIR=C:\Temp` on Linux/WSL is a *relative* name that
+`realpath()` cannot resolve and scratch paths land in the cwd); on Windows only drive-rooted
+(`C:\`, `C:/`) or UNC (`\\server\share`) paths qualify, never drive-relative `C:foo` or
+current-drive-rooted `\foo` — and the proof exercises both semantics on every OS,
+the mechanism fails loudly before the first write instead of silently. Native Windows PHP
+ignores `TMPDIR` and reads `TMP`, then `TEMP`, resolving a relative value against the working
+directory, so `TMP=.` yields the checkout itself and the root check refuses it; the guard's
+recovery guidance names the variables the host reads. The `native-host-contract` CI matrix runs
+this proof, and `bin/check-repo-root-hygiene` before and after its tests, natively on
+`ubuntu-24.04` and `windows-2025` (#2678).
+
+### 8. Host-portable gate execution (#3096)
+
+`bin/check-pr-preflight` runs each manifest command through the host shell: `sh` on POSIX,
+`cmd.exe` on native Windows. From PowerShell or cmd, a bare `bash` is
+`C:\Windows\System32\bash.exe`, the WSL launcher, whose Linux Git cannot read a Windows linked
+worktree. On native Windows the runner therefore starts every selected gate whose command begins
+with exactly `bash` with Git for Windows Bash (`repository_bash_command()`,
+`bin/lib/repository-bash.php`, #2679). It resolves that Bash once per run and quotes it for
+`cmd.exe`, leaving the rest of the command unchanged. If it cannot be resolved or quoted, no gate
+runs: the runner exits with the shared precondition code (3) and prints no repair guidance, because
+this is a host fault, not a repository finding. POSIX command strings are never rewritten. Whether
+the runner is started from a native shell or from Git's `sh` by a pre-push hook, Bash gates run
+with Git for Windows `bash`, `grep` and `find`, while `php`, `git` and `python3` are native Windows
+programs. A gate failure on that host must mean a repository finding, never an unstartable child
+process or an untranslated path. Gates therefore follow these rules:
+
+- **Child processes start from argument arrays**, not shell strings. A POSIX `VAR=value cmd
+  2>/dev/null` line does not run under `cmd.exe`, and a child that never starts can read as a
+  detection failure (the PL008 self-test) or a silently lost value (the runner's own
+  `git config waaseyaa.driftBase` lookup). Environment overrides go in the `proc_open`
+  environment array; discarded stderr uses the `['null']` descriptor. `bin/check-portable-null-device`
+  enforces the null-device half statically for all governed production PHP: a hard-coded `/dev/null`
+  descriptor always fails, and every other `/dev/null` literal must be classified
+  ([native-host-support.md](native-host-support.md#portable-null-device-guard-fw-2678-portable-null-device-03)).
+- **PHP gates that need the governed repository Git entrypoint start it through
+  `repository_git_command()`** (`bin/lib/repository-git.php`). On POSIX hosts that is the
+  stash-refusing `bin/git` adapter. On native Windows, where `bin/git` is a POSIX-only Bash
+  entrypoint that CreateProcess cannot start, it is the Windows Git executable
+  (`WAASEYAA_SYSTEM_GIT` when a harness pins one, otherwise `git` from PATH). This is the host rule
+  in `docs/governance/agent-contract.md`. A Git that cannot start fails the gate closed. Current
+  callers: `bin/check-pr-preflight` (drift-base lookup), `bin/check-delivery-agent-events`,
+  `bin/check-covers-nothing-companions`.
+- **Existing read-only repository enumeration may use `repositoryGit()`**
+  (`bin/lib/repository-files.php`, §3). It starts `git` from PATH with the repository-selecting
+  environment (`REPOSITORY_LOCAL_GIT_ENVIRONMENT`) scrubbed, so a hook's `GIT_DIR` cannot redirect
+  it to another repository, and it runs natively on both hosts. It does not pass through the
+  `bin/git` adapter, so it is limited to queries that leave the developer repository's refs, index
+  and working tree unchanged (for example `bin/check-landing-base` and
+  `bin/check-package-coverage-history`) and to disposable self-test fixtures, such as the fixture
+  `git init` in `bin/check-access-hardening`.
+- **Bash gates use only what Git for Windows Bash provides.** Patterns use `grep -E`, because
+  that `grep` rejects `-P` in its default locale. Native interpreters receive relative paths or
+  argv data, never MSYS paths such as `/c/...` interpolated into program source.
+- **Self-tests count only a genuine detection.** A negative control passes only when the gate
+  exits with its violation status *and* reports the planted violator; a scan error, launch
+  failure or crash fails the self-test.
+
+No gate in the default profile currently needs a `not-run-here` outcome. If a gate ever depends on
+a capability that genuinely cannot run on a host, it must report a distinct `not-run-here` result
+that the runner never counts as `ok` and that never lowers its exit status. Fixture proofs:
+`tests/Architecture/PackageLayersPl008SelfTestTest.php`,
+`tests/Architecture/AdminCoercionPatternsGateTest.php`,
+`tests/Architecture/RepositoryGitEntrypointTest.php`,
+`tests/Architecture/CoversNothingCompanionDiagnosticTest.php`,
+`tests/Architecture/CheckIngestionDefaultsGateTest.php`, and the host-quoted fixtures in
+`tests/Architecture/PreflightParityTest.php`. The native-host classification of these entrypoints
+remains owned by `docs/specs/native-host-support.md`; passing locally on Windows is not a support
+claim until a native Windows CI job executes them.
+
+## Invariants
+
+1. Every fast repository-state gate mirrored by hosted CI is in
+   `tools/preflight-gates.json` (enforced by
+   `PreflightParityTest` against the workflow files).
+2. Every governed recorded artifact has exactly one documented repair path, reachable from
+   `bin/refresh-governance-artifacts` output.
+3. A gate failure message names its repair command.
+4. Roster identity never binds line numbers or whole-file hashes.
+5. Local scanner scope is the git repository boundary — tracked plus untracked-not-ignored
+   files, enumerated by `bin/lib/repository-files.php` — so non-repository content (nested
+   worktrees, `packages/*/vendor/`, `node_modules/`, `storage/`, `tmp/`, `.git/`, nested
+   checkouts) can never contribute a finding, and a local run and a CI run of the same gate agree
+   on the same tree. Fixtures: `tests/Integration/Tooling/S1RosterLibraryTest.php`,
+   `tests/Architecture/AccessHardeningGateTest.php`.
+
+## File map
+
+| Surface | Path |
+|---|---|
+| Preflight command | `bin/check-pr-preflight` |
+| Repository-root hygiene gate | `bin/check-repo-root-hygiene` (§7), `tests/bootstrap.php` + `tests/Support/TempDirGuard.php` (TMPDIR guard), `tests/Architecture/CheckRepoRootHygieneGateTest.php`, `tests/Architecture/PhpunitTempDirGuardTest.php` |
+| Nightly stale-spec deferrals (warn-only, not preflight) | `bin/check-stale-spec-deferrals`, `tools/stale-spec-deferrals-baseline.txt`, `.github/workflows/nightly.yml` job `nightly/stale-spec-deferrals` |
+| PHPUnit skip policy | `bin/check-phpunit-skip-policy`, `tools/phpunit-skip-policy.json`, `docs/specs/phpunit-skip-governance.md` |
+| Gate manifest | `tools/preflight-gates.json` |
+| Vendor-freshness precondition | `bin/lib/vendor-freshness.php` (shared library, `VENDOR_FRESHNESS_EXIT_CODE`), `bin/check-vendor-fresh` (standalone local guard); callers `bin/check-pr-preflight`, `bin/check-delivery-agent-events`, `tools/check-surface-parity.php`, `bin/generate-surface-map`; proofs `tests/Architecture/VendorFreshnessPreconditionTest.php`, `tests/Architecture/SurfaceDeclarationEnvironmentFaultTest.php`, `tests/Integration/Policy/CheckVendorFreshTest.php` |
+| Runtime-policy custody | `bin/check-runtime-policy-custody`, `tools/runtime-policy-custody-baseline.php` |
+| Refresh command | `bin/refresh-governance-artifacts` |
+| Manifest/CI parity test | `tests/Architecture/PreflightParityTest.php` |
+| S1 verifiers (schema v2) | `bin/check-s1-{configuration-activation,configuration-authority,schema-authority,sqlite-contract}` |
+| Scanner file enumeration | `bin/lib/repository-files.php` (`repositoryFiles()`), shared by `bin/lib/s1-roster.php` and `bin/check-access-hardening` |
+| Host-aware Git entrypoint (§8) | `bin/lib/repository-git.php` (`repository_git_command()`), used by `bin/check-pr-preflight`, `bin/check-delivery-agent-events` and `bin/check-covers-nothing-companions`; proofs `tests/Architecture/RepositoryGitEntrypointTest.php` and `PreflightParityTest::preflight_drift_base_lookup_starts_the_repository_git_entrypoint` |
+| Host Bash for Bash gates (§8) | `bin/lib/repository-bash.php` (`repository_bash_command()`), used by `bin/check-pr-preflight` for gates that begin with `bash` and by `bin/project-hooks-launcher`; proofs `PreflightParityTest::preflight_bash_gates_start_the_host_bash_not_a_path_bash`, `PreflightParityTest::preflight_fails_closed_before_any_gate_when_windows_bash_is_unavailable` and `tests/Architecture/ProjectHooksLauncherTest.php` |
+| Recorded rosters | `support/s1-*-roster.json` |
+| Hook integration | `bin/project-hooks` (`pre_push`) |
+| CI ordering | `.github/workflows/ci.yml` (`needs: [support-contract, spec-drift]` on the three long jobs) |
+| Hosted packaged-consumer lanes | `.github/workflows/ci.yml` jobs `ci/fresh-install-boot`, `ci/bimaaji-skill-resources`, `ci/cli-health-report`, `ci/cli-sync-rules`, `ci/split-artifact-acceptance`, harnesses under `tests/PackagedForm/`. Each builds a disposable consumer with its own dependency graph, so each needs network access and minutes of Composer work. Their commands are never locally executed by preflight. `split-artifact-acceptance` is the manifest exception: its `hosted-only` entry makes every live surface, reserved surface, seeded negative control, required capability, and `ci/split-artifact-acceptance` owner machine-readable while always reporting `hosted-required` locally. Their fast repo-state halves run in `ci/unit-tests` through `FreshInstallBootGateTest`, `PackagedSkillResourcesTest`, `CliHealthReportGateTest`, `CliSyncRulesGateTest`, and `SplitArtifactAcceptanceGateTest`, keeping harness shape and CI wiring under checks a developer can run in seconds. `ci/split-artifact-acceptance` (#2649) also re-runs every assertion against seeded corruption on each invocation. A control the host cannot seed is `not-run-here` in the §8 sense (#3081): never counted as caught and never lowering an undetected failure. Native Windows without symlink privilege reports the run incomplete (exit 3), not passed; every other host fails closed, so the Linux job must execute every control. |
+| Hosted FrankenPHP worker runtime | `.github/workflows/ci.yml` job `ci/frankenphp-worker`, pin `tools/frankenphp-runtime-pin.json`, harness `scripts/acceptance-frankenphp-worker.sh`. Owns real worker lifetime, Caddy/FrankenPHP identity, sequential/concurrent requests through one worker PID (concurrent burst captures per-request PID headers), hermetic runtime storage under `WAASEYAA_STORAGE_PATH`, account/community isolation at the HTTP boundary, streamed `/api/broadcast`, error-then-recovery, classic `php-server` fallback, and clean shutdown. Does **not** replace PHPUnit static lifetime gates (#2069, GraphQL schema-cache bleed, Twig environment replacement, CommunityMiddleware unit tests). |
+
+### Binary PHP names in the isolated autoloader probe
+
+The runtime-static freshness probe transports class-map entries as a list of base64-encoded names and unchanged file paths within JSON. The parent decodes names before applying the existing source ownership and map-coherence checks. PHP permits high-byte class identifiers; Symfony Cache's internal value wrapper uses one. Such a name does not imply corrupt Composer output. List entries preserve even names whose encoded text is numeric, avoiding PHP map-key coercion. Invalid transport refuses, and all donor/freshness checks remain active. No vendor files are rewritten by this read-only probe.

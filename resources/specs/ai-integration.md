@@ -1,4 +1,66 @@
+<!-- Spec reviewed 2026-09-21 - permission catalogue ownership (#3119): ai-tools implements ProvidesPermissionsInterface and contributes the shared `tool.content.search` descriptor only when its optional search adapter is available; the capability id and definition come from `AgentCapabilities::seed()`, so tool authorization and the permission catalogue cannot drift. Package-declared permission definitions remain compiled through the normal manifest catalogue. -->
+
 # AI Integration
+
+<!-- Spec reviewed 2026-09-05 - #2636: ContentResourceProviderInterface.list()
+returns ContentResourceListPage with provider-local resume tokens;
+ContentResourceRegistry::listPage() composes sealable ContentResourceListResume
+values. MCP AEAD cursor sealing and resources/list wire contract live in
+mcp-endpoint.md — ai-tools remains MCP-neutral. -->
+<!-- Spec reviewed 2026-08-30 - #2657: `waaseyaa/ai-tools` gains two
+namespaces that are library code only — no service provider, no route, no
+attribute, no discovery convention. `Dispatch/` holds `ToolDispatcherInterface`
+and `AgentToolDispatcher`, the schema-enforcing, exception-sanitizing,
+audit-stage-classifying dispatch path lifted verbatim out of
+`Waaseyaa\Mcp\Bridge\AgentToolRegistryBridge` (which now delegates to it), plus
+`AuditedToolDispatcher`, a reserve-before-side-effect decorator that refuses to
+construct on an absent or record-nothing `StrictAuditLedgerInterface` and takes
+its audit surface and correlation id from the calling transport. Every path out
+of its `dispatch()` is either durably recorded or answered with
+`AUDIT_TRAIL_UNAVAILABLE`: caller-supplied tool names are projected through
+`auditOperation()` so the strict ledger always receives a non-empty bounded
+operation (a blank name becomes `tool_name_unusable` with the raw value kept in
+`metadata`), and a terminal refusal the ledger rejects is refused to the caller
+rather than answered as an ordinary lookup miss. `Registry/`
+holds the shared `CapabilityScopedToolRegistry` the MCP tier now delegates to,
+and `ToolIdAllowlistRegistry`, an exact-membership narrowing decorator for
+ADR-022 D-7 closed-list local profile. Tool authorization is unchanged:
+`AbstractAgentTool::requireCapability()` remains the only authorization layer
+and the registries only decide visibility. -->
+
+<!-- Spec reviewed 2026-08-27 - #2544: `EntityFieldRedaction::ALWAYS_INTERNAL_FIELDS` gains `legacy_pass`, so an imported credential pending upgrade is redacted from agent-tool output exactly like `pass`. -->
+
+<!-- Spec reviewed 2026-08-27 - #2624: McpServiceProvider's development-only
+NullConfigStorage fallback is classified by the boot-scoped RuntimePolicy.
+Invalid explicit environment configuration is production-like and cannot fall
+through to APP_ENV or enable the fallback. A missing profile is also
+production-like: only RuntimePolicy::isExplicitDevelopment() can enable this
+fallback. -->
+
+<!-- Spec reviewed 2026-08-25 - #2520: `entity.read` / `entity.search` map
+WP4 `FieldReadDenied` to per-field omission at the tool boundary (JSON:API
+parity), not `INTERNAL_ERROR` and not a distinguishable field-forbidden
+error. R8-c not-found for absent vs view-forbidden entities is unchanged.
+See docs/specs/mcp-endpoint.md. -->
+
+<!-- Spec reviewed 2026-08-20 - #2464: EntityRollbackTool and
+EntitySetCurrentRevisionTool keep EntityRevisionRestoreGuard as the AI-facing
+wrapper; the changed-field set is RevisionRestoreChangedFields so Admin and AI
+restore cannot drift. Workflow/publication fields remain material; credentials
+do not. -->
+<!-- Spec reviewed 2026-08-08 - Anokii boundary remediation: framework-owned AI agent entities are registered from their class attributes so declared entity and field metadata survives provider bootstrap. This changes provider construction only; agent execution, tool authorization, and MCP exposure contracts are unchanged. -->
+
+<!-- Spec reviewed 2026-08-05 - #2194: ai-tools owns the optional `content.search` adapter and tool. It resolves the search package only through the provider boundary, requires an `AuthorizationPrincipalInterface`, emits a bounded schema and closed result projection, and converts missing or failing optional infrastructure to the shared sanitized correlation-only error contract. Anonymous MCP exposure remains default-off and adds only the dedicated `tool.content.search` capability when explicitly enabled. -->
+<!-- Spec reviewed 2026-08-05 - #2216: `AgentToolInterface::execute()` and `dryRun()`, plus `AgentExecutor`, now require `AuthorizationPrincipalInterface` so agent entry points cannot accept identity objects that lack the framework's immutable authorization-claims contract. Existing tool implementations may retain the wider `AccountInterface` parameter through PHP contravariance. MCP authentication providers and the registry bridge use the same principal contract end to end. -->
+<!-- Spec reviewed 2026-08-04 - #2200: ai-schema ships only EntityJsonSchemaGenerator and has no current agent-runtime or MCP consumer. Retired the nonexistent McpToolDefinition, McpToolGenerator, TranslationToolGenerator, McpToolExecutor, and SchemaRegistry surfaces and the fictional accessCheck(false) path. Agent tools own and validate their declared schemas in ai-tools; MCP transports those descriptors without an ai-schema dependency. -->
+<!-- Spec reviewed 2026-08-04 - #2191: the legacy McpController discovery blend, search aliases, and stable-meta claims are explicitly retired; new remote search must use the canonical access-checked agent-tool lifecycle. -->
+
+<!-- Spec reviewed 2026-08-15 - S1-FW-CFG-04 (governed secret custody): outbound MCP and the LLM/embedding providers moved from raw string credential reads to typed SecretReference custody through the frozen kernel SecretResolverRegistry — providers hold a SecretHandle and resolve a fresh version per outbound request inside a registered consumer (McpCredentialOperation, AnthropicCredentialOperation, OpenAiCompatibleCredentialOperation, OpenAiEmbeddingCredentialOperation); credential bytes never cross the operation boundary, and outcome objects (ProviderCredentialOutcome, McpCredentialOutcome) discard original exception text. Every MCP server row now declares auth_mode (none|secret-reference) and availability (required|optional): an optional server's startup/call failure records degraded McpIntegrationHealth and yields no tools; a REQUIRED server's failure throws McpReadinessException and blocks boot — this supersedes the 2026-07-13 "an unavailable server cannot abort kernel boot" claim for required servers. Remote JSON-RPC errors surface as the fixed McpRemoteErrorException signal; tool-call errors are the fixed envelopes mcp_credential_unavailable / mcp_server_unavailable / mcp_remote_error (no detail text). Custody mechanics: docs/specs/infrastructure.md; MCP tool-source contract and ai.providers/ai.mcp_servers schema v2: docs/specs/agent-executor.md; policy: docs/specs/security-defaults.md. -->
+<!-- Spec reviewed 2026-09-29 - FW-AIV-INDEXING-POLICY-01 (#3141): semantic indexing is default-deny through ai.vector_index. Each entity type declares fields and whether content may leave the host; unknown providers are treated as external. Lifecycle indexing and semantic refresh share EmbeddingIndexPolicy, and denied entities have existing vectors removed without a provider call. -->
+
+<!-- Spec reviewed 2026-08-03 - #2177 F1 slice B: `AgentTool::toMcpDescriptor()` now always emits the spec-standard MCP `annotations.destructiveHint`, projected from the tool's declared `$destructive`. It is advisory display metadata for MCP clients; server-side enforcement (the write tier's human-approval gate, see docs/specs/mcp-endpoint.md §"Human-approval gate") reads `$destructive` itself and never the hint. On a gated endpoint the MCP layer additionally decorates destructive tools' tools/list descriptors with `_meta["ai.waaseyaa.mcp/approval"]="required"` — that decoration lives in `McpEndpoint`, not in AgentTool. Acceptance: AgentToolDescriptorTest. -->
+
+<!-- Spec reviewed 2026-08-03 - #2177 F6 (mcp-public-boundary): the 11 generic `catch (\Throwable)` arms across the entity/relationship/vector tools no longer embed `$e->getMessage()` in the returned AgentToolResult (nor in its `summary`, the audit/transcript line) — they call `AbstractAgentTool::internalError()`, which returns a fixed INTERNAL_ERROR envelope plus a random correlation id via the new `Waaseyaa\AI\Tools\Error\SanitizedToolError`. The logger (attached at hydration by AttributeToolRegistry, mirroring the EntityAccessHandler mechanism) receives safe diagnostic METADATA only — correlation id, tool, exception class, file, line, integer code — never the message, trace, or the Throwable object. Typed domain catches (validation, revision conflict, key refusal, not-revisionable, forbidden) are untouched and remain machine-readable. See the new "Tool failure contract" section. -->
 
 <!-- Spec reviewed 2026-07-13 - R18 M6 (#1975): the outbound MCP subsystem is active production wiring, not parked scaffolding. `Waaseyaa\AI\Agent\Mcp\McpServiceProvider` is declared in `packages/ai-agent/composer.json` under `extra.waaseyaa.providers`, so normal package-manifest compilation boots remote tool discovery. Its existing fail-closed contract is unchanged: no host tool registry/config means no remote tools, and an unavailable server cannot abort kernel boot. Acceptance: McpServiceProviderManifestTest. -->
 <!-- Spec reviewed 2026-07-13 - CW-v1 option-1 PR-4 (#1920, security): EntityKeyGuard's LITERAL_FLOOR gains `revision_id`/`published_revision_id` — a collateral finding while adding the JSON:API write-side field allowlist (`docs/specs/api-layer.md` "Write-side field allowlist"): `published_revision_id` was NOT already refused by this guard (empirically confirmed red, no entity-key kind names it), so `entity.update`/`entity.create` could silently write it despite the class-level "identity fields cannot be written through this tool" contract. See updated "Refusal set" below. -->
@@ -13,7 +75,7 @@
 <!-- Spec reviewed 2026-06-12 - mission optimistic-locking-01KTXCHY WP03 (#1647): new "Optimistic Locking on the Stock Entity Tools" section — entity.update gains the optional top-level expected_revision_id argument (integer, minimum 1; an argument, never a writable value — values.revision_id stays key-guard-refused); stale expectation → structured two-block revision_conflict error (expected + current, machine-correctable: re-read/re-diff/retry); unsupported paths (storage LogicException matrix, non-concrete repository) → distinct revision_expectation_unsupported (do not retry); dry-run with an expectation reports the byte-identical conflict payload (shared builder); success payloads carry the post-save revision_id; entity.read/entity.list expose a top-level revision_id member on revisionable entities (omitted = no expectation formable); SC-002 approve-time staleness recipe pointer to the mission quickstart as the canonical consumer pattern. No-expectation calls byte-identical. -->
 <!-- Spec reviewed 2026-06-12 - mission live-entity-validation-key-protection-01KTWQT3 (#1646, alpha.204): new "Identity-Key Write Protection" section — the stock entity agent tools (entity.create / entity.update in packages/ai-tools) refuse identity-key writes whole-write via EntityKeyGuard, and surface save-time EntityValidationException as the structured validation_failed error. label/bundle never refused; revision_log stays writable via its dedicated argument; #1638 scoped writes noted as the separate broader mechanism. -->
 <!-- Spec reviewed 2026-04-09 ST-9 - embedding text extraction vs EntityEmbedder; MCP cast-aware payloads (#1181) -->
-<!-- Spec reviewed 2026-04-09 ST-10 - EntityEmbedder / EntityEmbeddingListener / SemanticIndexWarmer use EntityValues + WorkflowVisibility::isNodePublicForEntity (#1181) -->
+<!-- Spec reviewed 2026-04-09 ST-10 - EntityEmbedder / EntityEmbeddingListener / SemanticIndexWarmer use EntityValues + WorkflowVisibility. #2569 names this explicitly as served-projection visibility. -->
 
 Waaseyaa's AI layer (architecture layer 5) provides four packages that enable AI agents to introspect, mutate, and search CMS content. All four packages sit in the `packages/` directory and follow the standard `Waaseyaa\AI\*` namespace pattern.
 
@@ -21,7 +83,7 @@ Waaseyaa's AI layer (architecture layer 5) provides four packages that enable AI
 
 | Package | Namespace | Path | Purpose |
 |---------|-----------|------|---------|
-| ai-schema | `Waaseyaa\AI\Schema\` | `packages/ai-schema/src/` | JSON Schema generation, MCP tool definitions, tool execution |
+| ai-schema | `Waaseyaa\AI\Schema\` | `packages/ai-schema/src/` | Standalone JSON Schema generation from entity definitions |
 | ai-agent | `Waaseyaa\AI\Agent\` | `packages/ai-agent/src/` | Agent executor, audit logging, MCP server adapter |
 | ai-pipeline | `Waaseyaa\AI\Pipeline\` | `packages/ai-pipeline/src/` | Pipeline configuration entity; no execution or queue surface |
 | ai-vector | `Waaseyaa\AI\Vector\` | `packages/ai-vector/src/` | Vector embeddings, similarity search, distance metrics |
@@ -30,145 +92,313 @@ Waaseyaa's AI layer (architecture layer 5) provides four packages that enable AI
 
 ```
 ai-schema   -> entity
-ai-agent    -> ai-schema, access
-ai-pipeline -> entity, queue
-ai-vector   -> entity
+ai-agent    -> access, ai-observability, ai-tools, api, audit, bimaaji, config,
+               database-legacy, entity, entity-storage, foundation, http-client, routing
+ai-pipeline -> entity, foundation
+ai-vector   -> access, api, database-legacy, entity, entity-storage, foundation, workflows
 ```
 
-`ai-agent` depends on `ai-schema` for `McpToolExecutor` and on `access` for `AccountInterface`. `ai-pipeline` depends on `queue` for async dispatch via `QueueInterface`. `ai-vector` and `ai-schema` depend only on `entity`.
+`ai-schema` is an independently shipped utility; no agent runtime or MCP
+resource currently consumes it. `ai-agent` declares only the packages its
+executor, persistence, tool, API, routing, and remote-client paths use. Any
+future schema capability-registry integration must add a deliberate dependency
+and an executable contract test.
 
 ## Schema Generation
 
 **File:** `packages/ai-schema/src/EntityJsonSchemaGenerator.php`
 **Class:** `Waaseyaa\AI\Schema\EntityJsonSchemaGenerator`
 
-Generates JSON Schema (draft 2020-12) from registered entity types. Takes an `EntityTypeManagerInterface` and inspects entity type definitions to produce a schema array.
+Adapts the lower-layer `FieldSchemaAuthority` to JSON Schema draft 2020-12.
+The utility enumerates the effective field set and requires an explicit entity
+subject, access handler, and immutable principal before it can expose schema.
 
 ### Constructor
 
 ```php
 public function __construct(
     private readonly EntityTypeManagerInterface $entityTypeManager,
+    ?FieldSchemaAuthority $fieldSchemas = null,
+    ?FieldVisibilityPolicy $fieldVisibility = null,
 )
 ```
 
+Both optional collaborators default to the shared Layer-1 authorities: the
+the built-ins-only `FieldTypeManager::default()` registry and a `FieldVisibilityPolicy`
+with framework-only internal fields. A kernel-bound caller injects the
+boot-scoped `FieldSchemaAuthority` so manifest-discovered downstream field
+types are projected, and injects the container's visibility policy so
+application-declared internal fields are honoured. No first-party provider
+constructs this generator; bare construction remains explicitly isolated.
+
 ### Key Methods
 
-- `generate(string $entityTypeId): array` -- Produces a single JSON Schema for one entity type.
-- `generateAll(): array` -- Returns schemas for all registered entity types, keyed by entity type ID.
+- `generate(string $entityTypeId, EntityInterface $entity, EntityAccessHandler $accessHandler, AuthorizationPrincipalInterface $account): array` -- Produces one principal-bound schema after entity and field access checks.
 
 ### Schema Shape
 
-The generated schema maps entity keys to JSON Schema properties:
+The generated schema includes entity keys plus every effective field visible to
+the principal. Before the per-field access check runs, the shared Layer-1
+`FieldVisibilityPolicy` floor removes credential names (`pass`, `legacy_pass`,
+`password`, `password_hash`), framework-internal fields, application-declared
+internal fields, and any definition carrying `settings.internal`; the same
+floor backs the API package's `InternalFieldVisibilityPolicy`, so REST and AI
+introspection cannot disagree about which fields are structurally internal.
+Field plugins own the value shapes; cardinality, required state,
+read-only state, and translation/revision metadata are explicit. The result is
+closed with `additionalProperties: false`, and unknown field types fail closed.
+There is no unscoped `generateAll()` catalogue.
 
-| Entity Key | JSON Schema Type | Required |
-|------------|-----------------|----------|
-| id | `['integer', 'string']` | Yes |
-| uuid | `string` (format: uuid) | Yes |
-| label | `string` | Yes |
-| bundle | `string` | Yes |
-| langcode | `string` | No |
-| revision | `integer` (only if revisionable) | No |
+## Agent Tool System
 
-The output always includes `'$schema' => 'https://json-schema.org/draft/2020-12/schema'` and sets `'additionalProperties' => true` to allow non-key fields.
+### Application tool contribution
 
-## MCP Tool System
+Framework packages normally contribute `#[AsAgentTool]` classes through the compiled package manifest. Applications and providers that assemble tools from application-owned configuration implement `Waaseyaa\AI\Tools\ProvidesAgentToolsInterface`. During kernel boot, contributors are sorted by provider class and injected into `AiToolsServiceProvider`; each receives the canonical `ToolRegistryInterface` when that singleton is first constructed. Registration is therefore independent of HTTP route declaration, works for embedded-agent and MCP consumers alike, and preserves the registry's fail-closed duplicate-name rule. Contributors must not resolve the registry recursively or capture request-scoped services.
 
-### McpToolDefinition
+### Schema ownership
 
-**File:** `packages/ai-schema/src/Mcp/McpToolDefinition.php`
-**Class:** `Waaseyaa\AI\Schema\Mcp\McpToolDefinition`
+`Waaseyaa\AI\Tools\AgentTool` owns the protocol-visible input and output
+schemas for shipped tools. `ToolInputSchemaValidator` validates the exact
+advertised input schema before execution, and MCP serializes those descriptors
+through its `AgentToolRegistryBridge`. None of those paths imports
+`waaseyaa/ai-schema`; `EntityJsonSchemaGenerator` remains an independent
+utility until a future capability-registry integration is deliberately built
+and tested.
 
-Readonly value object matching the MCP tool registration format:
+The canonical content mutation tools add the optional
+`save_advisory_acknowledgements` input to `createDraft` and `updateDraft`
+(maximum 32 unique lowercase SHA-256 tokens). The schema validator enforces the
+shape before execution. A storage advisory remains the authored structured
+`SAVE_ADVISORY_ACKNOWLEDGEMENT_REQUIRED` publishing error, including
+`meta.save_advisories`, so MCP callers can review and retry the same candidate;
+it is not routed through generic internal-error sanitization.
 
-```php
-final readonly class McpToolDefinition
-{
-    public function __construct(
-        public string $name,        // snake_case, e.g. "create_node"
-        public string $description, // human-readable
-        public array $inputSchema,  // JSON Schema for input params
-    ) {}
+### Result content blocks
 
-    public function toArray(): array; // MCP-compliant serialization
-}
-```
-
-### McpToolGenerator
-
-**File:** `packages/ai-schema/src/Mcp/McpToolGenerator.php`
-**Class:** `Waaseyaa\AI\Schema\Mcp\McpToolGenerator`
-
-For each registered entity type, generates five CRUD+query tools:
-
-| Tool Pattern | Operation | Required Arguments |
-|-------------|-----------|-------------------|
-| `create_{type}` | Create entity | `attributes` |
-| `read_{type}` | Read by ID | `id` |
-| `update_{type}` | Update entity | `id`, `attributes` |
-| `delete_{type}` | Delete by ID | `id` |
-| `query_{type}` | Query with filters | (all optional) |
-
-All tools accept optional `langcode` and `fallback` parameters for multilingual operations. The query tool supports `filters` (array of `{field, value, operator}`), `sort` (prefix `-` for descending), `limit` (default 50), and `offset` (default 0).
-
-### TranslationToolGenerator
-
-**File:** `packages/ai-schema/src/Mcp/TranslationToolGenerator.php`
-**Class:** `Waaseyaa\AI\Schema\Mcp\TranslationToolGenerator`
-
-Generates four translation-specific tools per entity type:
-
-| Tool Pattern | Required Arguments |
-|-------------|-------------------|
-| `{type}_translations_list` | `id` |
-| `{type}_translation_create` | `id`, `langcode`, `attributes` |
-| `{type}_translation_update` | `id`, `langcode`, `attributes` |
-| `{type}_translation_delete` | `id`, `langcode` |
-
-### McpToolExecutor
-
-**File:** `packages/ai-schema/src/Mcp/McpToolExecutor.php`
-**Class:** `Waaseyaa\AI\Schema\Mcp\McpToolExecutor`
-
-Executes MCP tool calls against the entity system. Parses tool names by iterating known operations (`create`, `read`, `update`, `delete`, `query`) and extracting the entity type ID from the suffix.
+A tool result crosses into MCP as content blocks, and MCP defines exactly five
+block types: `text`, `image`, `audio`, `resource` and `resource_link`. A tool
+returning structured data emits a `text` block carrying the JSON alongside
+`structuredContent` carrying the same payload, so clients with and without
+schema support both get something usable:
 
 ```php
-public function execute(string $toolName, array $arguments): array
+return AgentToolResult::success(
+    content: [['type' => 'text', 'text' => $json]],
+    structuredContent: $data,
+);
 ```
 
-Returns MCP-compliant result arrays: `{content: [{type: 'text', text: JSON}]}` on success, with `isError: true` on failure. All JSON encoding uses `JSON_THROW_ON_ERROR`.
+Until #2520 the entity, vector and relationship tools in `waaseyaa/ai-tools`
+and the ten Bimaaji and Wayfinding tools in `packages/ai-agent/src/Tool/`
+emitted `['type' => 'json', 'data' => …]` instead, with no `structuredContent`
+and no text mirror. `type: "json"` is not an MCP content type and
+`AgentToolRegistryBridge` forwards tool content to the wire unchanged, so a
+schema-validating client received a block it could only discard. The defect was
+invisible to the suite because tests asserted on `$result->content[0]['data']`
+in process, never on what a client decodes.
 
-**Important:** The query operation calls `$query->accessCheck(false)` because MCP tool calls run in an AI agent context where access is managed at the agent level, not the query level.
+Encoding is the tool's own responsibility: `json_encode` runs with
+`JSON_THROW_ON_ERROR` and the `\JsonException` arm routes through
+`AbstractAgentTool::internalError()`, since payloads carry arbitrary stored
+field values and invalid UTF-8 is a live path — `SearchSpecsTool`, which reads
+arbitrary spec-file bytes, could not fail this way before because nothing
+encoded.
 
-**Important:** The update operation checks `$entity instanceof FieldableInterface` before calling `set()`. Non-fieldable entities return an error.
+`packages/ai-agent/tests/Contract/Tool/` sweeps the agent-tier tools by
+executing them — `execute()` and `dryRun()` alike — and inspecting real emitted
+results, so a new tool that reintroduces a non-MCP block type lands as a
+failure rather than as a client-side surprise.
 
-**Cast-aware payloads (#1181):** Successful `read`, `update`, and `query` results embed entity rows under **`data` using `EntityValues::toCastAwareMap($entity)`** so MCP clients see the same domain-shaped field values as `get()` (enums, datetimes, decoded JSON arrays). See `docs/specs/entity-system.md` and `docs/specs/jsonapi.md`.
+`entity.read` and `entity.search` additionally map a WP4 `FieldReadDenied`
+during field projection to **omission** of that field (success result, no
+`INTERNAL_ERROR`, no named-field error). That is JSON:API parity, not a new
+disclosure policy; see docs/specs/mcp-endpoint.md "FieldReadDenied on
+anonymous `entity.read` / `entity.search`".
 
-## SchemaRegistry
+### Local operator principal and the default local profile (ADR-022, #2658)
 
-**File:** `packages/ai-schema/src/SchemaRegistry.php`
-**Class:** `Waaseyaa\AI\Schema\SchemaRegistry`
+`packages/ai-agent/src/LocalOperator/` holds the acting identity of the local
+AI-development plane. It exists because a CLI process runs under SAPI `cli`,
+which is absent from `HttpKernel::DEV_FALLBACK_SAPIS`
+(`['cli-server', 'frankenphp']`), so a stdio transport starts with no acting
+account and `AbstractAgentTool::requireCapability()` refuses every call.
+ADR-022 C-2 forbids the obvious shortcut — `DevAdminAccount`, whose own
+`ALLOWED_SAPIS` *does* include `cli`, and which is a wildcard on every axis.
 
-Central facade combining JSON Schema and MCP tool outputs. Provides a unified API for AI agents to discover the full CMS surface area.
+| Class | Role |
+|---|---|
+| `LocalOperatorPrincipal` | The never-persisted `AuthorizationPrincipalInterface`. Fixed string sentinel id `local-operator:stdio`, strict-membership `hasPermission()`, role `local_operator`, unbound tenant/community, and a `claimsGeneration()` digest over the granted capabilities, the admitted tool ids, the active `SovereigntyProfile`, and any tenant/community binding. Also supplies `auditActorUid()` (always `null`) and `auditMetadata()` for a `StrictAuditReservation`. |
+| `LocalOperatorTransportAttestation` | The only constructor gate (D-6 R-6). Refuses a SAPI other than `cli`, a runtime that is not an explicitly configured development environment (`RuntimePolicy::isExplicitDevelopment()`), and any transport id other than `waaseyaa.local.stdio`. **`PHP_SAPI` is consulted unconditionally and first**; the `$narrowingSapi` test seam is consulted second and can only ADD a refusal — see "The SAPI seam narrows only" below. |
+| `LocalOperatorToolProfile` | The D-7 default catalogue: an explicit tool-ID allowlist (`bimaaji_introspect_graph`, `bimaaji_introspect_section`, `bimaaji_search_specs`) plus the capability grant (`bimaaji.read`). Refuses any capability on `WITHHELD_CAPABILITIES`, which is D-8's fail-closed posture until a read-side sovereignty evaluation exists. |
+| `LocalOperatorAccountContextGuard` | An `AccountContextInterface` decorator that refuses the principal on **both** `set()` and `current()` (D-6 R-4). `EntityRepository::resolveActor()` casts the ambient account id to `int`, and `(int) 'local-operator:stdio'` is `0` — the `AnonymousUser` id. Guarding only `set()` would leave two live paths to a prohibited read: wrapping a context that already holds the principal, and mutation of the inner context through a second reference taken before the wrap. `current()` is the side `resolveActor()` actually consumes. The transport wraps its account context in one; the principal is passed directly to the gate and to `requireCapability()`, never installed as the ambient actor. |
+| `LocalOperatorRefusal` | The loud failure every refusal row raises, carrying the ADR row (`R-4`, `R-5`, `R-6`, `D-7`, `D-8`) it discharges. |
 
-```php
-final class SchemaRegistry
-{
-    public function __construct(
-        private readonly EntityJsonSchemaGenerator $schemaGenerator,
-        private readonly McpToolGenerator $toolGenerator,
-    ) {}
+**The SAPI seam narrows only.** `LocalOperatorTransportAttestation` accepts a
+`$narrowingSapi` argument so a test can prove the refusal for a SAPI its own
+process cannot run under. `PHP_SAPI` is checked unconditionally and first, and
+the argument is checked second and only to add a refusal. The asymmetry is
+load-bearing: a `$sapi ?? PHP_SAPI` resolution would let anything running under
+a real `cli-server` process obtain a principal by passing the string `'cli'` —
+a seam that can mint authority is not a seam. No in-process test can catch that
+regression, because the suite runs under `cli` and both resolutions behave
+identically there. `tests/Integration/LocalOperator/LocalOperatorHttpSapiRefusalTest.php`
+therefore starts PHP's own built-in server (SAPI `cli-server`), issues an HTTP
+request, and asserts refusal with every other gate deliberately satisfied. It
+doubles as the end-to-end form of R-1.
 
-    public function getSchema(string $entityTypeId): array;
-    public function getAllSchemas(): array;
-    public function getTools(): array;          // cached via null coalescing
-    public function getTool(string $name): ?McpToolDefinition;
-}
-```
+**The out-of-process proofs are portable.** They invoke child PHP through
+`proc_open()` with an argv array and an explicit environment map, never a
+`NAME=value command` shell prefix — that is POSIX syntax, and `cmd.exe` parses
+it as a program named `APP_ENV=local`, so on Windows the probe would not run at
+all and the proof would pass vacuously. The native Windows CI lane
+executes `packages/ai-agent/tests/Unit/LocalOperator` and
+`tests/Integration/LocalOperator` on `windows-2025` so that portability is a
+tested claim. The D-7.3 roster-gate sandbox is excluded from that lane: it
+builds its fixture tree with `symlink()`, which needs Developer Mode on
+Windows, and it exercises a gate that runs on the Linux lanes. Since #2678
+these tests run in the `native-host-contract` matrix on `ubuntu-24.04` and
+`windows-2025`, which replaced `ci/local-operator-windows`, under PHPUnit's
+skip-, incomplete- and empty-selection failures. They remain a narrow proof of
+the local-operator trust boundary, not the local AI-plane parity #2680 owns.
 
-Tool definitions are cached in-memory via `$this->toolCache ??= $this->toolGenerator->generateAll()`. The cache lives for the request lifetime only.
+**The allowlist is not a capability grant, and that distinction is gated.**
+`requireCapability()` evaluates a capability string and consults no tool
+roster, so a future class carrying `#[AsAgentTool(capability: 'bimaaji.read')]`
+would otherwise join the default profile on discovery.
+`bin/check-local-operator-tool-profile` scans every `#[AsAgentTool]` and every
+literal `new AgentTool(...)` under `packages/*/src`, classifies each as
+`default-profile` / `capability-admissible` / `withheld` /
+`dynamic-registration`, and diffs against
+`support/local-operator-tool-profile-roster.json`. Detection is a token walk, so
+it tolerates arbitrary whitespace, and the cheap file prefilter is the bare
+identifier `AgentTool` — a strict superset of what the walk can match. That
+matters: a prefilter of `'AgentTool('` made `new AgentTool (` (one space, valid
+PHP, lints clean) invisible, and the gate reported green with an unrostered
+`bimaaji.read` tool present. The gate's entire value rests on its scan being
+complete, so both spacings carry seeded regression controls. The `capability-admissible`
+class — granted capability, unlisted tool id — is empty today and cannot grow
+without a deliberate roster update. Two cross-checks read
+`LocalOperatorToolProfile::DEFAULT_TOOL_IDS` rather than the roster, so a
+reflexive `--write-roster` cannot silence a rename or removal. Seeded positive
+control: `tests/Architecture/LocalOperatorToolProfileGateTest.php`.
+
+**Not owned here.** `bimaaji_search_specs` is on the allowlist and inert until
+#2661 and #2662 — `BimaajiServiceProvider::resolveSpecsDirectory()` returns
+`null` unless `bimaaji.specs_directory` is configured, and `docs/specs/` ships
+in no package. The dispatch path (reserve/finalize wrapper, `NullStrictAuditLedger`
+refusal) is #2657's, discharged in `waaseyaa/ai-tools`. The stdio transport
+itself — the `surface` constant, per-request correlation id, and the
+conformant JSON-RPC server — is #2659's, discharged below.
+
+### Local stdio MCP transport (`mcp:serve`, ADR-022 D-9.2, #2659)
+
+`waaseyaa mcp:serve --profile=developer` speaks conformant JSON-RPC 2.0 over
+stdin/stdout: newline-delimited request/response objects, no batching, no
+resources/prompts capability (only `tools`). It is a CLI command, not a
+`waaseyaa/mcp` route — installing it registers zero HTTP surface, per ADR-022
+D-1.4/D-9.1, and it works when `waaseyaa/mcp` is not installed at all.
+
+| Class | Package | Role |
+|---|---|---|
+| `Waaseyaa\CLI\Mcp\Stdio\StdioMcpServer` | `waaseyaa/ai-tools`-only deps | The read loop: `initialize`, `ping`, `tools/list`, `tools/call`; every other method is `-32601`. Writes ONLY complete JSON-RPC frames to its `$out` stream — every diagnostic goes through an injected closure the caller wires to stderr. Listing goes through the injected `ToolDispatcherInterface` unaudited (`tools()`/`tool()` only, matching D-5.B: `initialize`/`ping`/`tools/list` mutate nothing); `tools/call` goes through a caller-supplied `$dispatch` closure so a correlation id can be minted fresh per request (D-5.C.6) — this class never constructs the audited dispatcher itself. |
+| `Waaseyaa\CLI\Mcp\Stdio\StdioMcpProtocol` | none | Protocol-version negotiation, independent of `Waaseyaa\Mcp\McpProtocol` on purpose — depending on `waaseyaa/mcp` to borrow four strings would pull in its route registrar (ADR-022 C-4). |
+| `Waaseyaa\CLI\Mcp\Stdio\StdioJsonRpcErrorCode` | none | The five base JSON-RPC 2.0 codes this transport needs; it has no rate limiter, bearer auth, or Origin check, so none of `Waaseyaa\Mcp\McpErrorCode`'s `-31xxx` band applies here. |
+| `Waaseyaa\CLI\Mcp\Stdio\StdioServerExecutableResolver` | none | Pure function: project root (POSIX or Windows shaped) → `{command, args}` for invoking `vendor/bin/waaseyaa mcp:serve`. Always `PHP_BINARY` or an injected override, never the bare string `'php'` — the acceptance criterion this class exists to satisfy ("reuses `waaseyaa dev`'s discipline, never assumes `command: php`"). Descriptor generation and machine-local configuration are owned by downstream #2663; see "Transferred" below. |
+| `Waaseyaa\CLI\Command\Mcp\McpServeCommand` | `waaseyaa/ai-agent` (optional) | The wiring: constructs `LocalOperatorPrincipal::forLocalStdioTransport()`, narrows the host's `ToolRegistryInterface` with `ToolIdAllowlistRegistry` to the principal's D-7 tool ids, wraps it in `AgentToolDispatcher`, and — per `tools/call` — a fresh `AuditedToolDispatcher` with surface `McpServeCommand::AUDIT_SURFACE` (`waaseyaa.local.stdio`, never `mcp`/`mcp.*`), `$principal->auditActorUid()` (always `null`), and `$principal->auditMetadata()`. A construction-only `AuditedToolDispatcher` probe at startup (discarded, never dispatched) surfaces a `NullStrictAuditLedger` or surface-collision refusal before the read loop starts rather than on the first call. Every refusal — unsupported `--profile`, `LocalOperatorRefusal`, the audit probe — writes one structured JSON diagnostic to stderr and returns exit `1`; nothing reaches stdout. |
+| `Waaseyaa\CLI\Provider\McpStdioServiceProvider` | — | Registers `mcp:serve`, gated on both `waaseyaa/ai-agent` and `waaseyaa/ai-tools` via `RequiresOptionalPackagesInterface`. `waaseyaa/cli` only `suggest`s both packages: a production `waaseyaa/cms` consumer does not gain the Layer-5 tool plane through `cms → cli`, while a development install carrying both packages exposes the command. |
+
+**Audit correlation is provably real, not merely wired.** The stdio transport
+mints the request identity and supplies it to both dispatcher layers. A
+`tools/call` produces two `strict_audit_ledger` rows sharing that exact
+`correlation_id`: a
+`reserved` row (`request_accepted`) and a `finalized` row
+(`execution_succeeded` / `_failed`), both `surface = 'waaseyaa.local.stdio'`,
+`actor_uid` NULL, and `descriptor.metadata.principal =
+'local-operator:stdio'`. The unit wiring tests cover successful dispatch and
+the two sanitized-failure paths against an in-memory ledger. The integration
+test `McpServeCorrelationIntegrationTest` repeats the hard cases — an escaping
+exception and an output-schema violation — against
+`DatabaseStrictAuditLedger` and a real SQLite `strict_audit_ledger`, proving
+that response, safe log context, reservation, and finalization are joinable
+without inference. Standalone `AgentToolDispatcher` callers retain their old
+behaviour and mint an identity only when a sanitized failure needs one.
+
+`tests/Integration/Mcp/StdioMcpConformanceTest.php`
+spawns the real `mcp:serve` subprocess over real OS pipes (`proc_open`, not
+`Symfony\Process`, because this session is interactive request/response, not
+run-to-completion) and proves the FULL round trip: `initialize` negotiates a
+protocol version, a `notifications/initialized` gets no response line at all,
+`tools/list` returns only D-7-allowlisted names, `tools/call` succeeds, a
+malformed line gets a `-32700` frame and the session keeps answering
+afterward, and a production-shaped runtime refuses with **empty stdout** and
+a non-zero exit — every line captured off the child's stdout pipe is asserted
+to parse as JSON, which is how "a stray echo corrupts the stream" is proven
+false rather than assumed. `Waaseyaa\CLI\Tests\Unit\Mcp\Stdio\StdioMcpServerTest`
+covers the same protocol surface against `php://memory` streams and a stub
+dispatcher, for the failure shapes too tedious to reach through a real
+process (JSON-RPC batching rejected, wrong `jsonrpc` version, a thrown
+exception inside `tools/call` sanitized to `Internal error.` on the wire
+while stderr receives only exception class and method — never message,
+arguments, credentials, or an absolute throw-site path).
+
+**Historical kernel-boot gap and its bounded remediation (#3121).** The original
+#2659 observation was that graph tool construction depended on an HTTP-only
+live `RouteCollection`, so plain `ConsoleKernel` discovery could skip the graph
+tools. ROUTE-METADATA-01 removes that construction dependency: Bimaaji obtains
+the completed canonical kernel snapshot lazily at inspection, and refuses
+incomplete, legacy or invalidated authority without an empty-graph fallback.
+The release/consumer evidence is tracked in `docs/change-records/ROUTE-METADATA-01.md`.
+This route fix does not claim complete MCP catalogue qualification. The
+`AttributeToolRegistry` dependency-unavailable skip, configured allowlist,
+capability checks and transport contracts remain unchanged.
+
+**Official-client proof.** On 2026-09-03 the released MCP Inspector CLI
+(`@modelcontextprotocol/inspector` 2.5.0) started this branch's packaged
+`mcp:serve --profile=developer` through an uncommitted, machine-local config
+and completed strict `tools/list`. It observed exactly the one constructible,
+approved tool (`bimaaji_search_specs`) and its declared input schema. The
+config contained absolute checkout and PHP paths, remained outside the
+repository, and is not a distributable artifact. The subprocess conformance
+test remains the deterministic CI proof; Inspector is independent client
+interoperability evidence.
+
+**Official PHP SDK evaluation.** `mcp/sdk` v0.8.1 (released 2026-08-29) can
+represent the handshake-era and 2026-07-28 protocols and supports custom
+request handlers, so registry and audit injection are not technical blockers.
+It is nevertheless pre-1.0, classified Tier 3 by the official SDK documentation,
+and adoption in `waaseyaa/cli` would make a developer-only transport dependency
+production-present for every CLI consumer. Moving it to optional
+`waaseyaa/ai-agent` would invert package ownership, while the current
+development metapackage has no code-bearing home for it. #2659 therefore keeps
+the small transport implementation and does not adopt the SDK. Re-evaluate
+when the SDK reaches a stable major or the package graph gains a code-bearing,
+development-only transport owner.
+
+**Transferred to #2663.** Portable launcher descriptors and machine-safe client
+configuration are not shipped by #2659. #2663 owns their generation, safe
+merge, source identity, drift detection, uninstall behaviour, supported-OS
+bootstrap proof, and the rule that an absolute machine path is generated only
+into a private/gitignored artifact. This issue supplies the resolver and
+working server that #2663 consumes; the transfer is explicit rather than an
+unowned deferral.
 
 ## Agent Execution
+
+### Agent-run persistence and retention composition
+
+`AgentRun` and `AgentAuditLog` are column-oriented framework entities. Their
+`#[ContentEntityType]` declarations select `sql-column`, matching the package
+migrations and the repositories' direct status/timestamp queries. The
+`waaseyaa/ai-agent` Composer manifest declares its `migrations/` directory;
+an additive migration supplies the mandatory `_data`, `bundle`, and `langcode`
+entity base columns to tables created before that storage contract was explicit
+or materialized earlier in the same fresh-install lifecycle.
+
+The operator-facing `ai:purge-runs` command obtains its delete repository by
+resolving the kernel-owned entity type manager and explicitly selecting
+`agent_run`. The production services bus intentionally provides no arbitrary
+context-free `EntityRepositoryInterface`. A purge deletes only terminal runs
+older than the configured threshold; live runs and recent terminal runs remain.
 
 ### AgentInterface
 
@@ -246,7 +476,10 @@ Wraps agent execution with safety guarantees and audit logging. Five execution p
 4. `executeWithProvider(AgentInterface, AgentContext, ProviderInterface): AgentResult` -- Multi-turn tool loop with an LLM provider. Checks `AgentContext::maxIterations` per iteration; throws `MaxIterationsException` when exceeded.
 5. `streamWithProvider(AgentInterface, AgentContext, StreamingProviderInterface, callable $onChunk): AgentResult` -- Streaming variant forwarding `StreamChunk` objects in real time.
 
-All paths log to an in-memory audit log. Exceptions are caught and converted to failure results, never propagated. The `executeTool()` method delegates to `McpToolExecutor::execute()`.
+Tool execution resolves the allowlisted descriptor through
+`Waaseyaa\AI\Tools\ToolRegistryInterface` and invokes its `AgentToolInterface`
+implementation as the supplied account. The agent runtime does not route tool
+calls through `ai-schema`.
 
 ### Audit Logging
 
@@ -270,6 +503,20 @@ The audit log is in-memory (`AgentExecutor::$auditLog`), retrieved via `getAudit
 ### MCP endpoint
 
 The framework's MCP-facing surface is `Waaseyaa\Mcp\McpServerCard` in `packages/mcp/`, wired by `McpRouteProvider` at `/.well-known/mcp.json`. See `docs/specs/mcp-endpoint.md`. The earlier `Waaseyaa\AI\Agent\McpServer` `tools/list` + `tools/call` adapter was deleted as orphan scaffolding (closes #1498); it was never reached and duplicated nothing the production path needed. If a `tools/list` / `tools/call` JSON-RPC surface becomes a requirement, it will be designed against the `McpServerCard` path, not resurrected.
+
+### Tool failure contract — sanitized internal errors
+
+Every `#[AsAgentTool]` tool wraps its storage work in a generic `catch (\Throwable)` so one failure cannot take down an agent run. That arm used to return `AgentToolResult::error(sprintf('<tool>: %s', $e->getMessage()))`, putting the raw exception message into the caller-visible result **and** into `AgentToolResult::summary`, which is the audit/transcript line. On the MCP surface that reached anonymous callers, so a failing storage call disclosed the database password, DSN, absolute vendor path and internal exception class.
+
+The 11 generic arms — across `Entity\{Create,Delete,List,ListRevisions,Read,Rollback,Search,SetCurrentRevision,Update}Tool`, `Relationship\RelationshipTraverseTool` and `Vector\VectorSearchTool` — now call `AbstractAgentTool::internalError()`, which delegates to `Waaseyaa\AI\Tools\Error\SanitizedToolError`:
+
+- **Caller** receives `{code: 'INTERNAL_ERROR', message: <fixed literal>, meta: {correlation_id: <16 hex>}}`. `summary` carries the code and correlation id only.
+- **Logger** receives safe diagnostic metadata under `agent_tool.execution_failed` — correlation id, tool, exception class, file, line, and `getCode()` only when it is an integer. The exception message, stack trace, and the `Throwable` object itself are excluded; a log store is an indexed, widely-read egress path, so relocating a credential into it is not a fix. See `docs/specs/mcp-endpoint.md` for the full rationale and the bridge-side half of the same contract.
+- The logger is attached at hydration by `AttributeToolRegistry::hydrate()` via `AbstractAgentTool::setLogger()`, the same mechanism that already attaches the `EntityAccessHandler`. Unlike access enforcement this is unconditional: it is a diagnostics concern, and a tool that cannot log still returns the identical sanitized result. Sanitization never depends on logger availability.
+
+**Typed domain catches are deliberately untouched.** `EntityValidationException`, `RevisionConflictException`, the `LogicException` "not revisionable" arms, `EntityKeyGuard` refusals and per-tool `forbidden` results are authored, machine-readable outcomes an agent is meant to act on, and they are *returned* rather than thrown — they never pass through the sanitizer.
+
+Covered by `packages/ai-tools/tests/Unit/Error/SanitizedToolErrorTest.php`.
 
 ## LLM Provider System
 
@@ -305,8 +552,13 @@ interface StreamingProviderInterface extends ProviderInterface
 final class AnthropicProvider implements StreamingProviderInterface
 {
     public function __construct(
-        private readonly string $apiKey,
-        private readonly string $model = 'claude-sonnet-4-20250514',
+        #[\SensitiveParameter]
+        string|SecretHandle $apiKey,
+        private readonly string $model = 'claude-sonnet-4-6',
+        ?\Closure $authenticatedTransport = null,
+        ?ProviderTimeouts $timeouts = null,        // sendMessage bounds
+        ?ProviderTimeouts $streamTimeouts = null,  // streamMessage bounds
+        string $baseUrl = 'https://api.anthropic.com',
     );
 
     public function sendMessage(MessageRequest $request): MessageResponse;
@@ -318,6 +570,72 @@ final class AnthropicProvider implements StreamingProviderInterface
 ```
 
 Uses cURL for HTTP. `CURLOPT_WRITEFUNCTION` callbacks must not throw — `json_decode` is wrapped in try-catch inside callbacks. Error handling parses error bodies and handles HTTP 429 with `RateLimitException`.
+
+`$baseUrl` is the Messages API origin (`/v1/messages` is appended). It exists for Anthropic-compatible gateways and for transport tests; the constructor rejects any scheme other than http/https.
+
+#### Transport time bounds
+
+**File:** `packages/ai-agent/src/Provider/ProviderTimeouts.php`
+
+```php
+final readonly class ProviderTimeouts
+{
+    public function __construct(
+        public float $connectSeconds = 5.0,
+        public float $totalSeconds = 120.0,
+        public int $lowSpeedBytesPerSecond = 0,  // 0 disables the abort
+        public int $lowSpeedSeconds = 0,         // 0 disables the abort
+    );
+
+    public static function forRequest(): self;    // 5s connect, 120s total, no low-speed abort
+    public static function forStreaming(): self;  // 5s connect, 300s total, abort under 1 B/s for 30s
+    public function curlOptions(): array;         // CURLOPT_CONNECTTIMEOUT_MS / _TIMEOUT_MS / _LOW_SPEED_*
+}
+```
+
+A total timeout alone cannot bound a stalled peer cheaply (#2156), so each profile carries three independent bounds:
+
+- **connect** caps the connection phase (DNS, TCP, TLS handshake) by itself, so a peer that accepts and never negotiates fails there instead of spending the whole request budget;
+- **total** caps the exchange end to end;
+- **low-speed** tears the transfer down once it stops delivering bytes. For streaming this is the bound that matters: a caller's own deadline runs inside the chunk callback, and a stalled stream delivers no chunk to run it.
+
+The low-speed pair is off unless both halves are set, and only the streaming profile enables it by default — a non-streaming call is legitimately silent while the model generates. `ProviderTimeouts` rejects a non-positive bound, a connect bound larger than the total, and a half-configured low-speed abort. libcurl averages transfer speed over a rolling window, so a low-speed teardown trails its configured window by a few seconds; treat the window as a floor, not an exact deadline.
+
+Both HTTP providers take these bounds. `AnthropicProvider` installs `forRequest()` for `sendMessage()` and `forStreaming()` for `streamMessage()`; `OpenAiCompatibleProvider` has no streaming path and installs `forRequest()` for its single exchange (#2445). Every bound is caller-settable, and the defaults preserve each provider's historical total.
+
+A timeout surfaces as `TransportException`, which `AgentExecutor` already treats as retryable, and which the credential-custody boundary re-mints as `Provider transport unavailable.` — the endpoint and the cURL detail never reach the caller. Two test classes pin this against a local peer that stalls (`tests/Support/StallingTransportServer.php`, a raw TCP peer rather than an HTTP server, because the point is a peer that does not answer): `AnthropicProviderTransportTest` covers a TLS handshake that never completes and an SSE stream that goes silent after one delta, and `OpenAiCompatibleProviderTransportTest` covers the same handshake plus the non-streaming stall — a peer that promises a chat completion by `Content-Length`, delivers a prefix, and stops.
+
+The API key is held as a `SecretHandle` (a plain string is wrapped into a legacy static handle). Every request resolves it inside the registered `AnthropicCredentialOperation` consumer (purpose `waaseyaa.ai.anthropic.v1`), which builds the `x-api-key`/`anthropic-version` headers so credential bytes never return to provider code. Failures cross the custody boundary only as `ProviderCredentialOutcome`'s closed taxonomy — `RateLimitException` (retry-after seconds preserved), `TransportException`, `ClientErrorException` — re-thrown with fixed non-secret messages; the original exception text and chain are discarded. `OpenAiCompatibleProvider` follows the same pattern via `OpenAiCompatibleCredentialOperation` (purpose `waaseyaa.ai.openai-chat.v1`).
+
+### OpenAiCompatibleProvider
+
+**File:** `packages/ai-agent/src/Provider/OpenAiCompatibleProvider.php`
+**Implements:** `ProviderInterface` (no streaming)
+
+```php
+final class OpenAiCompatibleProvider implements ProviderInterface
+{
+    public function __construct(
+        #[\SensitiveParameter]
+        string|SecretHandle $apiKey,
+        private readonly string $baseUrl = 'https://api.openai.com/v1',
+        private readonly string $model = 'gpt-4o-mini',
+        ?\Closure $authenticatedTransport = null,
+        ?ProviderTimeouts $timeouts = null,  // sendMessage bounds
+    );
+
+    public function sendMessage(MessageRequest $request): MessageResponse;
+    public static function parseChatCompletionResponse(array $data): MessageResponse;
+}
+```
+
+Serves any OpenAI Chat Completions–compatible endpoint (OpenRouter, Azure OpenAI, local gateways); `/chat/completions` is appended to `$baseUrl`. Text-in / text-out — tool loops must use `AnthropicProvider` until tool schema bridging exists.
+
+Because there is no stream, the stall that matters is a silent *body* rather than a silent stream: a peer that answers, promises a completion, and then delivers only part of it. No chunk callback exists to notice, so only a transport bound can end it.
+
+What the installed `forRequest()` profile does, precisely: connection establishment (DNS, TCP, TLS) is bounded at 5s, and the total stays at its historical 120s. Stalled-body protection is *available but not on* — the low-speed abort is off unless a caller sets it, so a peer that finishes connecting and then goes silent mid-body is still bounded only by the 120s total. That default is deliberate: a chat completion is legitimately silent while the model generates, and libcurl's byte-rate window covers that wait too, so enabling the abort by default would tear down healthy slow generations rather than stalled ones. A caller that knows its gateway responds promptly can pass `timeouts:` to enable it, and to set any of the three bounds.
+
+`$authenticatedTransport` replaces cURL entirely, so the bounds do not apply to it; it is a test seam, not a transport policy.
 
 ### Message Block Value Objects
 
@@ -376,7 +694,7 @@ final class RateLimitException extends \RuntimeException
 }
 ```
 
-Thrown by `AnthropicProvider` on HTTP 429. `$retryAfterSeconds` parsed from the `retry-after` header.
+Thrown by `AnthropicProvider` on HTTP 429. `$retryAfterSeconds` parsed from the `retry-after` header. Since CFG-04, callers receive a re-minted instance with a fixed message (`Provider rate limited.`) — `retryAfterSeconds` survives the custody boundary, the upstream error body text does not.
 
 **File:** `packages/ai-agent/src/Provider/MaxIterationsException.php`
 
@@ -418,33 +736,14 @@ When graph reranking changes order, JSON:API response meta includes:
 
 Workflow visibility remains enforced at search output: node entities are only returned when resolved workflow state is `published`.
 
-## AI-Assisted Discovery Blend Contract (v1.0)
+## Legacy AI-Assisted Discovery Blend Contract — REMOVED
 
-The MCP discovery surface now exposes a deterministic blend contract via the `ai_discover` tool (`Waaseyaa\Mcp\McpController`):
-
-- Input:
-  - `query` (required, non-empty)
-  - `type` (optional, defaults to `node`)
-  - `limit` (optional, clamped `1..100`)
-  - optional anchor pair `anchor_type` + `anchor_id` (must be provided together)
-- Search foundation:
-  - delegates to `SearchController` to preserve semantic/keyword fallback behavior and workflow visibility (`published` only for node output).
-- Explainability output:
-  - recommendations include deterministic explanation fields:
-    - `semantic_score`
-    - `graph_context_score`
-    - `combined_score`
-    - `base_rank`
-    - `visibility_contract` (`published_only`)
-- Graph context output:
-  - when anchor is present, response includes anchor graph summary (`outbound`, `inbound`, `total`, and relationship type counts) computed with published-only relationship traversal.
-- Enforcement:
-  - anchor entity must exist and pass `view` access checks,
-  - node anchors must be public (`workflow_state=published` or equivalent status),
-  - invalid params return JSON-RPC `-32602`; authorization/publicity failures return execution error `-32000`.
-- Stable metadata:
-  - MCP tool payloads include `meta.contract_version = v1.0` and `meta.contract_stability = stable`.
-  - `search_entities` is the canonical MCP semantic search tool name; `search_teachings` is a deprecated alias retained for compatibility.
+The `ai_discover`, `search_entities`, and `search_teachings` MCP tools belonged
+to the unrouted legacy `Waaseyaa\Mcp\McpController` stack removed in WP17
+(#1738). They are not served by the live `Waaseyaa\Mcp\McpEndpoint`, and their
+former blend payload and metadata are not current compatibility contracts.
+Applications that need a remotely callable content-search tool must register a
+new, access-checked agent tool through the canonical AI tool registry.
 
 ## Pipeline System
 
@@ -496,14 +795,16 @@ Implementations connect to embedding providers. The `getDimensions()` method ret
 **File:** `packages/ai-vector/src/OpenAiEmbeddingProvider.php`
 
 ```php
-final class OpenAiEmbeddingProvider implements EmbeddingInterface
+final class OpenAiEmbeddingProvider implements EmbeddingInterface, EmbeddingProviderEgressInterface
 {
     public function __construct(
-        private readonly string $apiKey,
+        #[\SensitiveParameter]
+        string|SecretHandle $apiKey,
         private readonly string $model = 'text-embedding-3-small',
         private readonly string $endpoint = 'https://api.openai.com/v1/embeddings',
-        private readonly mixed $transport = null,    // callable for testing
+        mixed $transport = null,                     // credential-free seam
         private readonly int $dimensions = 1536,
+        mixed $authenticatedTransport = null,        // seam below credential injection
     );
 }
 ```
@@ -511,7 +812,7 @@ final class OpenAiEmbeddingProvider implements EmbeddingInterface
 **File:** `packages/ai-vector/src/OllamaEmbeddingProvider.php`
 
 ```php
-final class OllamaEmbeddingProvider implements EmbeddingInterface
+final class OllamaEmbeddingProvider implements EmbeddingInterface, EmbeddingProviderEgressInterface
 {
     public function __construct(
         private readonly string $endpoint = 'http://127.0.0.1:11434/api/embeddings',
@@ -522,86 +823,300 @@ final class OllamaEmbeddingProvider implements EmbeddingInterface
 }
 ```
 
-Both accept an optional `$transport` callable `(string $url, array $headers, array $body): array` for test injection. When null, they use real HTTP calls.
+Ollama's `$transport` keeps the `(string $url, array $headers, array $body): array` shape. OpenAI's `$transport` is credential-free — `(string $url, array $payload): array`, invoked before any credential is resolved; the separate `$authenticatedTransport` seam receives headers below credential injection. A string `$apiKey` is wrapped into a legacy static `SecretHandle`; requests resolve it inside the registered `OpenAiEmbeddingCredentialOperation` consumer (purpose `waaseyaa.ai.embedding.v1`). When the seams are null, real HTTP calls are made.
 
-### VectorStoreInterface
+`EmbeddingProviderEgressInterface::transmitsOffHost()` supplies the indexing
+policy's terminal-provider classification. OpenAI always reports external.
+Ollama reports local only for literal `localhost`, `127.0.0.1`, and `::1`
+endpoints. A provider that does not implement the interface is treated as
+external.
 
-**File:** `packages/ai-vector/src/VectorStoreInterface.php`
+`EmbeddingProviderFactory::fromConfig()` still returns `null` when `ai.embedding_provider` is unset or unknown (the warmer reports `skipped_no_provider`), but a configured `openai` provider is fail-closed: a raw `ai.openai_api_key` value, a missing kernel `SecretResolverRegistry`, or a missing/invalid typed `ai.openai_credential_reference` throws `ProviderCredentialConfigurationException` — there is no environment-variable fallback.
+
+### Embedding execution and reconciliation (FW-AIV-EXECUTION-01)
+
+HTTP saves, served revision pointer moves and reverts index synchronously after
+true commit. Other kernels invalidate only. Lifecycle indexing and CLI
+warm/refresh use one `EmbeddingExecutor` freshness protocol and fresh repository
+reads, never an event snapshot or a preloaded entity chunk.
+
+A served-source mutation emits `EntitySourceChangedEvent` after its writes and
+inside its database transaction. The ai-vector subscriber advances the exact
+identity's generation and invalidates potentially indexed vectors in that same transaction.
+Publication obtains the generation lock, checks the operation token, rereads the
+served projection without acquiring entity mutation locks, and replaces the
+vector before releasing that lock. A concurrent source change must advance the
+same generation before it can commit. Provider calls run outside source and
+publication transactions. This closes the final-reread/publication race on both
+supported backends; atomic vector replacement alone would not close it.
+Generation tombstones survive deletion. Production invalidation is subscribed
+only to the transactional source event, including HTTP mutations. There is no
+post-delete or non-HTTP post-commit invalidation subscription: a delayed callback
+must not advance a generation and delete a newer vector. HTTP post-commit indexing
+is registered only with a configured provider. Superseded completion and failure
+cleanup cannot overwrite or remove a newer vector. Only confirmed stores count
+as stored; a superseded operation is not a successful store.
+
+The built-in database guard requires source, generation and vector storage on
+the same database connection. Missing generation schema refuses activation or
+source mutation/execution. Custom storage requires a compatible explicitly bound guard qualified
+for atomic source invalidation and publication, and a repository that supplies
+fresh served reads. Cached custom repositories must participate in that protocol.
+`EmbeddingStorageInterface` remains the sole storage contract. The retained
+`invalidateOnly` mode refuses `[AIV-EXECUTION-008]` without mutation; applications
+migrate to transactional source events. Standalone `EntityEmbeddingCleanupListener`
+requires a fresh manager, locks the generation and verifies source absence before
+removing a vector. Missing manager refuses without mutation.
+
+The built-in guard's monotonic `potentially_indexed` marker allows only
+policy-undeclared, proven never-indexed identities to skip projection deletion
+while retaining source-token advancement. Provider intent and canonical direct
+stores promote history before indexing; pure excluded cleanup does not. Existing
+generations are conservatively historical after migration and legacy vectors
+are backfilled. Previously indexed or uncertain identities retain fail-closed
+invalidation and rollback; missing/corrupt authority refuses. This does not
+tolerate entity-database failure or add deferred deletion. Artifact installation
+must reconcile imported vectors with serving history without accepting artifact
+tokens. Quiesce old writers before migrating/activating this protocol. See
+FW-AIV-UNINDEXED-AVAILABILITY-01 and the semantic search contract for the complete
+availability, compatibility and operator obligations. Public storage/guard
+interface signatures and network budgets are unchanged.
+
+| Operation | Built-in network-transfer budget |
+| --- | --- |
+| HTTP lifecycle `embedForSave()` | 2 seconds |
+| CLI warm/refresh and semantic query, Ollama `embed()` | 15 seconds |
+| CLI warm/refresh and semantic query, OpenAI `embed()` | 20 seconds |
+
+Each transfer has one attempt, no retries or redirect following, verified TLS,
+and a 1 MiB response cap. Symfony's total `max_duration` bounds connection and
+body, alongside its inactivity timeout. These are network bounds, not a whole
+HTTP request, credential-resolution, database, or multi-entity batch deadline.
+The longer operator/query budgets preserve legitimate workloads exceeding the
+save-time budget. Timeout, HTTP refusal and malformed response fail explicitly.
+Post-commit provider failures are logged; operator failures propagate. Source
+invalidation failures abort the source transaction. Operators monitor source
+mutation errors and all post-commit indexing failures separately.
+`AIV-EXECUTION-007` additionally identifies unconfirmed guarded cleanup. Cleanup
+is conditional on the current token and is never reported successful if it fails.
+
+HTTP custom providers must implement `EmbeddingSaveProviderInterface` and honor
+its one-attempt two-second network obligation. Missing capability refuses
+save-time embedding and invalidates. Arbitrary PHP providers or callable
+transport overrides cannot be preempted; their owners must qualify the budget.
+
+`waaseyaa/http-client` owns the maintained Symfony HTTP implementation.
+ai-vector's minimal `EmbeddingHttpTransport` retains payload, status and JSON
+validation, while providers retain credential and endpoint policy. The split
+http-client package requires Symfony HttpClient ^7.4 and contracts ^3.0; the
+candidate lock uses HttpClient 7.4.20. Symfony's native fallback supports hosts
+without ext-curl. Existing StreamHttpClient and ai-agent transport consolidation
+remain with their package maintainers, outside this slice.
+
+There is no embedding queue producer, retry worker or automatic repair loop.
+The unsupported listener `queue` argument, `ai_vector.embed_entity` dispatch and
+queue dependency are removed. Application owners remove historical orphan
+messages rather than replay them. The application operator owns reconciliation:
+schedule a full `semantic:refresh` sweep at the application's declared freshness
+SLA, monitor listener errors, nonzero command exits and eligible-content search
+coverage, and rerun the sweep after provider/storage recovery. Committed source
+changes invalidate immediately; coverage can remain absent until a successful
+HTTP indexing attempt or scheduled/manual refresh. No immediate coverage promise
+is made for imports, CLI saves, worker mutations or failed provider calls.
+
+Policy configuration is immutable for a booted process. Deployments changing
+projection or exclusion must quiesce old workers, apply migrations, purge
+excluded vectors, restart with the new policy and run a full refresh before
+claiming reconciled coverage. The generation guard is a content freshness fence,
+not a durable cross-process policy-version authority. The default-deny policy,
+explicit label/egress permission and AIV-POLICY-001 refusal remain unchanged.
+
+### Canonical embedding storage and semantic search
+
+`EmbeddingStorageInterface` is the only supported storage contract. Its
+`store(type, string id, vector)`, `findSimilar(query, type, limit)` and
+`delete(type, id)` operations are specified in
+[semantic-search-contract.md](semantic-search-contract.md), together with the
+HTTP JSON:API and MCP wire contracts and their shipped schemas.
+
+The former `VectorStoreInterface`/DTO family is removed under alpha DIR-003;
+it promised language variants and metadata the runtime never supported.
+UPGRADING.md contains the migration recipe. No compatibility adapter silently
+discards those promises. Save and refresh retain one `EmbeddingIndexPolicy`.
+
+### Lifecycle composition and entry-point contract (FW-AIV-COMP-01)
+
+The package is opt-in at two boundaries (FW-AIV-DIST-01):
+
+- `waaseyaa/framework`, `waaseyaa/cli`, and `waaseyaa/full` do not require it
+  at runtime. CLI and full only suggest it.
+- Installing it is not activation. `ai.vector_enabled` must be exactly `true`.
+  Otherwise its provider binds nothing, registers no secret consumer or
+  lifecycle listener, and its semantic CLI provider yields no commands.
+
+The only supported `ai.vector_backend` value is `database`. It means portable
+JSON-vector storage through the application's `DatabaseInterface`; it does not
+mean a native vector extension. `pgvector` and unknown values refuse provider
+registration with `[AIV-BACKEND-001]`. Sovereignty defaults advertise
+`database` for every profile until another backend has an implementation and a
+qualification run.
+
+### Embedding index and egress policy
+
+`ai.vector_index` is the only indexing allowlist. A missing policy or an
+undeclared entity type is not embedded. Each entry contains a non-empty
+`fields` list and an optional `allow_external` boolean, which defaults to
+`false`:
 
 ```php
-interface VectorStoreInterface
-{
-    public function store(EntityEmbedding $embedding): void;
-    public function delete(string $entityTypeId, int|string $entityId): void;
-    public function search(
-        array $queryVector,
-        int $limit = 10,
-        ?string $entityTypeId = null,
-        ?string $langcode = null,
-        array $fallbackLangcodes = [],
-    ): array;  // SimilarityResult[]
-    public function get(string $entityTypeId, int|string $entityId): ?EntityEmbedding;
-    public function has(string $entityTypeId, int|string $entityId): bool;
-}
+'vector_index' => [
+    'node' => [
+        'fields' => ['label', 'title', 'body', 'description'],
+        'allow_external' => false,
+    ],
+],
 ```
 
-The `search()` method supports language-aware retrieval: filter by `$langcode`, and if no results are found, try each `$fallbackLangcodes` in order.
+`label` is a reserved projection name for `EntityInterface::label()`. Every
+other name is read through `EntityValues::toCastAwareMap()`. There is no
+implicit label, entity ID, or fallback source. An empty projection is denied.
+Nodes additionally retain the served-public `WorkflowVisibility` gate.
 
-### EntityEmbedding
+`EmbeddingIndexPolicy` is composed once by `AiVectorServiceProvider` and is
+shared by the lifecycle listener and `SemanticIndexWarmer`. A denied entity is
+never passed to the provider and its existing vector is deleted. After a type
+is removed from policy, `semantic:refresh --type=<entity-type>` is the explicit
+reconciliation path for its stored vectors. Invalid policy shapes fail provider
+registration with `[AIV-POLICY-001]`.
 
-**File:** `packages/ai-vector/src/EntityEmbedding.php`
+`AiVectorServiceProvider` is the only composition owner. Every consumer
+resolves `EmbeddingStorageInterface` and `EmbeddingProviderInterface` through
+the kernel services, where the first provider to bind an interface wins:
 
-```php
-final readonly class EntityEmbedding
-{
-    public string $entityTypeId;
-    public int|string $entityId;
-    public array $vector;           // float[]
-    public string $langcode;        // '' means language-neutral
-    public array $metadata;         // e.g. {label, bundle}
-    public int $createdAt;
-}
-```
+- the lifecycle listeners;
+- `SearchRouter`, through `HttpKernel::semanticSearchServices()`;
+- `SemanticIndexWarmer`;
+- any host that resolves them from the kernel services bus, such as a
+  host-wired `vector.search`.
 
-### EntityEmbedder
+The rule applies to each interface separately after explicit activation.
+`AiVectorServiceProvider` binds the storage when enabled, but binds the embedding provider only when
+`ai.embedding_provider` is configured. So:
 
-**File:** `packages/ai-vector/src/EntityEmbedder.php`
+- A provider that loads earlier and binds an interface is used for it by
+  every consumer.
+- A provider that loads later and binds the storage, or the embedding
+  provider while ai-vector has one configured, is used by no consumer.
+- A provider that loads later and binds the embedding provider while
+  ai-vector has none configured makes the only binding, so every consumer
+  uses it. HTTP saves then embed with it.
 
-High-level service that composes `EmbeddingInterface` and `VectorStoreInterface`:
+The storage and the embedding provider can therefore come from different
+providers, but every consumer gets the same pair. No kernel or router
+constructs its own storage or provider.
 
-```php
-public function embedEntity(EntityInterface $entity): EntityEmbedding;
-public function searchSimilar(string $query, AccountInterface $account, int $limit = 10, ?string $entityTypeId = null): array;
-public function removeEntity(string $entityTypeId, int|string $entityId): void;
-```
+| Entry point | On save or revision pointer move | On delete |
+| --- | --- | --- |
+| HTTP, provider configured | Embeds served, indexable content; removes the vector otherwise (re-sourced from the served row). | Removes the vector. |
+| HTTP without a provider, and every other kernel (CLI, imports, queue workers) | Removes any existing vector, including for indexable content. Never calls the embedding provider. | Removes the vector. |
 
-`searchSimilar()` REQUIRES an `AccountInterface` and filters fail-closed (B3, audit-remediation): each `SimilarityResult` is loaded through its entity type's repository and dropped unless the entity exists and `EntityAccessHandler::check($entity, 'view', $account)->isAllowed()`, mirroring `SearchController`'s gate. An unregistered entity type or a deleted entity is dropped. `EntityEmbedder`'s constructor therefore also takes an `EntityAccessHandler` and an `EntityTypeManagerInterface`. This closes what was a dormant access-unfiltered leak (zero production callers; both live search surfaces, `SearchController` and `VectorSearchTool`, already bypass `EntityEmbedder`).
+Outside HTTP, `semantic:refresh` re-indexes. Until it runs, an entity saved
+there isn't found by semantic search. It never has a stale vector.
 
-`embedEntity()` uses `buildEntityText()`: **`$entity->label() . ' ' . json_encode(EntityValues::toJsonReadyMap($entity), JSON_THROW_ON_ERROR)`** — cast-aware keys with JSON-safe scalars (backed enums → backing value, `DateTimeInterface` → ISO-8601 ATOM, nested arrays normalized). Same layering rule as JSON:API attributes (`ResourceSerializer` delegates recursive normalization to **`EntityValues::normalizeValueForJson()`**).
+`boot()` registers the cleanup listener and an `invalidateOnly`
+`EntityEmbeddingListener` in every kernel. When a provider is bound,
+`configureHttpKernel()` swaps the save listener for the embedding one.
+Registration is idempotent across re-entered boots.
 
-**`EntityEmbeddingListener`:** node publish checks use **`WorkflowVisibility::isNodePublicForEntity()`**; embedding text uses **`EntityValues::toCastAwareMap()`** for `title` / `name` / `body` / `description`.
+**Post-commit failures are best-effort.** POST_SAVE and POST_DELETE run after
+the mutation has committed. Every storage call and every re-sourcing read in
+both listeners catches `\Throwable`, logs one error through the kernel
+logger, and returns. So the committed mutation is reported as successful and
+later listeners still run.
 
-**`SemanticIndexWarmer`:** node gating uses **`isNodePublicForEntity()`** (not raw `toArray()`).
+**Tests:**
+- `EmbeddingCompositionTest`: instance identity per entry point, single registration, and provider order (a host binding registered before ai-vector reaches every consumer; one registered after reaches none while ai-vector binds both interfaces, and its embedding provider reaches every consumer when ai-vector has none configured);
+- `ConsoleVectorInvalidationTest`: a console-kernel save of indexable content and a delete each remove the vector, with a provider configured;
+- `PostCommitVectorFailureTest`: through a real repository with a failing storage.
 
-```mermaid
-flowchart LR
-  subgraph embedder["EntityEmbedder"]
-    L[label] --> T1["toJsonReadyMap JSON"]
-    T1 --> E1[embed]
-  end
-```
+**`SemanticIndexWarmer`:** uses the same composed `EmbeddingIndexPolicy` as
+the lifecycle listener, including node visibility, field projection, egress,
+and deletion of denied entities.
 
-**MCP tool responses:** `McpToolExecutor` includes **`'data' => EntityValues::toCastAwareMap($entity)`** in read/update/query results so agents see cast-aware shapes aligned with JSON:API.
+
 
 **Vector search guards:** `SearchController` uses **`EntityValues::toCastAwareMap`** + **`statusToInt`** when filtering relationship/public context — do not switch those paths to raw `toArray()`.
 
 Canonical rules: `docs/specs/entity-system.md` (Casting & hydration architecture).
 
-### InMemoryVectorStore
+### DatabaseEmbeddingStorage and the `embeddings` table
 
-**File:** `packages/ai-vector/src/InMemoryVectorStore.php`
+**Files:** `packages/ai-vector/src/DatabaseEmbeddingStorage.php`,
+`packages/ai-vector/migrations/2026_09_24_000001_embeddings_schema.php`.
+Change record: `docs/change-records/FW-AIV-PERSIST-01.md` (#3138).
 
-In-memory implementation for testing. Uses cosine similarity. Stores embeddings keyed by `"{entityTypeId}:{entityId}:{langcode}"`. The `delete()` method removes all langcode variants for an entity.
+`EmbeddingStorageInterface`'s production implementation stores one vector per
+`(entity_type, entity_id)` in the `embeddings` table on the application's main
+database.
+
+- **Schema ownership:** the table belongs to ai-vector's package migration,
+  run through the schema coordinator like every other package migration.
+  Nothing on the save, delete or search path creates schema.
+- **Database access:** only through `DatabaseInterface`. There is no raw
+  `\PDO`, and the storage never changes the connection's attributes.
+- **Writes:** `store()` deletes and inserts in one transaction.
+- **Migration not yet applied:** every operation refuses with
+  `[AIV-STORAGE-001]` after logging a warning; no schema is created.
+- **Invalid stored vectors:** search refuses with `[AIV-STORAGE-002]`.
+- **Refresh:** both operator paths count confirmed writes/deletes and propagate
+  failures. Missing hydration and failed reindexing invalidate old vectors.
+- **Backends:** `database` is qualified on SQLite and PostgreSQL. Native vector
+  backends are unsupported and refused explicitly.
+
+The migration handles an existing table as follows:
+
+| Live state | Result |
+| --- | --- |
+| No table | Creates it: `entity_type`, `entity_id`, `vector` (text affinity), `updated_at` (integer affinity), all NOT NULL, primary key `(entity_type, entity_id)`. |
+| Exactly that shape | Adopted in place with every row. The pre-migration runtime code created this shape. |
+| Any other shape | Refused with `[AIV-DB001]`, naming each difference. The transition rolls back. |
+
+It never drops, recreates, renames or empties the table. Embeddings are a
+rebuildable projection (`semantic:refresh`).
+
+#### Adopting a runtime-created embeddings table
+
+Before the migration existed, the storage created `embeddings` at runtime. If
+that happened after the schema manifest was recorded, `migrate --verify`
+reports `schema_drift` and every coordinated transition, including this
+migration, refuses with `[S1-DB109]`. For the case where `embeddings` is the
+only drift, use the S1 spec's governed re-adoption with these proofs. General
+adoption tooling belongs to #3110.
+
+1. Back up the database (for SQLite: `.backup`, then check the backup's
+   integrity).
+2. Prove `embeddings` is the only drift. On a scratch copy (for example
+   `VACUUM INTO`), drop `embeddings` and run `migrate --verify` against the
+   copy. In its `[authority:…]` line, the recorded and live values of both
+   `schema=` and `ledger=` must be equal. The kind must be `match`, or
+   `source_catalog_mismatch` when the release you're running brings pending
+   migrations such as this one; in that case `STATUS` still reads FAIL, which
+   is expected. Any other kind, or any unequal `schema=` or `ledger=` pair,
+   means something else drifted too: stop and don't re-adopt.
+3. Prove the table has the expected shape. For SQLite, run
+   `PRAGMA table_info(embeddings)`; it must show exactly the four NOT NULL
+   columns above with key positions 1 and 2 on `entity_type` and `entity_id`.
+   If it doesn't, stop. The migration would refuse with `[AIV-DB001]` anyway.
+4. Record the row count, then apply the governed re-adoption from
+   `docs/specs/s1-schema-authority.md` ("Governed re-adoption"), which clears
+   the recorded fingerprints.
+5. Run `migrate`. The ai-vector migration adopts the table in place and the
+   transition records a fresh manifest. Confirm `migrate --verify` reports
+   `STATUS: OK` and the row count is unchanged.
+
+`packages/ai-vector/tests/Integration/EmbeddingsSchemaMigrationTest.php` runs
+this procedure on a drifted SQLite database, along with create, in-place
+adoption and every refusal case.
 
 ### DistanceMetric
 
@@ -618,9 +1133,12 @@ enum DistanceMetric: string
 
 ### FakeEmbeddingProvider (Testing)
 
-**File:** `packages/ai-vector/src/Testing/FakeEmbeddingProvider.php`
+**File:** `packages/ai-vector/testing/FakeEmbeddingProvider.php`
 
-Deterministic embedding provider for tests. Generates vectors by SHA-256 hashing the input text with HMAC iterations, then normalizing to unit magnitude. Same text always produces the same vector. Default dimensionality is 128.
+Deterministic embedding provider for tests, loaded only through
+`autoload-dev`. Generates vectors by SHA-256 hashing the input text with HMAC
+iterations, then normalizing to unit magnitude. Same text always produces the
+same vector. Default dimensionality is 128.
 
 ## Semantic Warming + Baselines
 
@@ -637,14 +1155,13 @@ Contract:
 - stable report payload with:
   - requested entity types
   - processed/stored/removed/missing totals
-  - per-type status blocks (`ok` / `missing_entity_type`)
+  - per-type status blocks (`ok` / `missing_entity_type` / `skipped_no_provider`)
   - measured duration
 
 Operational behavior:
 
-- If no embedding provider is configured, warmer returns `status=skipped_no_provider` (no writes).
-- For `node`, only `published` content is indexed; non-public states are removed from the semantic index.
-- Non-node types remain indexable by default.
+- If no embedding provider is configured, declared types return `status=skipped_no_provider`; undeclared types can still be refreshed to delete vectors left by an earlier policy.
+- Only entity types declared by `ai.vector_index` are indexed. For `node`, only `published` content is indexed; non-public states are removed from the semantic index.
 - Candidate IDs are processed in deterministic chunks (`200` IDs per storage load) to stabilize memory and I/O under larger warming sets.
 
 ### Semantic Refresh Batch Contract
@@ -659,7 +1176,7 @@ Contract:
   - requested entity types
   - `batch_size` and `batch_processed`
   - stored/removed/missing totals for the executed batch
-  - per-type status blocks (`ok` / `missing_entity_type`)
+  - per-type status blocks (`ok` / `missing_entity_type` / `skipped_no_provider`)
   - `next_cursor` (`{type_index, offset}`) when work remains, or `null` when complete
   - measured duration
 
@@ -667,7 +1184,7 @@ Operational behavior:
 
 - Cursor input is optional and clamped to non-negative values.
 - Batch execution is deterministic over sorted entity IDs and entity-type order.
-- If no embedding provider is configured, status is `skipped_no_provider` and no writes occur.
+- If no embedding provider is configured, declared types are skipped; undeclared types remain eligible for deletion-only refresh so a removed policy entry can be purged after provider removal.
 
 ### CLI Warm Command
 
@@ -727,7 +1244,7 @@ This gate is part of the v1.0 hardening verification substrate and is intended t
 
 ### Visibility Invariant
 
-AI search/indexing surfaces use `Waaseyaa\Workflows\WorkflowVisibility` as the canonical visibility primitive for node workflow-state gating (`published` public, non-published hidden), avoiding per-surface normalization drift.
+AI search/indexing surfaces use `Waaseyaa\Workflows\WorkflowVisibility` as the canonical served-visibility primitive. They follow the materialized published-pointer `status` projection, not a working-copy state id, avoiding de-indexing still-live content during a forward draft.
 
 ## Tool Safety
 
@@ -737,11 +1254,12 @@ MCP tool execution has the following safety properties:
 2. **Audit trail:** Every agent execution, dry-run, and tool call is recorded in `AgentAuditLog` with the agent ID, account ID, action type, success status, message, and timestamp. Tool arguments are redacted for the audit row via `AbstractAgentTool::argumentsForAudit()`, which recurses over arbitrarily-keyed payloads — list-valued arguments (integer keys, e.g. an `entity.create` `values.blocks`/`tags`) are preserved without error and never matched against credential names. The redaction runs on raw model-controlled input at the audit step, outside the `execute()` try/catch, so it must never raise (#1637).
 3. **User context:** Agents always execute as a specific `AccountInterface`. The account ID is logged in every audit entry.
 4. **Dry-run support:** All agents must implement `dryRun()` to preview changes without mutations.
-5. **Query access bypass (legacy `McpToolExecutor` path only):** `McpToolExecutor` (`packages/ai-schema/`) sets `accessCheck(false)` on entity queries; access control on *that* path is enforced at the agent/endpoint level, not the individual query level. This bypass does **not** apply to the stock `ai-tools` entity tools (`entity.read/list/search/create/update/delete`), which enforce the per-entity AccessPolicy directly — see property 7.
-6. **FieldableInterface check:** Updates verify the entity implements `FieldableInterface` before calling `set()`.
-7. **Per-entity access on the stock entity tools (mandatory, fail-closed — C-12):** The stock `ai-tools` entity tools enforce the framework's per-entity `AccessPolicy` (the same `view`/`update`/`delete`/`create` gate the REST/GraphQL surfaces use), not just the coarse `tool.entity.*` capability. `AiToolsServiceProvider` injects the kernel `EntityAccessHandler` into the `AttributeToolRegistry`, which stamps every tool it hydrates so the gate is **always** active in production — it is not opt-in. Enforcement is **fail-closed**: if the handler is ever unavailable in a context that requires enforcement, the per-entity guards **deny** (single reads/writes return a `forbidden` error; `entity.list`/`entity.search` drop every candidate) rather than silently allowing — a wiring gap can never degrade to allow-all. The only place the guards no-op (allow) is bare/unit construction that never wires a handler and never stamps enforcement (capability-only mode), preserving the historical contract for hosts with no entity-access policy.
+5. **FieldableInterface check:** Updates verify the entity implements `FieldableInterface` before calling `set()`.
+6. **Per-entity access on the stock entity tools (mandatory, fail-closed — C-12):** The stock `ai-tools` entity tools enforce the framework's per-entity `AccessPolicy` (the same `view`/`update`/`delete`/`create` gate the REST/GraphQL surfaces use), not just the coarse `tool.entity.*` capability. `AiToolsServiceProvider` injects the kernel `EntityAccessHandler` into the `AttributeToolRegistry`, which stamps every tool it hydrates so the gate is **always** active in production — it is not opt-in. Enforcement is **fail-closed**: if the handler is ever unavailable in a context that requires enforcement, the per-entity guards **deny** (single reads/writes return a `forbidden` error; `entity.list`/`entity.search` drop every candidate) rather than silently allowing — a wiring gap can never degrade to allow-all. The only place the guards no-op (allow) is bare/unit construction that never wires a handler and never stamps enforcement (capability-only mode), preserving the historical contract for hosts with no entity-access policy.
 
-8. **Declared-schema enforcement on the MCP transport (#2145):** a tool's `inputSchema` is a *contract*, not documentation. `Waaseyaa\AI\Tools\Schema\ToolInputSchemaValidator` validates arguments against it before `execute()` runs, so a handler never sees input violating the shape it advertised through `tools/list`. See below.
+7. **Declared-schema enforcement on the MCP transport (#2145):** a tool's `inputSchema` is a *contract*, not documentation. `Waaseyaa\AI\Tools\Schema\ToolInputSchemaValidator` validates arguments against it before `execute()` runs, so a handler never sees input violating the shape it advertised through `tools/list`. See below.
+
+8. **Asset reads are gated by the catalog row they wrote (#2517):** `AssetStoreInterface` takes the acting principal on both `upload()` and `get()`, and implementations MUST use it. `MediaAssetStore::get()` resolves the `media` row its `upload()` created and refuses unless the principal may `view` it; a retracted row, or bytes with no row, are indistinguishable from an asset that never existed. Re-uploading the same bytes writes another catalog row (content-addressed file, row accretion); `get()` returns the first matching row the principal may `view`, so an unpublished duplicate does not hide a later published one. Accepting a principal and ignoring it — as `get()` previously did — is not conformant: it makes every call site read as though a decision were being made. The writer on this boundary can be a remote agent, not only a human operator placing deliberately public assets, which is why this is a gate rather than a convention. The stored `source_uri` is scheme-qualified (`public://…`) so the row is servable by the media package's authorized download route; see `docs/specs/content-publishing.md` for the tool-level contract and the retraction semantics.
 
 ## Declared input-schema validation (`ToolInputSchemaValidator`, #2145)
 
@@ -764,13 +1282,32 @@ reports `(arguments)`.
 
 **Supported keywords:** `type` (single or list), `properties`, `required`,
 `additionalProperties` (`false` or a subschema), `enum`, `const`, `items`,
-`min`/`maxItems`, `min`/`maxLength`, `pattern`, `minimum`, `maximum`,
-`exclusiveMinimum`, `exclusiveMaximum`. Unrecognised keywords (`default`,
-`description`, `$schema`, `x-*`) are **ignored** — a schema is never rejected
-for vocabulary the validator does not police. Composition keywords
-(`allOf`/`anyOf`/`oneOf`/`$ref`) are **deliberately unimplemented**: no
-first-party tool declares them, and silently accepting them would be worse
-than not offering them; add support alongside the first tool that needs it.
+`min`/`maxItems`, `uniqueItems`, `min`/`maxLength`, `pattern`, `minimum`,
+`maximum`, `exclusiveMinimum`, `exclusiveMaximum`, and the in-place applicators
+`allOf`, `anyOf`, `oneOf` (#2737). Unrecognised keywords (`default`,
+`description`, `format`, `$schema`, `x-*`) are **ignored** — a schema is never
+rejected for vocabulary the validator does not police. That list is the
+complete enforced vocabulary — a documented subset, not full draft 2020-12
+conformance; `$ref` is not implemented.
+
+**Applicator semantics:** `allOf` applies every subschema and reports their
+violations as-is. `anyOf` passes when at least one alternative accepts the
+value. `oneOf` passes when exactly one alternative accepts the value; matching
+more than one is a violation (`Matches 2 of the 2 allowed alternatives; exactly
+one is required.`). When no alternative accepts the value and exactly one
+alternative fits the value's *type* — `anyOf [{string, maxLength}, {null}]`
+given an over-long string, or the reference-list item `oneOf [{integer,
+minimum: 1}, {string, minLength: 1}]` given `0` — that alternative's own
+violations are reported at their real path (`values.related.0`), so an agent
+sees the concrete constraint rather than a generic union failure; otherwise a
+single `Does not match any of the N allowed alternatives.` lands on the field.
+`uniqueItems` compares decoded-JSON items with strict equality like
+`enum`/`const` (`1` ≠ `"1"`, `1` ≠ `1.0`) and reports the later duplicate's
+index. Applicators run after the value's own keywords, so a `type` mismatch
+beside `anyOf` still yields one violation. The same validator guards
+`outputSchema` on the way back (`AgentToolDispatcher`), so `ContentToolSet`'s
+`id: oneOf [integer, string]` is now enforced there too — `ContentPublisher`
+returns the persisted entity's `int|string` id, which satisfies it.
 
 **Value model:** arguments arrive as `json_decode($body, true)` produces them,
 so a JSON object is an associative array and the empty array satisfies both
@@ -832,14 +1369,33 @@ Beyond the identity-key floor, the stock write tools enforce the framework's **p
 
 This closes the asymmetry whereby an agent holding entity-level `update`/`create` access could set a field a `FieldAccessPolicy` forbids (e.g. a privileged `roles`/`status` field) that the REST/GraphQL surfaces already refuse. **Configurable** per-type write allowlists (declarative scoping of which fields a given agent may write, beyond what the policy layer already expresses) remain the broader future mechanism and are still out of scope here.
 
-## Optimistic Locking on the Stock Entity Tools (#1647)
+## Aggregate Mutation Preconditions on the Stock Entity Tools
+
+DB-03 makes `entity.update` and `entity.delete` conditional by default. Both
+schemas require a top-level opaque `mutation_token` returned by `entity.read`.
+The token binds the storage authority, tenant, entity type, entity id, aggregate
+version, and random authority tag; it is never accepted through `values`.
+Missing or malformed tokens are refused before mutation. A token transplanted
+from another aggregate, or a token made stale by a winning update/delete,
+returns the two-block `mutation_conflict` error and the losing call leaves no
+row, revision, or event. Conflict output deliberately omits the current token:
+the caller must reload through its authorized read surface.
+
+`entity.read` exposes `mutation_token` only when the caller has an update or
+delete tool capability **and** the matching entity policy permits that
+operation. Read-only/anonymous callers never receive write-authority metadata.
+Successful updates return the fresh successor token for safe chaining. Dry-run
+validates the same mandatory canonical token shape but never claims its
+read-compare is authoritative.
+
+### Legacy revision-head guard (`expected_revision_id`, #1647)
 
 Mission `optimistic-locking-01KTXCHY`. Canonical contract:
 `kitty-specs/optimistic-locking-01KTXCHY/contracts/conflict-surfaces.md`. The
 tools translate the storage contract (`docs/specs/revision-system-unified.md`
 §3b); they implement no conflict check of their own.
 
-### `entity.update` — the `expected_revision_id` argument
+#### `entity.update` — the `expected_revision_id` argument
 
 Optional **top-level** argument (JSON Schema `integer`, `minimum: 1`):
 
@@ -856,13 +1412,14 @@ SaveContext::default()->withExpectedRevisionId($n))`, guarded by `$repository
 instanceof EntityRepository` (the only SaveContext-capable implementation —
 `EntityRepositoryInterface` is deliberately not widened); a stated expectation
 against any other repository implementation returns the
-`revision_expectation_unsupported` error, never a silent plain save. Calls
-**without** the argument are byte-identical to before (FR-003 at the tool
-level). Check order is unchanged: capability → argument shape → type known →
-load → entity access `update` → key-guard refusal → field set → save (the
-conflict surfaces at save time, after validation).
+`revision_expectation_unsupported` error, never a silent plain save. Omitting
+this legacy revision guard does **not** permit a blind write: the aggregate
+`mutation_token` remains mandatory. Check order preserves information-flow
+semantics: capability → argument shape → type known → load → entity access
+`update` → key/field refusal → aggregate token validation → field set →
+guarded save.
 
-### Error shapes (two-block, Mission 1 house shape)
+#### Legacy revision error shapes (two-block, Mission 1 house shape)
 
 Conflict — `RevisionConflictException` caught specifically, before the generic
 `\Throwable` arm. **Machine-correctable: re-read (or use `current` directly),
@@ -889,22 +1446,23 @@ content: [ {"type": "text", "text": <message>},
              "entity_type": "<type>", "reason": "<message>"}} ]
 ```
 
-### Dry-run parity
+#### Dry-run parity
 
 A dry run carrying `expected_revision_id` loads the entity and compares the
 head: a mismatch returns the **byte-identical** `revision_conflict` payload a
 real call would produce (same `data` members, same values for the same world
 state — one shared builder, so the bytes cannot fork); a match returns the
-existing `would_update` success. A dry run without the argument is
-byte-identical to today (no load happens). The dry-run check is a
-read-compare — it cannot be authoritative; only the real save's guarded claim
-is.
+existing `would_update` success. Without `expected_revision_id`, dry-run does
+not load a revision head, but it still requires and canonically parses the
+aggregate token. The dry-run check is a read-compare — it cannot be
+authoritative; only the real save's guarded claim is.
 
-### Success payload and read exposure (FR-008)
+#### Success payload and read exposure (FR-008)
 
 - `entity.update` success payloads now carry `revision_id` = the post-save
   head (read back from the saved entity), so a chaining agent can state its
-  next expectation without a re-read.
+  optional legacy expectation without a re-read, plus the fresh mandatory
+  aggregate `mutation_token`.
 - `entity.read` emits a top-level `revision_id` member (duck-typed
   `getRevisionId()`; **omitted** for non-revisionable types — absence means
   "no expectation formable").
@@ -912,7 +1470,8 @@ is.
   loaded — zero added queries).
 - `entity.list_revisions` is unchanged (already exposes per-revision ids).
 - Conflict payloads are themselves reads: they carry the current head, so the
-  re-read-and-retry loop can skip a round-trip.
+  legacy revision re-diff can skip a round-trip. Aggregate conflicts never
+  disclose a current mutation token and always require an authorized reload.
 
 ### The canonical consumer pattern
 
@@ -938,27 +1497,29 @@ Pipeline uses `syncStepsToValues()` to maintain a single source of truth. Called
 | File | Class | Role |
 |------|-------|------|
 | `packages/ai-schema/src/EntityJsonSchemaGenerator.php` | `EntityJsonSchemaGenerator` | JSON Schema draft 2020-12 from entity types |
-| `packages/ai-schema/src/SchemaRegistry.php` | `SchemaRegistry` | Unified schema + tool facade |
-| `packages/ai-schema/src/Mcp/McpToolDefinition.php` | `McpToolDefinition` | MCP tool value object |
-| `packages/ai-schema/src/Mcp/McpToolGenerator.php` | `McpToolGenerator` | CRUD tool generation per entity type |
-| `packages/ai-schema/src/Mcp/McpToolExecutor.php` | `McpToolExecutor` | Tool call execution against entity system |
-| `packages/ai-schema/src/Mcp/TranslationToolGenerator.php` | `TranslationToolGenerator` | Translation-specific tool generation |
 | `packages/ai-agent/src/AgentInterface.php` | `AgentInterface` | Agent contract: execute, dryRun, describe |
 | `packages/ai-agent/src/AgentExecutor.php` | `AgentExecutor` | Safety wrapper + audit logging |
 | `packages/ai-agent/src/AgentContext.php` | `AgentContext` | Execution context with account + params |
 | `packages/ai-agent/src/AgentResult.php` | `AgentResult` | Execution result with actions |
 | `packages/ai-agent/src/AgentAction.php` | `AgentAction` | Single action value object |
 | `packages/ai-agent/src/AgentAuditLog.php` | `AgentAuditLog` | Audit log entry |
+| `packages/ai-agent/src/LocalOperator/LocalOperatorPrincipal.php` | `LocalOperatorPrincipal` | Never-persisted local development plane identity (ADR-022 D-3/D-4/D-5.D) |
+| `packages/ai-agent/src/LocalOperator/LocalOperatorTransportAttestation.php` | `LocalOperatorTransportAttestation` | The `cli` + explicit-dev + stdio-transport construction gate (D-6 R-6) |
+| `packages/ai-agent/src/LocalOperator/LocalOperatorToolProfile.php` | `LocalOperatorToolProfile` | Default tool-ID allowlist + capability grant (D-7), fail-closed on content capabilities (D-8) |
+| `packages/ai-agent/src/LocalOperator/LocalOperatorAccountContextGuard.php` | `LocalOperatorAccountContextGuard` | Refuses the principal as the ambient acting account (D-6 R-4) |
+| `packages/ai-agent/src/LocalOperator/LocalOperatorRefusal.php` | `LocalOperatorRefusal` | Row-tagged refusal exception for D-6/D-7/D-8 |
 | `packages/ai-agent/src/ToolRegistry.php` | `ToolRegistry` | Tool registration and lookup |
 | `packages/ai-agent/src/ToolRegistryInterface.php` | `ToolRegistryInterface` | Tool registry contract |
 | `packages/ai-agent/src/Provider/ProviderInterface.php` | `ProviderInterface` | LLM provider contract (sendMessage) |
 | `packages/ai-agent/src/Provider/StreamingProviderInterface.php` | `StreamingProviderInterface` | Streaming LLM provider (extends ProviderInterface) |
 | `packages/ai-agent/src/Provider/AnthropicProvider.php` | `AnthropicProvider` | Anthropic Messages API with streaming |
+| `packages/ai-agent/src/Provider/OpenAiCompatibleProvider.php` | `OpenAiCompatibleProvider` | OpenAI Chat Completions–compatible endpoint (no streaming) |
 | `packages/ai-agent/src/Provider/MessageRequest.php` | `MessageRequest` | LLM request value object |
 | `packages/ai-agent/src/Provider/MessageResponse.php` | `MessageResponse` | LLM response value object |
 | `packages/ai-agent/src/Provider/StreamChunk.php` | `StreamChunk` | Streaming chunk (type, text, toolUse) |
 | `packages/ai-agent/src/Provider/ToolUseBlock.php` | `ToolUseBlock` | Tool call from LLM (id, name, input) |
 | `packages/ai-agent/src/Provider/ToolResultBlock.php` | `ToolResultBlock` | Tool result back to LLM |
+| `packages/ai-agent/src/Provider/ProviderTimeouts.php` | `ProviderTimeouts` | Connect / total / low-speed bounds for one HTTP exchange |
 | `packages/ai-agent/src/Provider/RateLimitException.php` | `RateLimitException` | HTTP 429 with retryAfterSeconds |
 | `packages/ai-agent/src/Provider/MaxIterationsException.php` | `MaxIterationsException` | Tool loop safety limit exceeded |
 | `packages/ai-pipeline/src/Pipeline.php` | `Pipeline` | Config entity for processing pipelines |
@@ -966,14 +1527,14 @@ Pipeline uses `syncStepsToValues()` to maintain a single source of truth. Called
 | `packages/ai-vector/src/EmbeddingInterface.php` | `EmbeddingInterface` | Embedding provider contract |
 | `packages/ai-vector/src/OpenAiEmbeddingProvider.php` | `OpenAiEmbeddingProvider` | OpenAI embeddings (text-embedding-3-small) |
 | `packages/ai-vector/src/OllamaEmbeddingProvider.php` | `OllamaEmbeddingProvider` | Ollama local embeddings (nomic-embed-text) |
-| `packages/ai-vector/src/VectorStoreInterface.php` | `VectorStoreInterface` | Vector storage contract |
-| `packages/ai-vector/src/EntityEmbedding.php` | `EntityEmbedding` | Embedding value object |
-| `packages/ai-vector/src/SimilarityResult.php` | `SimilarityResult` | Search result with score |
-| `packages/ai-vector/src/EntityEmbedder.php` | `EntityEmbedder` | High-level embed + search service |
-| `packages/ai-vector/src/InMemoryVectorStore.php` | `InMemoryVectorStore` | In-memory store (cosine similarity) |
-| `packages/ai-vector/src/DistanceMetric.php` | `DistanceMetric` | Distance metric enum |
-| `packages/ai-vector/src/Testing/FakeEmbeddingProvider.php` | `FakeEmbeddingProvider` | Deterministic test embeddings |
+| `packages/ai-vector/src/DatabaseEmbeddingStorage.php` | `DatabaseEmbeddingStorage` | `EmbeddingStorageInterface` on the migration-owned `embeddings` table |
+| `packages/ai-vector/migrations/2026_09_24_000001_embeddings_schema.php` | (migration) | Creates or adopts `embeddings`; refuses other shapes with `[AIV-DB001]` |
+| `packages/ai-vector/testing/FakeEmbeddingProvider.php` | `FakeEmbeddingProvider` | Development-only deterministic test embeddings |
 | `packages/ai-vector/src/SemanticIndexWarmer.php` | `SemanticIndexWarmer` | Deterministic semantic index warming service |
+| `packages/ai-vector/src/ProviderCredentialConfigurationException.php` | `ProviderCredentialConfigurationException` | Fail-closed refusal for raw/incomplete provider credential config |
+| `packages/ai-agent/src/Mcp/McpIntegrationHealth.php` | `McpIntegrationHealth` | Process-local per-alias healthy/degraded/blocked MCP readiness view |
+| `packages/ai-agent/src/Mcp/McpReadinessException.php` | `McpReadinessException` | Non-sensitive refusal when a required MCP server is not ready (blocks boot) |
+| `packages/ai-agent/src/Mcp/McpRemoteErrorException.php` | `McpRemoteErrorException` | Fixed non-secret signal for a remote JSON-RPC error |
 | `packages/cli/src/Command/SemanticWarmCommand.php` | `SemanticWarmCommand` | Operational CLI entry point for warmer |
 | `packages/cli/src/Command/SemanticRefreshCommand.php` | `SemanticRefreshCommand` | Operational CLI entry point for resumable refresh batches |
 
@@ -998,6 +1559,20 @@ existing trace data.
 
 ## Implementation gotchas
 
+### Configuration authority dependency
+
+`McpServiceProvider` declares an exact `configuration.authority.v1` capability
+requirement. Provider composition therefore fails before boot when no compatible
+configuration authority is registered. MCP server definitions are always read
+through the active authority bridge in composed applications; the null storage
+fallback exists only for explicit `local`, `dev`, `development`, and `testing`
+profiles. Production, staging, misspelled, and unknown profiles fail closed
+rather than silently starting with an empty MCP server set.
+
+This capability is a runtime composition contract, not a dependency on a source
+forge or CI vendor. Providers exchange stable capability identifiers, versions,
+and authority fingerprints entirely inside the installed application.
+
 - **Tool-loop wiring and allowlisting are inseparable (R18 M2+M3, #1975):**
   `RunAgentHandler` resolves provider descriptors only for
   `AgentDefinition::$tools`; `AgentExecutor` receives the same trusted name
@@ -1017,3 +1592,5 @@ existing trace data.
   `docs/specs/agent-executor.md` "Identity & permissions" for the full gate
   inventory.
 - **`AnthropicProvider` cURL streaming**: `CURLOPT_WRITEFUNCTION` callbacks must not throw — wrap `json_decode(..., JSON_THROW_ON_ERROR)` in try-catch inside callbacks. Error handling in `httpPostStreaming` must match `httpPost` (parse error body, handle 429 with `RateLimitException`).
+- **A streaming caller's own deadline cannot bound a stalled stream**: it runs inside the chunk callback, and a stalled stream delivers no chunk. Bound the transport instead (`ProviderTimeouts`, `streamTimeouts:`) — never rely on a wall-clock check inside `$onChunk` to release the worker.
+- **A non-streaming provider still stalls**: `OpenAiCompatibleProvider` has no stream, but a peer that answers and then delivers only part of the promised body pins the worker just the same, with no callback anywhere to observe it. The connect bound only covers a peer that never finishes connecting — it does nothing for a body that stalls after a successful connection, which by default is still bounded only by the total. Pass `timeouts:` with a low-speed pair when that shape matters to the caller.

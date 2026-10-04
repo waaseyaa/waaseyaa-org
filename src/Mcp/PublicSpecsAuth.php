@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Mcp;
 
-use Waaseyaa\Access\AccountInterface;
+use Waaseyaa\Access\AuthorizationPrincipalInterface;
 use Waaseyaa\Mcp\Auth\McpAuthInterface;
 
 /**
@@ -15,7 +15,7 @@ use Waaseyaa\Mcp\Auth\McpAuthInterface;
  */
 final class PublicSpecsAuth implements McpAuthInterface
 {
-    public function authenticate(?string $authorizationHeader): AccountInterface
+    public function authenticate(?string $authorizationHeader): AuthorizationPrincipalInterface
     {
         return new SpecReaderAccount();
     }

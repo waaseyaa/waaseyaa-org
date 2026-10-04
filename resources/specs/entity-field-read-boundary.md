@@ -1,5 +1,7 @@
 # Entity Field-Read Boundary
 
+<!-- Spec reviewed 2026-08-06 - #2275 strict-read batches: BatchStrictPrivilegedReadLedgerInterface is an optional extension of the single-receipt contract. It persists a non-empty set of entity-scoped descriptors in one all-or-nothing reservation transaction and finalizes their outcomes in one all-or-nothing transaction. AuditedFieldRead::readEntityMany() obtains no values until every reservation is durable and returns no values unless every success outcome is durable; ledgers without the extension retain per-entity reserve/finalize behavior. Batching reduces writer transactions but never coalesces entity identity or field metadata. -->
+
 <!-- Spec reviewed 2026-07-19 - Sheguiandah gap batch: MediaDownloadRouter retains its entity-view gate, then resolves only Protected media.source_uri through MediaDownloadSourceReaderInterface. The production reader opens a short-lived account-bound capability boundary, performs the strict audited one-field read, and revokes the boundary in finally; the router exposes no field selector or capability handle and retains concealed 404 behavior. -->
 <!-- Spec reviewed 2026-07-19 - #2079 adds a purpose-scoped ReBAC directory projection without changing field classifications or missing-context behavior. Group.members_can_view_directory is a Protected default-false authorization setting with admin-only generic release. AuthorizedRelationshipTraversal privately reads only exact group opt-in/status and active User id/status/name after verifying the immutable principal's live direct membership to that exact group in one graph snapshot. The readonly DTO contains only userId/displayName; User.mail and every other Internal/Protected field remain unavailable to ordinary reads and are never selected by the directory projector. -->
 <!-- Spec reviewed 2026-07-19 - #2079 confirms that relationship endpoint selectors remain Protected because topology can itself disclose sensitive membership or affiliation. Principal-facing consumers traverse through the fixed-shape AuthorizedRelationshipTraversal domain seam, which owns the account scope and source/edge/endpoint view gates and returns immutable AuthorizedRelationshipEdge projections; consumers receive no raw entity value bag, arbitrary field selector, capability handle, or status bypass. -->
@@ -352,6 +354,14 @@ Narrowing the fingerprint does **not** narrow the blocker sweep: the
 queue/cache/state serialized-payload scans still run over every physical
 table at artifact-generation time.
 
+**Production HTTP must not mutate that entity-storage fingerprint (#2478).**
+`AbstractKernel` fingerprints, then asserts every registered entity type's
+runtime schema, *before* provider `boot()` hooks. Missing entity tables fail
+closed with `[S1-DB106]` and `schema:sync` / `install:init` guidance.
+`AttachmentSchema` is a coordinated `#[StorageSchemaTransition]`, not a
+production request-time CREATE. The activation preflight is not rewritten,
+ignored, or auto-refreshed on the HTTP path.
+
 Framework-owned defaults are not a preflight-only waiver. The exact table in
 `field-access.md` is resolved by the same source during sealed runtime layout
 compilation and preflight scanning. Explicit definitions and classification
@@ -516,7 +526,8 @@ Before activation, framework User consumers converge on two required seams.
 `UserInternalFieldReaderInterface` exposes typed, reason-specific snapshots for
 credential verification, two-factor verification, mail delivery, verification,
 session response identity, and maintenance authorization; it never accepts a
-caller-selected field name. `UserIdentityLookupInterface` owns active login and
+caller-selected field name. `UserIdentityLookupInterface` owns active login,
+mail-only recovery, and
 mail-existence queries. Their audit implementations open one registry boundary,
 issue an exact reviewed capability, reserve before value/query execution,
 finalize the strict ledger outcome, and revoke the boundary in `finally`.

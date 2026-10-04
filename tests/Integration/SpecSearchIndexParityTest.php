@@ -9,7 +9,6 @@ use App\Docs\SpecIndex;
 use App\Docs\SpecSearch;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
-use Waaseyaa\Database\DBALDatabase;
 
 /**
  * The public MCP spec_search tool runs SpecSearch WITH the index in
@@ -25,7 +24,7 @@ final class SpecSearchIndexParityTest extends TestCase
     protected function setUp(): void
     {
         $corpus = SpecCorpus::default();
-        $db = DBALDatabase::createSqlite(':memory:');
+        $db = \App\Tests\Support\SearchDatabase::create();
         $index = new SpecIndex($corpus, $db);
         $index->ensure();
 

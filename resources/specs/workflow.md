@@ -1,10 +1,16 @@
-# Workflow governance (anchor-issue + design-first)
+# Workflow governance (forge-neutral change record + design-first)
 
-<!-- Spec reviewed 2026-07-10 - Spec Kitty retirement: governance rewritten around GitHub anchor issues and the design-first flow. Spec Kitty (missions, work packages, .kittify/, spec-kitty CLI) is retired; its historical artifacts remain under kitty-specs/ and in git history. The project charter was relocated to docs/governance/charter.md. -->
+<!-- Spec reviewed 2026-08-12 - S1-FW-DB-01: workflow authority is forge-neutral. GitHub remains a current adapter and historical evidence locator; stable change records, exact Git objects, and signed evidence are portable authorities. -->
+<!-- Spec reviewed 2026-09-05 - #2641: live spec prose that still defers current capability to a closed issue is a nightly warn-only scan (`bin/check-stale-spec-deferrals`), not a PR-diff or preflight gate. `tools/drift-detector.sh` remains the PR-time coupling check. -->
 
-**Planning and execution** for substantive work follow the **design-first flow**: brainstorm → design/spec in `docs/specs/` → written plan → TDD implementation → code review → verification. Multi-PR efforts are anchored by a **GitHub anchor issue** (e.g. CW-v1's #1920) that records scope, work-package breakdown, and descope decisions; every PR in the effort references it. **`docs/specs/`** remains the contract layer agents read from disk.
+**Planning and execution** for substantive work follow the **design-first flow**: brainstorm → design/spec in `docs/specs/` → written plan → TDD implementation → code review → verification. Multi-candidate efforts are anchored by a stable, repository-portable **change record** that records scope, work-package breakdown, and descope decisions; every review candidate references it. **`docs/specs/`** remains the contract layer agents read from disk.
 
-**GitHub** is the execution and visibility surface: issues (anchor issues, M11 governed-change filings), pull requests, Actions, releases, and security. CI and merge reality live on GitHub.
+GitHub is the current collaboration adapter: issues, pull requests, Actions,
+releases, and private reporting may mirror the portable records. Git history,
+signed evidence, exact dependency locks, content-addressed artifacts, and the
+independent deployment/key/recovery authorities remain usable without GitHub.
+No forge account, API, issue number, approval object, environment, or hosted
+artifact is a durable Waaseyaa authority.
 
 > **Spec Kitty is retired** (2026-07-06). Do not run `spec-kitty` commands or consult `.kittify/` state. Historical mission artifacts are preserved read-only under `kitty-specs/`; the charter formerly at `.kittify/charter/charter.md` now lives at [`docs/governance/charter.md`](../governance/charter.md).
 
@@ -47,7 +53,11 @@ The Waaseyaa Framework and Minoo (the flagship consumer app) version independent
 
 ## GitHub issues (optional)
 
-GitHub issues are not organized into Track milestones. A standalone issue (community visibility, Dependabot, M11 templates, or contributor preference) stands on its own — no enforced taxonomy or assignment is required. The **Framework Milestones** table above is the semantic capability narrative; **anchor issues** are the execution map for multi-PR efforts. The Track 1–5 GitHub milestones from earlier 2026 are retained on GitHub for historical context but are no longer load-bearing for workflow decisions.
+GitHub issues are not organized into Track milestones. A standalone issue
+(community visibility, Dependabot, templates, or contributor preference) stands
+on its own. The **Framework Milestones** table is the semantic capability
+narrative; versioned change records are the execution map. Historical GitHub
+milestones remain useful context but are not load-bearing workflow authority.
 
 **Dependabot and dependency PRs:** **Pull requests** that only bump dependencies may omit `(#N)` in the title when there is no tracking issue; if there is a chore or security issue, link it per rule #3.
 
@@ -80,21 +90,66 @@ GitHub issues are not organized into Track milestones. A standalone issue (commu
 
 The required `ci/unit-tests` context runs `CutoverFreshInstallSmokeTest` on a clean SQLite database through the real `db:init` path. The smoke must keep `schema:check` green, persist and render an import-derived bundle field from a separate HTTP process, and traverse a freshly-created relationship through SSR. Upgraded fixtures do not substitute for this fresh-install boundary.
 
-### 1. Substantive work begins with a design and an anchor issue
-Do not drive multi-step implementation from a blank prompt. Multi-PR efforts open a **GitHub anchor issue** recording intent, work-package breakdown, and decisions (descopes, deferrals land as issue comments), and follow the design-first flow: spec in `docs/specs/` first, then a written plan, then TDD implementation. **M11 governed-change** and similar templates keep the GitHub filing issue as the audit front door — link it from the anchor issue or PR body so traceability stays intact.
+### 1. Substantive work begins with a design and a stable change record
+Do not drive multi-step implementation from a blank prompt. Multi-candidate
+efforts create a versioned change record recording intent, work-package
+breakdown, decisions, descopes, and deferrals, then follow the design-first
+flow. A forge issue may mirror the record for discussion, but losing the forge
+must not lose the audit trail.
 
-### 2. GitHub issues are lightweight
-Not every change needs an issue — a single self-contained PR may stand alone if its body explains itself. When filed, issues are pure tracking — no enforced milestone or taxonomy. The **Framework milestones** table and narrative in this document describe **capability intent** (v1.x / v2.0); **anchor issues** are the execution map for multi-PR efforts.
+### 2. Forge issues are optional tracking mirrors
+Not every change needs a forge issue. When used, issues remain discovery and
+discussion surfaces and link the portable change-record identifier. The
+**Framework milestones** table describes capability intent; versioned change
+records are the durable execution map.
 
-### 3. PRs must be traceable
-Every PR must link **what it delivers**: `Closes #N` for a complete deliverable, `Part of #N` for one PR in an anchored effort, with `#N` in the title (e.g. `feat(#1920): …`). Use `.github/pull_request_template.md`. Dependency-only PRs may follow the Dependabot exception above.
+### 3. Review candidates must be traceable
+Every review candidate records what it delivers, its stable change-record ID,
+exact parent and candidate commits, and verification evidence. The GitHub
+adapter may additionally use `Closes #N`, `Part of #N`, and its pull-request
+template, but those locators do not replace the portable identity.
 
 ### 4. Read context before generating work
-At session start under an ongoing effort, read the anchor issue (including its comment trail — descopes and deferrals live there) and the relevant `docs/specs/` contracts before generating work.
+At session start under an ongoing effort, read the versioned change record,
+retained decision trail, and relevant `docs/specs/` contracts. Read the current
+forge mirror as supplemental context when it is available.
+
+### Commit checkpoints and review candidates
+
+Feature-branch commits may be recoverable checkpoints. Acceptance qualifies the
+coherent review-candidate head through required local hooks and the documented
+impact-based test plan in [local testing policy](../local-testing-policy.md),
+rather than every ancestor. Full local suites require a concrete impact or
+acceptance reason. During the solo-maintainer sprint, ordinary reviewed batches
+may fast-forward directly to `main`; pull requests remain optional review
+surfaces. Hosted main CI is feedback and a red head must have a recorded repair
+owner. Ordinary main pushes run the bounded `ci/main-feedback` profile;
+pull-request and manual dispatch runs retain the full graph. The release-cut
+path explicitly dispatches the full profile and preserves the exact release
+commit validated by `ci/full-qualification`. See
+[commit-qualification.md](../cookbook/commit-qualification.md). No per-commit
+full-suite or default preflight CI jobs are added by this policy.
+
+A full qualification that is green on the exact review candidate remains the
+full proof when that identical SHA fast-forwards to `main`; the ref movement
+does not justify another full dispatch. Observe the resulting bounded
+`ci/main-feedback` run. Changed source bytes, or an applicable release policy,
+require new exact-head qualification.
+
+`php bin/start-hosted-qualification` provides an optional early checkpoint for
+a clean feature-branch commit that already exists at the exact remote branch
+tip. It dispatches `ci.yml` with `profile=full` and the explicit candidate SHA.
+The command refuses dirty, detached, missing, or not-yet-pushed candidates. A
+successful command means only that GitHub accepted the dispatch; the exact-SHA
+run must still complete successfully, and the checkpoint is not release proof.
+Use `--dry-run` to validate the candidate and remote identity without starting
+hosted work.
 
 ## Drift Detection
 
-**Specs:** `tools/drift-detector.sh` and manual reads of `docs/specs/` — see [ops/observability/drift-detection.md](../../ops/observability/drift-detection.md).
+**Specs:** `tools/drift-detector.sh` and manual reads of `docs/specs/` — see [ops/observability/drift-detection.md](../../ops/observability/drift-detection.md). That detector is a PR-diff coupling check. Live spec prose that still defers current capability to an issue that closed *elsewhere* is a different drift class: `bin/check-stale-spec-deferrals` scans body prose only (skipping `<!-- Spec reviewed -->` blocks), flags `ISSUE-CLOSED` present/future-tense deferrals, and runs warn-only on the nightly schedule. It does not belong in `bin/check-pr-preflight`.
+
+**Gates:** the complete local/CI gate architecture — one preflight command mirroring CI's fast repo-state gates, one refresh command for governed recorded artifacts, pre-push parity, and semantic roster identity — is specified in [governed-gates.md](governed-gates.md). `php bin/check-pr-preflight` is the command; `tools/preflight-gates.json` is the roster.
 
 ## Composer Manifest Policy (Codified + Gated)
 
@@ -114,7 +169,11 @@ Policy rules:
 
 ## Cutting Releases
 
-The canonical release path is the `Cut Release` workflow (`.github/workflows/release-cut.yml`, `workflow_dispatch` trigger). It mirrors what `scripts/release.sh` did locally — validate semver, verify `[Unreleased]` has content, mutate CHANGELOG, commit, tag, push — but runs in CI with no interactive prompts and no operator-on-laptop dependency.
+The canonical and sole release path is the `Cut Release` workflow
+(`.github/workflows/release-cut.yml`, `workflow_dispatch` trigger). It validates
+SemVer and a non-empty fragment set, deterministically compiles the fragments,
+commits, gates, tags, and atomically pushes without an operator-laptop release
+script.
 
 ```sh
 gh workflow run release-cut.yml -f version=v0.1.0-alpha.172
@@ -126,21 +185,174 @@ The workflow:
 
 1. Validates semver shape (same regex as the legacy script).
 2. Guards `v1.0*` tags against missing `release-approvals/v1.0.approved` (same gate `split.yml` runs after the fact — fails earlier).
-3. **Gate 1: requires green CI on the release base.** `bin/wait-for-green-ci` polls the Actions API for a completed, successful `ci.yml` run at main HEAD. A red base fails the cut before anything is mutated.
+3. **Gate 1: requires green main feedback on the release base.** `bin/wait-for-green-ci` polls the Actions API for a completed, successful `ci.yml` run at main HEAD. A red base fails the cut before anything is mutated; this early guard does not replace Gate 2's full exact-candidate proof.
 4. Verifies the tag does not already exist (locally or on origin).
-5. Verifies `CHANGELOG.md` has a `[Unreleased]` section with content.
-6. Mutates the changelog: renames `[Unreleased]` → `[X.Y.Z] - YYYY-MM-DD`, inserts fresh `[Unreleased]`; syncs internal `waaseyaa/*` constraints; stamps `VERSION`.
-7. Commits as `github-actions[bot]` and pushes the release commit to a throwaway gate branch (`release-cut/<version>`) — **not** to main.
-8. **Gate 2: requires green CI on the exact commit being tagged.** Dispatches `ci.yml` on the gate branch (it has a `workflow_dispatch` trigger for this) and waits for a green conclusion at the release commit's SHA.
+5. Runs `bin/check-changelog-shape`, which requires one canonical, empty root
+   `## [Unreleased]`, then validates and renders at least one fragment with
+   `bin/changelog-fragments`. Both guards run in ordinary CI.
+6. Compiles the fragments into `[X.Y.Z] - YYYY-MM-DD`, archives the consumed
+   files under `changes/released/<version>/`, and leaves the pending directory
+   empty except for its sentinel. The exact rendered bytes feed the annotated
+   tag message. It also syncs internal constraints, root lock metadata, and
+   `VERSION`. Enumeration is bytewise and has no locale, timezone, checkout-path,
+   network, or filesystem-order input.
+7. Stages every release mutation (including fragment additions/deletions and
+   archive), commits as `github-actions[bot]`, and pushes the release commit to a
+   throwaway gate branch (`release-cut/<version>`) — **not** to main.
+8. **Gate 2: requires full green CI on the exact commit being tagged.** Dispatches `ci.yml` with `profile=full` on the gate branch and waits for the named `ci/full-qualification` decision at the release commit's SHA. The skeleton consumer job installs the just-advanced skeleton from that exact monorepo checkout and its split-package paths because the new version cannot exist on Packagist before the tag. The subsequent release-commit push to main uses the same source path so its feedback run cannot circularly block split publication; ordinary pull requests retain the published-release create-project check. Both full-profile paths execute post-create setup and `audit-site`.
 9. Only then creates the annotated tag and pushes main fast-forward + tag in one **atomic** push using `SPLIT_GITHUB_TOKEN`. The gate branch is deleted either way.
 
 **A tag cannot exist without green Linux CI at that exact SHA.** This is the systemic fix from the alpha.200–202 red-at-tag post-mortem: red jobs (the alpha.200 b1 interface stub, the alpha.202 integration-test misses, the three-release-red `ci/skeleton-create-project` job) can no longer ride into a tagged release, and there is no "the fix will go out in the next cut" path — the cut simply refuses.
 
 Failure recovery is clean by construction: if either gate fails, main is untouched and no tag exists. Fix main (normal commits, normal CI), then re-run the cut with the same version. If the final atomic push is rejected because main advanced during the gate, nothing was tagged — re-run the cut.
 
-The push must use the `SPLIT_GITHUB_TOKEN` PAT, not the default `GITHUB_TOKEN`, because tag pushes by `GITHUB_TOKEN` do **not** trigger downstream workflows — and `split.yml` + `packagist-update.yml` are exactly what we need to fire.
+### Release workflow timeout budgets
 
-**Local gate runs are advisory only.** Pre-cut checks that matter run Linux-side in CI; a green local run (especially on Windows) proves nothing about the release — Windows masked both the `packages/`-scoped grep miss and platform-conditional test failures during the alpha.200–202 cuts, and local git hooks may not even be installed (`core.hooksPath` is unset on fresh clones). Never treat a local `composer verify`/phpunit pass as authorization to cut; the Actions API is the authority, and `bin/wait-for-green-ci` is how every release path consults it.
+Every workflow job declares `timeout-minutes`; inheriting GitHub's 360-minute
+default is forbidden. The limit is a failure boundary, not a runtime target.
+Choose it from recent observed duration plus headroom, or from the job's larger
+explicit polling/retry budget when that budget dominates the observations.
+
+The release values below were frozen from the five most recent completed runs
+available on 2026-09-20. Sparse workflows report their actual smaller sample.
+Matrix sample counts are per leaf. A skipped job remains a structural sample
+but is not used as evidence that its execution is fast.
+
+| Workflow / job | Timeout | Observed evidence | Rationale |
+|---|---:|---|---|
+| `release-cut.yml#cut` | 120 min | 4 executions across 3 versions; 24.1 min maximum | Two exact-SHA CI waits can each consume 45 minutes, followed by final release mutation. The limit admits the configured worst case but caps the serialized privileged job at two hours. |
+| `split.yml#verify-ci-green` | 60 min | 5 runs; 10.3 min maximum | The underlying green-CI wait has a 45-minute budget. |
+| `split.yml#split` | 10 min | 2 to 5 samples per package leaf; 1.5 min maximum | Leaves are independent pushes; ten minutes preserves generous network headroom without letting one leaf occupy the fan-out indefinitely. |
+| `split.yml` parity, evidence, main-integrity, and GitHub Release jobs | 10 min | 5 runs each; 0.8 min maximum | These are bounded API, artifact, or repository checks with no long poll. |
+| `split.yml#publish-packagist` | 15 min | 5 runs; 6.6 min maximum | Submission is deliberately serialized and jittered, so the limit is more than twice the observed maximum. |
+| `split.yml#verify-packagist` | 45 min | 5 runs; 16.2 min maximum | The verifier intentionally owns a 40-minute crawl deadline. |
+| `sync-skeleton.yml#sync` | 10 min | 5 runs; 0.2 min maximum | Covers the atomic external-repository update and Packagist submission with network headroom. |
+| `github-release.yml#release` | 15 min | 5 runs; 1.2 min maximum | Recovery includes parity and release API operations but no long poll. |
+| `packagist-update.yml#discover` / `#verify` | 5 / 20 min | 5 runs; 0.2 / 12.3 min maximum | The verifier has a 12-minute retry budget; discovery is local enumeration. |
+| `packagist-recover.yml#recover` | 10 min | 3 executions across 2 versions; 0.7 min maximum | Bounded recovery submissions retain network headroom. |
+| `packagist-register.yml#register` | 10 min | 1 failed execution; 0.1 min | There is no successful sample yet. Registration is a single API operation and must fail fast enough for operator retry. |
+| `discord-release.yml#notify` | 50 min | 5 runs; 1.2 min maximum | The job intentionally waits up to 45 minutes for exact-SHA Skeleton Smoke evidence before announcing. |
+
+### Packagist submission and verification authority
+
+Packagist push webhooks remain disabled. The release pipeline submits exactly
+one authenticated `update-package` request per package after split and parity
+gates succeed. A 404 may fall back to `create-package` only in the release
+pipeline and the explicit registration workflow, where the main Packagist token
+is provided. Skeleton publication and recovery never create packages.
+
+All four submission paths delegate to
+`.github/actions/packagist-submit`. That action owns input validation, safe-token
+submission, the optional main-token registration fallback, response job-id
+capture, and recovery resubmission. Release-pipeline, standalone, and manual
+GitHub Release recovery verification delegate to
+`.github/actions/packagist-verify`, and targeted Packagist recovery uses the
+same P2 visibility implementation. A successful submission means accepted or
+queued, never published. Only the exact release tag appearing in P2 metadata
+satisfies the publication invariant.
+
+`packagist-update.yml` is manual-only. It is an ad-hoc verifier for an existing
+tag and does not run on tag pushes, submit crawls, or participate in release
+publication. The ordered release gate remains `split.yml#verify-packagist`.
+Both composite actions expose a no-network dry-run mode for contract testing;
+release and recovery workflows never enable it.
+
+Non-release jobs use the same rule. Ordinary static and aggregate gates receive
+5 to 20 minutes, release-readiness assembly receives up to 30 minutes, existing
+nightly and skeleton-smoke budgets remain 45 and 40 minutes, and the governed
+auto-merge adapter receives 125 minutes because its explicit merge poll lasts
+up to 120 minutes. Any future job must declare a limit and document a long
+budget next to the internal wait that requires it.
+
+### Stable workflow job names
+
+Every workflow job declares an explicit `name:` because its visible check name
+is an operational and policy interface. Matrix names include the leaf identity
+that owns the failure, and visible names are unique across workflows. The
+release pipeline and manual recovery path therefore publish distinct contexts:
+`Publish GitHub Release (release pipeline)` and
+`Publish GitHub Release (manual recovery)`.
+
+The mixed naming surface in `ci.yml` is intentional until the governed ruleset
+migration in #3087 Task 7. `ci/<slug>` names identify detailed CI execution and
+aggregate lanes, title-case names identify human-facing repository or release
+policy checks, and `support/s1-contract` keeps its separate support-contract
+namespace. The remaining bare required names, including `composer-policy`,
+`check-dead-code`, and `packaged-form`, are compatibility interfaces already
+consumed by branch protection. They must not be normalized independently of the
+fail-closed ruleset migration that runs old and replacement contexts in
+parallel. New jobs must not inherit an implicit job-key or matrix-derived name.
+
+Task 5 of `FW-CI-CHECK-ROSTER-AUDIT-01` added nine `merge/*` contexts that group
+the 22 legacy required contexts by owned invariant, with random-order kept
+separate from the other PHP behavior checks so its Task 8 cadence decision
+cannot weaken ordinary test or coverage protection. Each aggregate uses
+`if: always()` and explicitly requires every prerequisite result to equal
+`success`; failed, cancelled, skipped, or missing evidence cannot produce a
+green decision. Since the Task 7 migration these nine are the live ruleset's
+sole required-check interface. A prerequisite may be added behind an existing
+aggregate without renaming it, as #2678 added `ci/native-host-contract` and
+then `ci/native-host-consumer-cli` behind `merge/platform-runtime-acceptance`;
+`tools/ci-check-roster.json` records the prerequisites, and the legacy baseline
+below is not extended.
+
+Task 6 adds `ci-roster-live-audit.yml`, scheduled weekly and available by manual
+dispatch only. `bin/audit-ci-roster-live` compares the manifest with the live
+ruleset integration bindings and the latest check runs for one exact SHA. It
+fails on a missing or non-successful stable decision or prerequisite, publishes
+the report and CRC026 snapshot as retained artifacts, and reports only labelled
+job-wall cost proxies because billed runner minutes are unavailable. GitHub API
+availability is therefore outside the ordinary pull-request critical path.
+
+Task 7 historically used `bin/project-ci-ruleset` to project the tracked
+`main-protection` baseline through exactly three states: the 22 legacy contexts,
+the 31-context legacy-plus-stable union, and the nine stable decisions. The
+command is a dry run unless `--apply`, the exact ruleset id, a fresh live payload
+hash, and an exact evidence SHA at current `main` are all supplied. It rejects non-status drift,
+an unexpected predecessor projection, missing or non-green exact-SHA evidence,
+and a post-write refetch whose hash differs from the plan. Forward evidence
+covers the legacy contexts with their tracked bindings, the nine stable
+decisions, and every aggregate prerequisite not already among them, bound to
+the GitHub Actions app; each must be a completed success on the evidence SHA
+(#2678). Rollback from either forward state restores the complete tracked
+22-context payload, byte-identical and never extended with later
+prerequisites, and does not depend on green checks. During the bounded migration only those three exact
+projections are accepted by the scheduled live audit. Task 9 narrows that
+temporary allowance to the final projection. `FW-SPRINT-MAIN-POLICY-01`
+supersedes that projection as an ordinary-landing requirement for the current
+solo-maintainer sprint. The aggregate jobs remain CI diagnostics; the live
+ruleset retains only deletion and non-fast-forward protection. Release-cut's
+exact-SHA boundary remains full and fail-closed. `FW-CI-MAIN-FEEDBACK-PROFILE-01`
+adds `ci/main-feedback` for ordinary main pushes and `ci/full-qualification`
+for pull-request/manual runs; only the latter can satisfy Gate 2.
+
+## Release readiness is not deployment
+
+Landing on `main` creates an integration candidate; it does not prove a release
+and does not deploy an application. `.github/workflows/release.yml` is a manual, read-only
+**Release Readiness** verifier. It accepts only an exact 40-character commit
+SHA reachable from `origin/main`, builds that candidate, records bounded
+metadata, and runs the full browser suite. It has no GitHub Environment,
+deployment permission, artifact-promotion transport, rollback action, or
+publication
+authority, or production incident path.
+
+The Framework is a library. Tagging and package publication remain owned by
+the separately governed `release-cut.yml`, split, and Packagist workflows.
+Application staging, production promotion, rollback, and operator recovery
+belong to the consuming application and infrastructure repositories where a
+real immutable artifact and external target exist. A Framework workflow must
+not claim those operations merely because it builds on a hosted runner or
+writes metadata.
+
+The push must use the `SPLIT_GITHUB_TOKEN` PAT, not the default `GITHUB_TOKEN`, because tag pushes by `GITHUB_TOKEN` do **not** trigger downstream workflows. The tag must start `split.yml`, which owns package submission and verification, as well as the separately scoped tag consumers such as skeleton synchronization.
+
+**A run location is not an authority.** Release evidence must come from the
+declared Linux runner profile and bind the exact candidate, commands, inputs,
+and results. A Windows-only pass does not satisfy that profile, and an opaque
+hosted green check does not satisfy it without the evidence record. The current
+GitHub adapter uses `bin/wait-for-green-ci`; a replacement adapter must enforce
+the same machine contract without consulting GitHub.
 
 The legacy `scripts/release.sh` local-release script has been **removed** (alpha.234) — the `Cut Release` workflow is the only supported path. It could not CI-prove the exact release commit the way the workflow's gate branch does (it only enforced Gate 1 on the base via `bin/wait-for-green-ci`), and a local cut on Windows was an active footgun. There is no local fallback: cut releases through CI.
 
@@ -162,4 +374,9 @@ Failure format is machine- and human-readable, including:
 - current value
 - expected value
 
-The top-level M11 post-execution governance baseline is [m11-post-execution-governance-bootstrap.md](./m11-post-execution-governance-bootstrap.md). Governed changes enter that loop through [the governed-change issue template](../../.github/ISSUE_TEMPLATE/m11-governed-change.md) (GitHub as **audit front door**); link the filing issue from the anchor issue or PR when both exist. This workflow spec is the repo-local backlink to that artifact. The operating loop itself is [m11-steady-state-conformance-loop.md](./m11-steady-state-conformance-loop.md), and steady-state drift scans and C17+ logging use [m11-periodic-drift-scan-protocol.md](./m11-periodic-drift-scan-protocol.md) and the [M11 drift-scan log issue template](../../.github/ISSUE_TEMPLATE/m11-drift-scan-log.md).
+The top-level M11 post-execution governance baseline is [m11-post-execution-governance-bootstrap.md](./m11-post-execution-governance-bootstrap.md). Governed changes enter that loop through a versioned change record. The current [governed-change issue template](../../.github/ISSUE_TEMPLATE/m11-governed-change.md) may mirror the record for GitHub users but is not the audit front door. The operating loop itself is [m11-steady-state-conformance-loop.md](./m11-steady-state-conformance-loop.md), and steady-state drift scans and C17+ logging use [m11-periodic-drift-scan-protocol.md](./m11-periodic-drift-scan-protocol.md) and the optional [M11 drift-scan log issue template](../../.github/ISSUE_TEMPLATE/m11-drift-scan-log.md).
+
+Maintainer delivery telemetry follows the same authority rule. GitHub owns its
+native events, while off-platform agent review and verification events enter
+the governed append-only ledger defined by [delivery-telemetry.md](./delivery-telemetry.md).
+DevLake and dashboards are projections of those authorities, never substitutes.

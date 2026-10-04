@@ -54,6 +54,7 @@ This was revisited (not re-decided) during the WP6 foundation layer-gate scope w
 | `DATABASE_UNREACHABLE` | error | SQLite file missing, corrupt, or inaccessible |
 | `DATABASE_SCHEMA_DRIFT` | error | Table columns don't match expected entity type definition |
 | `MISSING_BUNDLE_SUBTABLE` | error | Bundle has registered fields but `{base_table}__{bundle}` subtable does not exist |
+| `MISSING_BUNDLE_UNIQUE_KEY` | error | A declared bundle unique index is absent, non-unique, or targets the wrong ordered columns |
 | `ORPHAN_BUNDLE_SUBTABLE` | warning | `{base_table}__{bundle}` subtable exists but no registered bundle carries fields for it |
 | `FK_ENFORCEMENT_DISABLED` | error | SQLite `PRAGMA foreign_keys` is OFF — subtable CASCADE deletes will not propagate |
 | `CACHE_DIRECTORY_UNWRITABLE` | warning | `storage/framework/` exists but not writable |
@@ -100,7 +101,7 @@ Each `DiagnosticCode` case provides:
 
 Compares actual SQLite table schema against expected definition for each entity type.
 
-For multi-bundle entity types with registered bundle-scoped fields, drift detection additionally enumerates `{base_table}__{bundle}` subtables. See [`bundle-scoped-storage.md`](./bundle-scoped-storage.md#drift-diagnostic) for the per-subtable drift contract, missing-subtable and `ORPHAN_BUNDLE_SUBTABLE` codes.
+For multi-bundle entity types with registered bundle-scoped fields, drift detection additionally enumerates `{base_table}__{bundle}` subtables. See [`bundle-scoped-storage.md`](./bundle-scoped-storage.md#drift-diagnostic) for the per-subtable drift contract, missing-subtable, unique-key, and `ORPHAN_BUNDLE_SUBTABLE` codes.
 
 ### Algorithm
 
@@ -110,7 +111,8 @@ For multi-bundle entity types with registered bundle-scoped fields, drift detect
 4. Build expected columns from `EntityTypeInterface::getKeys()`:
    - Content entities (has `uuid` key): ID column = `INTEGER` (serial), plus `uuid` = `TEXT`
    - Config entities (no `uuid` key): ID column = `TEXT` (varchar)
-   - Common columns: bundle, label, langcode, `_data` — all `TEXT`
+   - Common columns: bundle, label, langcode — all `TEXT`
+   - `_data` (`TEXT`) is expected **only** when the entity type's resolved primary storage backend is `sql-blob` (the framework default, used when `EntityTypeInterface::getPrimaryStorageBackend()` is unset/empty). A `sql-column` entity type materialises every field as a dedicated column and never gets a `_data` blob — `HealthChecker` mirrors the exact backend resolution `Waaseyaa\EntityStorage\EntitySchemaSync::resolveBackend()` performs (declared backend wins, else `sql-blob`), rather than re-deriving the rule independently, so the expected-schema shape can never drift from what `SqlSchemaHandler::buildTableSpec()` actually materialises (#2682).
 5. Compare actual vs expected: check for missing columns, type mismatches
 6. SQLite type normalization: `varchar` / `varchar(n)` → `TEXT`, `serial` → `INTEGER` (affinity rules)
 
@@ -130,7 +132,8 @@ When `HealthChecker` is constructed with a `FieldDefinitionRegistryInterface`, m
 1. For each bundle returned by `bundleNamesFor($entityTypeId)` with non-empty `bundleFieldsFor()`, the expected subtable is `{base_table}__{bundle}`.
 2. If the subtable is missing, emit `MISSING_BUNDLE_SUBTABLE` under the name `Schema: {base_table}__{bundle}`. `context.table` carries the subtable name.
 3. If the subtable exists, compare its columns against the bundle's registered field names. Missing columns are reported as `DATABASE_SCHEMA_DRIFT` under the subtable name, again with `context.table` set.
-4. Orphan detection enumerates every table via `SchemaInterface::listTableNames()` (Doctrine's `AbstractSchemaManager::listTableNames()` under the hood — portable across SQLite, MySQL, PostgreSQL, and any other DBAL-supported driver) and filters in PHP for entries starting with `{base_table}__`. Any subtable not accounted for by a registered non-empty bundle is reported as `ORPHAN_BUNDLE_SUBTABLE` (warn, informational — auto-drop is never performed; author a cleanup migration). Issue #1301 (deferred mission #1257 WP09) replaced the SQLite-only `sqlite_master` LIKE query with this portable path.
+4. For each declared bundle storage unique key, inspect the named index. It must be unique and target the exact ordered field list; otherwise report `MISSING_BUNDLE_UNIQUE_KEY` with the entity type, bundle, table, key name, and expected fields in context. The diagnostic is read-only and never creates or repairs the index.
+5. Orphan detection enumerates every table via `SchemaInterface::listTableNames()` (Doctrine's `AbstractSchemaManager::listTableNames()` under the hood — portable across SQLite, MySQL, PostgreSQL, and any other DBAL-supported driver) and filters in PHP for entries starting with `{base_table}__`. Any subtable not accounted for by a registered non-empty bundle is reported as `ORPHAN_BUNDLE_SUBTABLE` (warn, informational — auto-drop is never performed; author a cleanup migration). Issue #1301 (deferred mission #1257 WP09) replaced the SQLite-only `sqlite_master` LIKE query with this portable path.
 
 Single-bundle entity types (no `bundleEntityType`) are unchanged — subtable enumeration is skipped entirely.
 
@@ -208,6 +211,22 @@ Sections:
 **Options:**
 - `--json` — output as structured JSON
 - `--output <file>` — write JSON report to file (requires `--json`)
+
+**Wiring (#2820).** `HealthSchemaServiceProvider` binds `HealthReportHandler`
+as a singleton; the project root comes from the framework composition contract
+(`ServiceProvider::$projectRoot`) and the checker from the kernel-services bus,
+which serves the kernel-owned `HealthCheckerInterface` through
+`AbstractKernel::healthChecker()` (see `docs/specs/infrastructure.md`,
+"Kernel services bus"). No application-local container binding or handler
+subclass is required. Two proofs pin this, because the command shipped broken in
+every consumer application while the monorepo stayed green: the in-tree wiring
+test `tests/Integration/OperatorDiagnostics/HealthReportCommandWiringTest.php`
+composes the handler over the real bus and executes both output modes on a real
+console application, and the hosted lane `ci/cli-health-report`
+(`tests/PackagedForm/check-cli-health-report`) runs `health:report`,
+`health:report --json`, and `health:report --json --output` from installed bytes
+in a disposable `--no-dev` `waaseyaa/core` + `waaseyaa/cli` consumer that
+carries no application source at all.
 
 ## HealthCheckResult Value Object
 

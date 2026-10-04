@@ -1,4 +1,197 @@
+<!-- Spec reviewed 2026-09-02 - #2786 phase 2A: GraphQL now consumes each registered plugin's transport-neutral FieldValueKind rather than an id roster; existing mappings are unchanged, undeclared kinds and unknown ids fail closed. -->
+<!-- Spec reviewed 2026-09-02 - #2786 contract edge: GraphQL multi-value FormattedText resolvers distinguish list-shaped values from an associative single TextValue map, wrapping the latter as one item while recursively sanitizing both shapes. -->
 # API Layer
+
+## Route exposure input handoff (ROUTE-METADATA-01)
+
+Ordinary `ApiServiceProvider::boot()` publishes the scalar effective map from the
+shared `EntityTypeApiExposurePolicy` it already resolves into the kernel-owned
+`RouteExposureInputs` slot, when that slot is supplied. Bare provider construction
+retains existing behavior. The slot is exposed through the existing kernel
+resolver, not a second container. Publication does not change API exposure or
+register routes. Invalid/duplicate publication makes canonical input admission
+unavailable; legacy API routing still uses the existing policy. Kernel finalization
+freezes the map against its entity roster before immutable route contexts are
+admitted. Projection and inspection never resolve the policy or recompute it.
+This handoff requires a compatible Foundation/API cohort containing the slot.
+Full API route-metadata migration and installed qualification remain pending.
+
+<!-- Spec reviewed 2026-09-06 - #2766: authorize (`AuthorizeController`),
+token (`TokenController`, both the `authorization_code` and `refresh_token`
+grants), and revoke (`RevocationController`) all resolve `client_id` through
+the same shared `OidcClientLookup::findByClientId()`. That lookup now throws
+`AmbiguousClientIdException` — a thrown PHP exception, not an OAuth-formatted
+error response — if more than one `oidc_client` row matches, instead of
+silently selecting an arbitrary row. Storage now enforces `client_id`
+uniqueness for the supported `sql-blob`/SQLite layout via a database
+migration (`2026_09_06_000009_oidc_client_id_unique_key`); the exception
+remains a defense-in-depth backstop, e.g. for a database that has not yet
+run it. No route, request, or success-response shape changed. -->
+
+<!-- Spec reviewed 2026-09-04 - #2835: WorkflowDefinitionsController's
+no-provider default changed from `[EditorialWorkflowPreset::create()]` to `[]`
+— a well-formed empty result, never a fictional default. Production wiring
+(WorkflowDefinitionsApiRouter, resolved via HttpKernel) now always supplies a
+provider backed by `Waaseyaa\Workflows\Read\ActiveWorkflows` when the
+workflows package is installed and wired; the no-provider path is exercised
+only by direct construction (an unwired install, or a `core`-only install
+with no `waaseyaa/workflows` package). GET /api/workflow-definitions response
+shape (`{data: WorkflowDefinition[]}`, per-state/-transition fields) is
+unchanged from M4A-1/M4A-2 below — only which workflows are served changed.
+**Payload widening explicitly deferred:** `Workflow`/`WorkflowState`
+carry `published`, `default_revision`, and `initial_state` and
+`WorkflowTransition` carries `permission`/`group_constraint`, none of which
+`serializeWorkflow()` emits — every active state currently serializes with
+`weight: 0, metadata: []` regardless of its real publication role. Widening
+the serializer is a deliberate follow-up, not part of this fix (#2835 scope
+boundary: no release or downstream adoption authorized by this issue); track
+it separately before the admin states grid is asked to render publication
+state from this endpoint. Full contract: content-workflow.md "Integration". -->
+
+<!-- Spec reviewed 2026-09-01 - #2757: AuthOidcRouteServiceProvider injects
+the canonical authentication-eligibility policy into registration, login, and
+two-factor promotion, makes verification resend public with an email request
+body, and injects the auth-owned atomic verification transaction. Endpoint
+semantics are specified in access-control.md. -->
+
+<!-- Spec reviewed 2026-08-29 - #2700: AuthOidcRouteServiceProvider injects the
+audited user-internal-field reader into password-reset and two-factor
+verification controllers. Reset atomically advances the account's session
+generation and clears the current session; two-factor promotion binds the
+issued authenticated session to the current generation. Route, request, and
+response shapes are unchanged. -->
+
+<!-- Spec reviewed 2026-08-29 - #2694: AuthOidcRouteServiceProvider resolves
+the application-composed AuthExtensionRegistry once and injects it into every
+auth route controller that consumes the registry, and passes the runtime logger
+to controllers that emit development verification or recovery URLs. Production HTTP auth flows
+therefore apply consumer registration/profile/role/mail/redirect policies and
+dispatch lifecycle events; controller-local defaults remain an isolated-use
+fallback only; `NullLogger` is likewise isolated-use fallback, not production
+route composition. No route, request, response, credential, token, or session
+shape changes. -->
+
+<!-- Spec reviewed 2026-08-27 - #2544: `ALWAYS_INTERNAL_FIELDS` gains `legacy_pass` in `ResourceSerializer` and `JsonApiController`, so the imported-credential field is stripped from every response and rejected as a filter/sort field exactly like `pass`. `AuthOidcRouteServiceProvider` passes `LegacyPasswordUpgrade` into the production `LoginController` for `POST /api/auth/login`. No contract shape change. -->
+
+<!-- Spec reviewed 2026-08-24 - #2537: If-Match JSON:API mutation surfaces share
+`Waaseyaa\Api\Http\EntityMutationPrecondition`, which wraps
+`EntityMutationToken::fromHttpIfMatch()` and owns the 428/400/412
+`MUTATION_PRECONDITION_*` JsonApiDocument envelope. Admin/page-builder keep
+body `mutation_token` / revision-fingerprint transport; they do not switch to
+If-Match. Field auto-save now uses the same codes and evaluates a missing
+If-Match before entity lookup. -->
+<!-- Spec reviewed 2026-08-24 - #2493: purpose-built `PATCH|DELETE /api/oidc-clients/{id}`
+now requires the same strong aggregate `If-Match` fence as `JsonApiRouter`
+(`MUTATION_PRECONDITION_REQUIRED` 428, `INVALID_MUTATION_PRECONDITION` 400,
+`MUTATION_PRECONDITION_FAILED` 412, JsonApiDocument envelope). Authorized
+`GET /api/oidc-clients/{id}` emits the current token as `ETag` plus
+`meta.mutation_token`. Tokens are derived per request from loaded entity
+state. The auto-generated `/api/oidc_client/{id}` surface already enforced
+this fence; both mutation surfaces now agree. -->
+<!-- Spec reviewed 2026-08-15 - S1-FW-CFG-04: the JWKS endpoint's response is
+now governed by the OIDC signing-key lifecycle. `JwksDocumentBuilder` publishes
+only keys whose lifecycle state can verify (revoked keys are excluded) and
+asserts the closed `SigningAlgorithmPolicy` per key; `JwksController` reads its
+`Cache-Control: public, max-age` from `SigningKeyLifecyclePolicy::
+jwksCacheLifetimeSeconds()` instead of a hardcoded 86400, so the published
+cache lifetime and the rotation/retention arithmetic share one policy. Endpoint
+paths and route registration (`OidcHttpRoutes`, `AuthOidcRouteServiceProvider`)
+are unchanged. The lifecycle contract (states, staged rotation, retention,
+emergency revocation) is docs/specs/s1-signing-key-lifecycle.md. `packages/
+oidc/` is now drift-mapped to this spec: it is the enduring home of the OIDC
+issuer's HTTP surface (discovery/authorize/token/userinfo/JWKS route tables and
+the oidc-flows-completion review record below). -->
+
+<!-- Spec reviewed 2026-08-15 - OIDC issuer surface completion: two previously
+undocumented `packages/oidc/src/` concerns are contract-bearing parts of this
+spec's OIDC issuer surface. (1) Authorization-code persistence
+(`packages/oidc/src/Repository/`): `AuthorizationCodeRepositoryInterface` is
+the /token endpoint's only persistence port. Codes are 60-second single-use
+grants (`DatabaseAuthorizationCodeRepository::TTL_SECONDS`); `consume()` is
+atomic — a single-statement `UPDATE … SET consumed_at WHERE code = ? AND
+consumed_at IS NULL AND expires_at > ?` with an affected-rows check, so
+exactly one concurrent caller wins and a second consume returns null. Binding
+fields (client_id, redirect_uri, PKCE challenge) are stored verbatim and
+validated at exchange time, and the optional `nonce` is round-tripped so
+/token can embed it in the ID token's `nonce` claim (OIDC Core §3.1.3.6). The
+`oidc_authorization_codes` schema is owned by the 2026-08-12 migration
+(`2026_08_12_000006_oidc_authorization_code_schema.php`) — no longer installed
+by request traffic — with expiry and client-id indexes; `purgeExpired()` is
+the scheduled-job cleanup hook. (2) Token revocation
+(`packages/oidc/src/Revoke/RevocationController`, `POST /oidc/revoke`,
+registered by `OidcHttpRoutes`): RFC 7009 semantics — client-authenticated
+(confidential clients must present a verified secret), unknown or missing
+tokens always return 200 to prevent token enumeration (RFC 7009 §2.2), and
+access-token revocation cascades to the paired refresh token while
+refresh-token revocation does not cascade back (asymmetric per RFC 7009
+§2.1). -->
+
+<!-- Spec reviewed 2026-08-13 - workflow discovery now includes a bounded
+`meta.workflow_history` projection from the API-local audit read model after
+the existing authenticated, entity-view and workflow-state field gates pass.
+It contains only successful `workflow.transition` records for the exact
+`entity:<type>/<id>` subject; denied attempts remain on the admin-only audit
+surface. Installs without the optional audit read model return an empty
+history without weakening transition authorization. -->
+
+<!-- Spec reviewed 2026-08-06 - #2268: the existing scalar public-content-search availability gate now owns discovery as well as routing. When GET|HEAD /api/content/search is enabled and its optional packages are installed, ApiServiceProvider contributes exactly one same-origin RFC 9727 entry and one ARD/AI Catalog entry with the stable key api:content-search. Disabled or unavailable search withdraws the route and both entries. Catalog construction remains metadata-only and must not resolve database-backed SearchProviderInterface or AtomicRateLimiterInterface services. Applications may attach 2-5 public representative queries to api:content-search. -->
+
+<!-- Spec reviewed 2026-08-05 - #2196: ApiServiceProvider owns an experimental, default-off ARD v0.9 extension of AI Catalog 1.0 at GET/HEAD /.well-known/ai-catalog.json. A separate Foundation capability seam contributes immutable same-origin public artifacts; it is not an overload of RFC 9727 endpoint-link semantics. The byte-pinned ARD schema at commit 4a8a6b8fdd3ac4a50dcb63213573159c1eed7856 is a dev-only validation dependency, while runtime invariants are local and network-free. Application config owns representative queries. Canonical URLs come only from ai_catalog.base_url or APP_URL, never request authority. The surface, Link response, and every entry withdraw when disabled or empty; malformed config fails boot without echoing values. -->
+
+<!-- Spec reviewed 2026-08-05 - #2193: applications may opt in to GET|HEAD /api/content/search when the optional search and auth domains are installed. The endpoint passes the middleware-built immutable principal unchanged to the principal-safe SearchProviderInterface, exposes only a closed JSON:API hit/facet projection, is no-store and anonymous-session-stateless, and uses atomic deployment-global plus fixed-anonymous/hashed-principal rate-limit buckets. It never trusts forwarding headers for identity. Missing optional packages withdraw both route and domain router; installed but missing/failing bindings resolve lazily per request and return a sanitized correlated 503 rather than masquerading as absence. -->
+
+## Optional public content search
+
+`api.content_search.enabled` is a strict boolean and defaults to `false`.
+When it is exactly `true`, `ApiServiceProvider` uses Composer autoload presence
+for `SearchProviderInterface` and `AtomicRateLimiterInterface` as one cached
+scalar gate for both route and router. It does not instantiate either service
+at route-build time: both touch `DatabaseInterface`, and the atomic limiter is
+a writer covered by the #1611 request-lifecycle invariant. A truly absent
+package withdraws the surface. An installed but missing, failing, or wrong-type
+binding is resolved inside the request and produces a sanitized, correlated
+503. The controller resolver captures only the kernel-services bus and
+immutable scalar bounds; it memoizes no request service and is not stored in
+the serializable route collection.
+
+Because search and auth remain optional Composer suggestions, API source does
+not import their runtime types. API owns `ContentSearchReadModelInterface`,
+`ContentSearchRateLimiterInterface`, and validated query/page DTOs. Narrow
+adapters verify the string-resolved optional contracts, construct their public
+request objects, and copy each permitted result field into the API-owned page;
+they never enumerate source properties or copy raw body content. Composer
+`conflict` metadata bounds the supported optional-package window on both sides,
+`require-dev` drives the real integration in CI, and the architecture suite
+forbids Auth/Search imports or runtime requires from returning to API source.
+
+The exact `GET|HEAD /api/content/search` route is public, ordered ahead of
+generated `/api/{entity_type}/{id}` routes, and automatically joins the
+session-stateless path list. Session-cookie requests still resume normally, so
+authenticated search retains its principal. The router accepts only the exact
+controller reference and never creates a development or fallback account.
+
+The controller accepts a closed, bounded query vocabulary and refuses invalid
+input before consuming quota. It then atomically consumes a global bucket and
+one identity bucket. Anonymous traffic shares one fixed bucket; authenticated
+keys hash the account id, tenant, community, and claims generation. IP and
+forwarding headers are deliberately excluded: deployments therefore have no
+proxy-trust precondition and cannot create attacker-controlled bucket
+cardinality. Infrastructure or provider failure returns a static JSON:API 503
+and logs only the exception class, never its message, request, or indexed
+content.
+
+Results are rebuilt field-by-field from the principal-safe search DTOs. The
+public hit attributes are title, URL, plain-text highlight, query-local score,
+source, content type, quality score, crawl timestamp, topics, and image. Facets
+are copied only from the provider's already access-filtered facet set. The
+`meta.isComplete` boolean is the provider's bounded raw-candidate-window signal.
+When false, totals, pages, and facets are lower bounds, while filters and
+non-relevance sorts describe only matches inside that window. It may be false
+with an empty principal-safe result after every inspected candidate is denied
+or filtered. Raw body, raw indexed metadata, denied identifiers, denied counts,
+and execution timing remain unobservable.
+
+<!-- Spec reviewed 2026-08-04 - #2195: ApiServiceProvider now owns an opt-in RFC 9727 catalog at GET/HEAD /.well-known/api-catalog. It assembles a deterministic, closed-world RFC 9264 JSON Linkset from kernel-injected ProvidesApiCatalogEntriesInterface providers. Canonical absolute URLs come only from api_catalog.base_url or APP_URL and must be HTTPS; request Host/X-Forwarded-Host is never reflected. The route is absent without canonical configuration or without an installed public API contribution. Authenticated/write/admin/schema surfaces and non-API discovery documents are never inferred from the route collection. -->
 
 <!-- Spec reviewed 2026-07-24 - #2064 activation follow-up: ResourceSerializer now treats the activated entity accessor as the final Protected-read authority. If legacy field filtering is Neutral but the accessor denies or lacks a read context, the field is omitted without reading its value; an otherwise authorized entity response does not become a 500. Internal fields retain their unconditional outward-denial floors. -->
 <!-- Spec reviewed 2026-07-21 - #2101 WP-2: JSON:API create attributes an authenticated creator when an entity type declares a non-identity uid authorization-input field and the client omits it. The shape-based rule covers node, media, note, and future authored quick-entry types without a type-id allowlist, while explicitly excluding User.uid and any other identity key. Explicit uid remains subject to the entity type's field policy. -->
@@ -10,6 +203,7 @@
 <!-- Spec reviewed 2026-07-18 - #2064 WP4 retains only bounded structural route templates and stable priority buckets as route-build optimizations. JsonApiRouteProvider keys templates by base path, exact entity-type exposure shape, and base/workflow mode, then clones every Route into a fresh WaaseyaaRouter. No request, account, entity, authorization decision, provider/service instance, runtime controller capture, or mutable RouteCollection is cached. WaaseyaaRouter preserves descending priority and registration-order ties while reading each priority once. -->
 
 <!-- Spec reviewed 2026-07-15 - #2050: SchemaPresenter maps authoritative field type date to JSON Schema string/format date/x-widget date and projects date settings min/max as x-min/x-max presentation bounds; timestamp/datetime and ordinary strings remain distinct. -->
+<!-- Spec reviewed 2026-09-02 - #2786: SchemaPresenter no longer owns a field-type-to-JSON-Schema table. It decorates FieldSchemaAuthority's closed entity-value schema with admin widgets and principal-bound access results; an access handler/account without the matching subject entity now fails closed. Revision keys are integer/read-only/hidden, and integer fields with subtype=timestamp serialize and present as ISO-8601 date-time values. Internal-field concealment delegates to the shared Layer-1 metadata floor. -->
 <!-- Spec reviewed 2026-07-15 - #2047: SchemaPresenter exposes its sorted registry-backed bundle roster to mounted generic admin callers; null means no registry, [] means registry present/no registered bundles. SchemaController rejects a non-empty explicit bundle outside that authoritative roster with 422 instead of silently returning the base schema. -->
 <!-- Spec reviewed 2026-07-14 - #2018 authoring spine: EntityValidationException is mapped to 422 on store(), plain update(), and expectation-stated update(); repository validation can no longer escape as an admin/API HTTP 500. -->
 <!-- Spec reviewed 2026-07-14 - R21 WP4 (#2010): GraphQlRouter propagates GraphQlEndpoint's statusCode instead of forcing HTTP 200, so parse/auth/method failures reach clients as 400/401/405. withMutationOverrides() remains supported, but a custom update/delete resolver replaces the generated EntityResolver path and therefore owns the enduring not-found/access-denied collapse obligation; delegating to EntityResolver is the preferred way to preserve it. -->
@@ -25,6 +219,15 @@
      these endpoints as live are retained as a changelog record, not current state — see the
      "Workflow Transition Endpoints (CW-v1 WP-4)" section below for the shipped surface. -->
 
+<!-- Spec reviewed 2026-09-06 - #2788 (FW-SITE-BLUEPRINT-01E independent review, critical): `update()`
+     resolves its PATCH target (`loadWorkingCopy()`, else the `find()`-loaded entity) BEFORE
+     authorization, and both the entity-level `update` gate and the per-field `edit` gate evaluate that
+     exact target — never the published pointer. Access decisions are value-dependent (ownership,
+     workflow state: generated blueprint policies decide on those authorization inputs), so authorizing
+     the published revision while writing a diverged tip let a stale input grant or deny the wrong
+     revision. The 404/non-oracle shape, request validation order, revision-expectation semantics,
+     denial status/body contracts and non-revisionable updates are unchanged; nothing is hydrated or
+     saved before the two gates pass. Pinned by JsonApiControllerWorkingCopyAuthorizationTest. -->
 <!-- Spec reviewed 2026-07-13 - CW-v1 option-1 PR-3 (#1920, design §4 "Surface pointer-awareness"):
      JSON:API becomes working-copy-aware on the write/edit surfaces. `show()` gains `?workingCopy=1`
      (serves `loadWorkingCopy()` to an account with entity UPDATE access, 403 otherwise — not an
@@ -34,8 +237,8 @@
      the echo-tolerant write-allowlist comparison (`EntityWritePayloadGuard::evaluateForUpdate()`)
      now compares against the WORKING COPY's own `toArray()`, not the gate entity's, so a client that
      read the working copy and echoes ITS `revision_id` back is not spuriously refused. Entity/field
-     access gates are unchanged (still evaluated against the `find()`-loaded gate entity — type/bundle-
-     scoped, no behavior change). `WorkflowTransitionController`'s GET/POST now source the workflow
+     access gates were left on the `find()`-loaded gate entity at the time; #2788 (below) moved both
+     onto the working-copy target. `WorkflowTransitionController`'s GET/POST now source the workflow
      POSITION (`meta.workflow_state`, available transitions, the POST target) from `loadWorkingCopy()`
      too — the R8 view gate stays pinned to `find()`, byte-identical. See "GET single" and "PATCH —
      update" below (updated) and the new "Working-copy targeting (CW-v1 option-1 PR-3)" subsection.
@@ -44,9 +247,10 @@
      forward drafts on the shipped workflow" (bullet now fully CLOSED) and docs/specs/admin-spa.md. -->
 <!-- Spec reviewed 2026-07-13 - CW-v1 option-1 PR-4 rework (#1920, security): a fresh-context review found the just-shipped write-side allowlist's HARD refusal of `revision_id`/`published_revision_id`/`langcode` was itself a BLOCKER — `ResourceSerializer` emits those as ordinary read attributes (FR-008), and the admin SPA's `SchemaForm.vue` submits the FULL loaded attribute object back on save, so every ordinary node edit through the admin UI 422s. Fix (Drupal JSON:API parity): echo-tolerant rejection on `update()` only — `EntityWritePayloadGuard::evaluateForUpdate()` refuses an identity/bookkeeping key ONLY when its submitted value DIFFERS (type-lenient comparison) from the entity's current stored value; a pure echo passes but is stripped before both the field-access loop and the apply loop (belt: an allowed echo must never reach `$entity->set()`). `store()` (create) is unchanged — hard refuse, no stored value to echo against. Applied to `JsonApiController::update()` and GraphQL `EntityResolver::resolveUpdate()`; `store()`/`resolveCreate()` untouched. New `Waaseyaa\Entity\Write\EntityWritePayloadGuardResult` value object (`refusedKeys`/`echoedKeys`) is the second static method's return shape alongside the unchanged `refusedKeys()`. See "Echo-tolerant rejection on update() (PR-4 rework)" under the "Write-side field allowlist" subsection. -->
 <!-- Spec reviewed 2026-07-13 - CW-v1 option-1 PR-4 (#1920, security): closes the write-side field allowlist / pointer-column write hole (`.superpowers/sdd/final-review-findings.md` findings #1 CRITICAL / #2 IMPORTANT) — store()/update() applied every submitted attribute with only per-field ACCESS as the gate, so an account holding plain entity `update` access (no workflow permission) could move the published pointer or forge the current-revision id directly through a PATCH body attribute, since neither `revision_id` nor `published_revision_id` carries a field definition or a shipped field-access policy. New shared `Waaseyaa\Entity\Write\EntityWritePayloadGuard` (modeled on ai-tools' EntityKeyGuard, adapted for payload-key-presence + bundle-scoped resolveFieldDefinitions()) rejects (422, `code: FIELD_NOT_WRITABLE`, `meta.refused_keys`) any payload key that is neither a declared field nor a writable entity key, or that is an identity/bookkeeping column regardless of declaration — reject, never strip. Applied at JsonApiController::store()/update() (GenericAdminSurfaceHost inherits it for free via delegation), GraphQL EntityResolver::resolveCreate()/resolveUpdate() (defense-in-depth). FieldAutoSaveController verified already-safe, not modified. ai-tools EntityKeyGuard's LITERAL_FLOOR gained `revision_id`/`published_revision_id` (empirically did NOT already cover published_revision_id — a real gap, fixed alongside this PR). See new "Write-side field allowlist (CW-v1 option-1 PR-4)" subsection. -->
+<!-- Spec reviewed 2026-08-20 - #2461 additive transition success metadata: POST /api/{type}/{id}/workflow/transition may include boolean data.public_changed; omitting it is compatible for older or application-provided controllers. See "Workflow Transition Endpoints (CW-v1 WP-4)". -->
 <!-- Spec reviewed 2026-07-10 - CW-v1 WP-4 (#1920): new per-entity-type workflow transition endpoints — GET /api/{type}/{id}/workflow/transitions and POST /api/{type}/{id}/workflow/transition (WorkflowTransitionController + WorkflowTransitionApiRouter, both registered only when resolveOptional(TransitionService::class) resolves). View access enforced in-controller under the R8 oracle standard (view-denied ≡ missing, byte-identical 404 from one factory; fail-closed 404 when no EntityAccessHandler is wired). TransitionDeniedException keeps the WP-2 mapping (permission → 403, all other reasons → 422, code WORKFLOW_TRANSITION_DENIED + meta.reason, duplicated locally — JsonApiController::workflowTransitionDeniedError() stays private). See new "Workflow Transition Endpoints (CW-v1 WP-4)" section. -->
 <!-- Spec reviewed 2026-07-06 - CW-v1 WP-0 (#1920, #1927, security): closes a self-publish gap where an account holding only edit/create permissions (no publish permission) could set a node live — either explicitly via `status`/`workflow_state` in the request body, or implicitly through the entity constructor's born-published default (`Node::__construct` defaults `status = 1`). Two-part fix: (1) `NodeAccessPolicy::fieldAccess()` now edit-Forbids `status`/`workflow_state` for any account lacking the new `NodeAccessPolicy::PUBLISH_PERMISSION` constant (`'use editorial transition publish'`), on BOTH create and update — no `isNew()` carve-out, unlike the `uid`/`type`/`created`/`changed` admin-only-edit gate documented in field-access.md; `promote`/`sticky` remain ungated pending the editorial engine. (2) `JsonApiController::store()` adds an explicit floor: when the client omits `status` from the create payload AND the constructor-defaulted entity already has a non-null `status` AND the acting account is field-edit-Forbidden on `status`, the controller sets `status = 0` before save, so a create cannot silently inherit a published default the account could not have set explicitly. A client-supplied `status` value is unaffected by this floor — it still goes through the existing per-attribute access-check loop above (Forbidden → 403), unchanged. This is the WP-0 slice of the CW-v1 content-workflow initiative; `docs/specs/content-workflow.md` (tracking the full editorial state machine) has not merged yet, so this note is the interim record — the WP-0 status row there should be flipped to reflect this once that spec lands. See CHANGELOG "Security" and #1915/R16 batch context. -->
-<!-- Spec reviewed 2026-07-06 - audit-remediation batch R15 (security, audit A11; structural sibling of R14, closing the residual the R14 entry flagged): EntityResolver::resolveList() accepted a filter/sort on ANY field-name string. The R14 gate only fires for a field a dynamic FieldAccessPolicy Forbids, so two STRUCTURAL classes REST's validateQueryFields() rejects were live GraphQL oracles: (1) an undeclared _data JSON key (no policy -> Neutral -> not Forbidden) resolved to json_extract(_data,'$.<field>') (SQL injection itself contained by JsonFieldName::assertQueryable, R2 WP1) and became a filter-presence/sort-rank oracle over arbitrary blob keys; (2) a declared field flagged settings['internal']=>true (User.two_factor_secret, OidcClient.client_secret_hash) plus the credential floor (pass/password/password_hash) -- internal is a settings flag, not a policy, so R14 never fired. The /graphql route is allowAll() (public), so the oracle was reachable anonymous-and-up over any entity-viewable row. Fixed by porting the REST allowlist: EntityResolver::assertQueryableFields() runs at the top of resolveList() before any storage query, throwing UserError for any filter/sort field that is not a declared field or entity key, is in ALWAYS_INTERNAL_FIELDS, or has getSetting('internal')===true. Value/account-independent. GraphQlDataBlobTest::testFilterOnNonExistentFieldReturnsEmpty (which documented the vulnerable silent-empty behavior) replaced by testFilterOnNonExistentFieldIsRejected. See "Field-access gate on filter/sort fields (audit R14)" subsection (GraphQL parity paragraph). Pinned by EntityResolverStructuralFieldAllowlistTest. -->
+<!-- Spec reviewed 2026-07-06 - audit-remediation batch R15 (security, audit A11; structural sibling of R14, closing the residual the R14 entry flagged): EntityResolver::resolveList() accepted a filter/sort on ANY field-name string. The R14 gate only fires for a field a dynamic FieldAccessPolicy Forbids, so two STRUCTURAL classes REST's validateQueryFields() rejects were live GraphQL oracles: (1) an undeclared _data JSON key (no policy -> Neutral -> not Forbidden) resolved to json_extract(_data,'$.<field>') (SQL injection itself contained by JsonFieldName::assertQueryable, R2 WP1) and became a filter-presence/sort-rank oracle over arbitrary blob keys; (2) a declared field flagged settings['internal']=>true (User.two_factor_secret, OidcClient.client_secret_hash) plus the credential floor (pass/legacy_pass/password/password_hash) -- internal is a settings flag, not a policy, so R14 never fired. The /graphql route is allowAll() (public), so the oracle was reachable anonymous-and-up over any entity-viewable row. Fixed by porting the REST allowlist: EntityResolver::assertQueryableFields() runs at the top of resolveList() before any storage query, throwing UserError for any filter/sort field that is not a declared field or entity key, is in ALWAYS_INTERNAL_FIELDS, or has getSetting('internal')===true. Value/account-independent. GraphQlDataBlobTest::testFilterOnNonExistentFieldReturnsEmpty (which documented the vulnerable silent-empty behavior) replaced by testFilterOnNonExistentFieldIsRejected. See "Field-access gate on filter/sort fields (audit R14)" subsection (GraphQL parity paragraph). Pinned by EntityResolverStructuralFieldAllowlistTest. -->
 <!-- Spec reviewed 2026-07-05 - audit-remediation batch R14 (security, audit A11; class-mate of R13 WP1): a caller-supplied collection filter/sort on a field gated only by a dynamic FieldAccessPolicy (a classification/clearance field with no static internal flag) passed the R2 WP1 structural allowlist (validateQueryFields) yet was applied as a raw storage condition, so meta.total and the row set leaked the forbidden field's per-value count/ordering to a caller who may list the type and view its rows but lacks the field's clearance. The GraphQL sibling EntityResolver::resolveList() had the identical gap on its filter-argument path. Fixed with two value-independent fail-closed gates: (1) FILTER/data — JsonApiController::index() excludes a row from BOTH the page and accessFilteredTotal() when any filter/sort field is view-Forbidden (queryFieldForbidden()), and EntityResolver::resolveList() does the same in its count and item loops via GraphQlAccessGuard::isFieldViewForbidden(); (2) SORT — because QueryApplier runs sort()+range() in storage before the drop, a Forbidden row still occupies a pagination rank (empty-vs-populated slot across offsets = ordering oracle, found in adversarial review, missed by the all-rows-forbidden tests), so a sort on a field view-Forbidden on any viewable matched row is REJECTED (JsonApiController::rejectForbiddenSort() -> 400; EntityResolver::rejectForbiddenSort() -> UserError). See new "Field-access gate on filter/sort fields (audit R14)" subsection under Query Pipeline. Reported class-mate left out of scope (R2, not R14): EntityResolver::resolveList() still has no structural allowlist on filter/sort field names. Pinned by JsonApiControllerFieldFilterOracleTest and EntityResolverFieldFilterOracleTest. -->
 <!-- Spec reviewed 2026-07-05 - audit-remediation batch R13 WP2 (security, audit A11): text_long ("richtext") field values were never sanitized server-side, so an authenticated author's saved script/event-handler markup round-tripped unmodified through ResourceSerializer::castAttributes() (JSON:API, admin-surface, SSR Markdown), GraphQL's EntityTypeBuilder plain-field resolver, and FieldAutoSaveController's echoed response, then executed in another admin's session via the v-html richtext sink in the admin SPA (SchemaView.vue). Fixed with a single shared Waaseyaa\Api\Sanitizer\RichTextSanitizer (packages/api/src/Sanitizer/RichTextSanitizer.php), applied non-lossily at the read/serialization boundary only (stored bytes are left unchanged) at all three chokepoints. See new "Richtext Sanitization" subsection under Resource Serialization below. -->
 <!-- Spec reviewed 2026-07-05 - audit-remediation batch R8 WP2 (security, audit R8-c): `DiscoveryRouter::handleTopicHub()`/`handleCluster()`/`handleTimeline()` did not gate the SOURCE entity's own view access before doing any work — `handleEndpoint()` already did (`loadDiscoveryEntity()` + `isDiscoveryEntityPublic()` before building the discovery service), but the other three read the cache and built the discovery service straight after param validation, so a caller who could not view the source entity still got a 200 (or a cached 200) with hub/cluster/timeline data: an existence/access oracle. Fixed by adding the identical gate (`$resolvedEntity === null || !isDiscoveryEntityPublic($resolvedEntity, $ctx->account)` → 404) to all three, placed BEFORE the cache read so a denied/absent source is never even consulted against the cache, matching `handleEndpoint()`'s ordering. The 404 is intentionally indistinguishable between "source does not exist" and "source exists but is not viewable" — same status, same generic detail shape (`"Discovery <action> not publicly visible: <type>:<id>"`), consistent with `handleEndpoint()`'s existing "not publicly visible" phrasing which already conflates the two cases. `DiscoveryCachePrimitives::CACHE_KEY_GENERATION` bumped 2->3 to orphan every pre-fix cached hub/cluster/timeline 200 for a now-gated source (the new gate runs before the cache read going forward, so this only clears the pre-fix backlog). See "Discovery API Handler" section below (updated). Pinned by `DiscoveryRouterTest` (hub/cluster/timeline restricted-source-404, absent-source-404, indistinguishability, and viewable-source-200 positive-control cases). -->
@@ -61,7 +265,7 @@
 <!-- spec reviewed 2026-06-23: graphql internal-field schema-drop (§2.3 residual-security-sweep); output builder now mirrors ResourceSerializer internal-field filter. No contract change to documented behavior. -->
 <!-- Spec reviewed 2026-06-22 - WP06 (alpha245 security, audit #36): `DiscoveryApiHandler::createDiscoveryService()` built `RelationshipTraversalService` with no `VisibilityFilterInterface`, which (combined with the service's then fail-open default) leaked related-entity labels/paths for unpublished endpoints through the discovery API. It now passes `WorkflowVisibilityFilter` so related entities are gated on publication state; the traversal service itself now fails closed without a filter (see relationship-modeling.md). Discovery envelope/edge shapes unchanged. -->
 <!-- Spec reviewed 2026-06-21 - issue #1704 (CL-12): `MercureMonitorController::events()` SSE stream is now BOUNDED. It previously looped on `while (connection_aborted() === 0)` with no time-budget cap — the same missed-disconnect worker-pin class BroadcastRouter fixed (a never-surfaced disconnect under FrankenPHP worker mode pinned the worker indefinitely). The stream now: releases the PHP session lock (`session_write_close()`), clears `ignore_user_abort(false)`, re-probes the abort signal immediately after each event/keepalive write, and exits on disconnect OR a per-connection time budget (new `DEFAULT_MAX_DURATION_SEC` = 30s) — whichever comes first. New optional ctor params (`maxDurationSec`/`keepaliveIntervalSec`/`pollIntervalUs`/`clock`/`abortSignal`, all defaulted) make the bound injectable; the continuation rule is the pure static `MercureMonitorController::streamShouldContinue(abortStatus, elapsedSec, maxDurationSec)`. Frame shape (id/event/data, 15s keepalive, channels) and the null-stream `disabled` frame are unchanged. Acceptance: MercureMonitorControllerTest. -->
-<!-- Spec reviewed 2026-06-15 - B-3 (security): JsonApiController::index() now returns 400 for a collection query that filters or sorts on an internal field (FieldDefinition settings['internal'] => true) or an ALWAYS_INTERNAL_FIELDS credential key (pass/password/password_hash), via rejectInternalQueryFields() applied before BOTH the count and main queries. This mirrors the response-side internal-field policy (see "Filters internal/credential fields") onto the query side, closing a value-enumeration oracle where an anonymous collection request could filter on a never-serialised field and read match/no-match. Filtering/sorting on ordinary non-internal fields is unchanged. Pinned by JsonApiControllerInternalFieldQueryTest. -->
+<!-- Spec reviewed 2026-06-15 - B-3 (security): JsonApiController::index() now returns 400 for a collection query that filters or sorts on an internal field (FieldDefinition settings['internal'] => true) or an ALWAYS_INTERNAL_FIELDS credential key (pass/legacy_pass/password/password_hash), via rejectInternalQueryFields() applied before BOTH the count and main queries. This mirrors the response-side internal-field policy (see "Filters internal/credential fields") onto the query side, closing a value-enumeration oracle where an anonymous collection request could filter on a never-serialised field and read match/no-match. Filtering/sorting on ordinary non-internal fields is unchanged. Pinned by JsonApiControllerInternalFieldQueryTest. -->
 
 <!-- Spec reviewed 2026-06-12 - mission optimistic-locking-01KTXCHY WP03 (#1647): new "Conditional update — optimistic locking" section under the JSON:API controller. PATCH accepts `data.meta.expected_revision_id` (positive integer; invalid → 400, non-single-axis-revisionable type → 422; If-Match explicitly NOT supported — headers don't reach the controller; additive follow-up may map it onto the same SaveContext seam). Stale expectation → 409 `code: REVISION_CONFLICT` with `meta {expected_revision_id, current_revision_id}` (`current_revision_id` null = no readable head); the codeless data.id-vs-uuid 409 keeps its shape — `code` is the discriminator. An expectation-stated PATCH persists through the revision-aware repository pipeline (cuts a revision, dispatches repository lifecycle events; repository EntityValidationException and the storage LogicException rejection backstop both map to 422); a no-expectation PATCH is byte-identical to before. JsonApiError gains the additive `meta` ctor member (emitted only when non-empty) and `conflict()` gains optional code/meta passthrough — class snippet updated. `revision_id` on reads of revisionable types is now documented LOAD-BEARING (FR-008, pinned by JsonApiControllerConflictTest) — removing/renaming it is a consumer break. -->
 <!-- Spec reviewed 2026-06-12 - mission request-surface-hardening-01KTX7F2 WP03 (#1649): two consumer-visible hardening changes. (1) Discovery filtering — `ApiDiscoveryController` gains an optional `?AccountInterface $account = null` ctor param (passed by `DiscoveryRouter::handle()` from `WaaseyaaContext::fromRequest($request)->account`, the `_account` attribute); per-type links are emitted only when `$account?->isAuthenticated() === true` (anonymous/absent account → envelope only, zero type links), and definitions whose duck-typed `isDiscoverable()` returns false are absent for EVERY caller (the new `EntityType` `discoverable: bool = true` flag; `EntityTypeInterface` deliberately not widened). Route stays `_public`/allowAll. No categorical per-type view check exists in the access API — authenticated-only is the documented fallback (research D1), NOT per-account type filtering. (2) Denied-as-404 — `JsonApiController::show()` returns the canonical not-found document for a view-denied entity, byte-identical to the missing-id response for the same probe (single private `notFoundDocument()` factory, no `code` member, no debug variant; NFR-002 pinned by `JsonApiControllerDeniedNotFoundTest`). Mutations keep genuine 403s (FR-004). Known boundary: `/api/entity-types`, `/api/openapi.json`, `/api/schema/{entity_type}` still enumerate anonymously — see "Adjacent enumeration surfaces". -->
@@ -77,7 +281,7 @@
 <!-- Spec reviewed 2026-05-20 - BroadcastStorage gained public maxId(array $channels = []): int returning the high-water-mark row id (0 when empty), filterable by channel. Used by BroadcastRouter to start new EventSource connections at "now" instead of replaying history — see docs/specs/infrastructure.md for the SSE-side semantics. Storage contract is otherwise unchanged; poll(), push(), prune() unaffected. -->
 <!-- Spec reviewed 2026-05-19 - mission sql-entity-query-access-checking-01KRYP15 (#1495): `JsonApiController` index endpoints (:52, :63, :450) now bind the request's authenticated account into `EntityQueryInterface::setAccount($this->account)` so per-row access filtering is applied at the storage layer. Previously these listings leaked rows the requester could not view. Test fixture `InMemoryEntityQuery` got the new `setAccount()` method. The new query-layer enforcement is documented in `docs/specs/access-control.md`; this spec's JSON:API contracts (resource shape, pagination, `meta.total`) are unchanged — `meta.total` now reflects the access-filtered cardinality, which was the intended semantics from the start. -->
 <!-- Spec reviewed 2026-05-11 - M4A-2 (#1430 / umbrella #1414) WorkflowDefinitionsController::serializeWorkflow() now includes `metadata: array<string, mixed>` per state in the JSON response (additive 3-line extension; @return type updated; new assertion in WorkflowDefinitionsControllerTest). No change to endpoint shape at the workflow level or to JSON:API entity contracts. -->
-<!-- Spec reviewed 2026-05-20 - #1531 ResourceSerializer now strips ALWAYS_INTERNAL_FIELDS (['pass','password','password_hash']) and honors FieldDefinition settings['internal'] => true (e.g. two_factor_secret) before EntityAccessHandler::filterFields(); #1532 api.user.me bumped to priority(10) in AuthOidcRouteServiceProvider so it beats JsonApiRouteProvider's /api/user/{id} catch-all. -->
+<!-- Spec reviewed 2026-05-20 - #1531 ResourceSerializer now strips ALWAYS_INTERNAL_FIELDS (['pass','legacy_pass','password','password_hash']) and honors FieldDefinition settings['internal'] => true (e.g. two_factor_secret) before EntityAccessHandler::filterFields(); #1532 api.user.me bumped to priority(10) in AuthOidcRouteServiceProvider so it beats JsonApiRouteProvider's /api/user/{id} catch-all. -->
 <!-- Spec reviewed 2026-05-11 - M4A-1 (#1428 / umbrella #1414) new WorkflowDefinitionsController under Waaseyaa\Api\Workflow\ exposing GET /api/workflow-definitions (admin-role-gated, JSON-shaped `{data: WorkflowDefinition[]}`). Not part of the JSON:API entity layer documented in this spec — it is a sibling read-only endpoint dispatched by WorkflowDefinitionsApiRouter. No change to entity JSON:API contracts, ResourceSerializer, or SchemaPresenter. -->
 <!-- Spec reviewed 2026-05-13 - M-006 entity-storage-translations-v1: TranslationController updated to call $entity->removeTranslation() directly (interface method, no longer guarded by method_exists since TranslatableInterface now declares it). TranslatableTestEntity + ReadOnlyTranslatableTestEntity fixtures gained `default_langcode` entity key required by the new boot validation. No change to JSON:API entity endpoint contracts, ResourceSerializer, or SchemaPresenter. Full translation surface at docs/specs/entity-storage-translations-v1.md. -->
 <!-- Spec reviewed 2026-05-10 - M3B (#1413) SchemaPresenter: when registry yields a bundle enum, the bundle property gains x-widget=select, x-required=true, x-label='Bundle', x-weight=-100 so it renders as a real user-facing field. Default (no registry / empty enum) leaves the property hidden. -->
@@ -127,6 +331,8 @@ The MCP-admin read API powers the admin SPA's MCP-endpoint dashboard (M5C WP01, 
 Dispatch lives in `Waaseyaa\Api\Http\Router\McpAdminApiRouter` (implements `DomainRouterInterface`; `supports()` matches when the `_controller` attribute contains `McpAdminController::`). It mirrors the `MercureMonitorApiRouter` shape and returns `application/vnd.api+json` with status 200, or a JSON:API error envelope for unknown actions (404) / invalid controller refs (500).
 
 The `{name}` segment is `rawurldecode()`-ed once inside `tool()` so tool names containing dots (e.g. `bimaaji.search_specs`) survive double URL encoding by the SPA client.
+
+**MCP approval decision surface (#2177 F1, slice C1b).** Two further `/api/mcp/*` admin routes back the write-tier human-approval gate's operator decisions — `GET /api/mcp/approvals` (`McpApprovalController::index`, permission `mcp.approval.view`) and `POST /api/mcp/approvals/{id}/decision` (`McpApprovalController::decide`, permission `mcp.approval.decide`, `requireCsrf()`). Both demand `requireAuthentication()` + `requireSession(['waaseyaa_uid'])` (a real login session — bearer-only identities are refused), and both are registered in `ApiServiceProvider::routes()` under the `mcpInstalled()` gate. Dispatch: `McpApprovalApiRouter` (mirrors `McpAdminApiRouter`; the controller returns full `Response` objects because the status vocabulary is wider — 200/204/400/403/404/409/503). The controller resolves `Waaseyaa\Foundation\Audit\Approval\OperationApprovalStoreInterface` lazily per request via a closure over `ServiceProvider::resolve()` (NOT `resolveOptional()`, which would swallow a bound store's `ApprovalStoreException`), reads the exact-origin allowlist from `cors_origins`, and `mcp.write_tier.approval.allow_self_approval` (default false; PHP-bool-only — any non-bool, including boolean-shaped strings/integers, throws a type-only `ConfigException`). Every 400 body is STATIC controller text — a store adapter's `\InvalidArgumentException` message is never echoed (pagination refusals map to one fixed body; an adapter IAE from `decide()` after the controller's own validation is treated as a nonconforming adapter and fails closed 503). Full contract: `docs/specs/mcp-endpoint.md` §"Admin decision surface".
 
 **Read-model bindings.** The controller depends on two **api-local** interfaces under `Waaseyaa\Api\McpAdmin\`:
 
@@ -192,13 +398,16 @@ Both controller deps are nullable (`?ToolRegistryReadModelInterface = null`, `?S
 | File | Namespace | Purpose |
 |------|-----------|---------|
 | `src/WaaseyaaRouter.php` | `Waaseyaa\Routing` | Wraps Symfony UrlMatcher + UrlGenerator; `match()` rethrows matcher failures as Waaseyaa routing exceptions (below) |
+| `src/RedirectResponse.php` | `Waaseyaa\Routing` | Waaseyaa-owned redirect response type for application signatures; remains compatible with the kernel's Symfony transport boundary |
+| `src/Redirector.php` | `Waaseyaa\Routing` | Request-scoped composition API for fail-closed local redirects and redirects generated from the complete named route table |
+| `src/Controller.php` | `Waaseyaa\Routing` | Optional thin app-controller base exposing only protected `redirect()` and `redirectToRoute()` helpers; plain controllers inject `Redirector` directly |
 | `src/Exception/RouteNotFoundException.php` | `Waaseyaa\Routing\Exception` | Thrown from `WaaseyaaRouter::match()` when no route matches the path (wraps Symfony `ResourceNotFoundException`) |
 | `src/Exception/RouteMethodNotAllowedException.php` | `Waaseyaa\Routing\Exception` | Thrown from `WaaseyaaRouter::match()` when the path matches but the HTTP method is not allowed (wraps Symfony `MethodNotAllowedException`) |
 | `src/RouteBuilder.php` | `Waaseyaa\Routing` | Fluent API for building Symfony Route objects; `entityParameter()` sets `options.parameters.*.type = entity:{id}`; `bind()` sets `options._waaseyaa_app_bindings` for SSR post-load class checks; `controller()` accepts `string`, `callable`, or `[FQCN, method]` and stores normalized `_controller` via `normalizeControllerDefault()` |
 | `src/RouteFingerprint.php` | `Waaseyaa\Routing` | Stable hash of path, methods, parameters, bindings, defaults for app-controller descriptor cache invalidation |
 | `src/RouteMatch.php` | `Waaseyaa\Routing` | Value object for matched route (name, route, parameters) |
 | `src/AccessChecker.php` (in `waaseyaa/access`, not routing) | `Waaseyaa\Access` | Route-level access checking via route options. Owned by the access package; routing depends on access (mission #824 WP05 surface A). |
-| `src/AuthOidcRouteServiceProvider.php` | `Waaseyaa\Routing` | Registers `/api/auth/*`, `/api/user/me`, and OIDC discovery/authorize/token routes; depends on `waaseyaa/auth` and `waaseyaa/oidc` for controllers only. `api.user.me` is registered with `->priority(10)` (#1532) so it beats `JsonApiRouteProvider`'s `/api/user/{id}` catch-all — without the bump, `me` was treated as a literal entity id and returned 404. |
+| `src/AuthOidcRouteServiceProvider.php` | `Waaseyaa\Routing` | Registers `/api/auth/*`, `/api/user/me`, and OIDC discovery/authorize/token routes; depends on `waaseyaa/auth` and `waaseyaa/oidc` for controllers only. `api.auth.login` receives `LegacyPasswordUpgrade` so opted-in `$P$`/`$H$` members authenticate on the HTTP path (#2544). `api.user.me` is registered with `->priority(10)` (#1532) so it beats `JsonApiRouteProvider`'s `/api/user/{id}` catch-all — without the bump, `me` was treated as a literal entity id and returned 404. |
 
 ### Route precedence and the SSR `render.page` fallback (#1632)
 
@@ -233,6 +442,17 @@ paths after language-prefix handling. Consequently `/about` and `/about/`
 resolve the same stored alias and entity; query strings remain request metadata
 and do not participate in the alias key. This is lookup equivalence, not a new
 redirect policy.
+
+`PathAliasResolver::resolve()` only ever matches a non-empty alias beginning
+with `/` — that leading slash is the resolver's canonical domain. Because
+`PathAlias::setAlias()` is a convenience setter that neither generic entity
+construction (JSON:API POST) nor generic `set()` mutation (JSON:API PATCH)
+calls, `PathAliasUniquenessListener` — the universal `BeforeSaveEvent` write
+boundary every save reaches, regardless of the path an entity was built or
+mutated through — also enforces the leading-slash invariant on the canonical
+form, before its uniqueness check, and aborts the save (leaving prior database
+state unchanged) otherwise. A successfully persisted alias is therefore always
+reachable through the resolver (#2754).
 
 ## Core Value Objects
 
@@ -300,7 +520,7 @@ final readonly class JsonApiError
     public function toArray(): array;
 
     // Static factories:
-    public static function notFound(string $detail = ''): self;      // 404
+    public static function notFound(string $detail = '', string $code = ''): self;      // 404 — code opt-in (#2789)
     public static function forbidden(string $detail = '', string $code = 'FORBIDDEN', array $meta = []): self;     // 403
     public static function unprocessable(string $detail = '', array $source = [], string $code = '', array $meta = []): self;  // 422
     public static function badRequest(string $detail = ''): self;    // 400
@@ -344,6 +564,18 @@ The `$accessHandler` and `$account` follow the **paired nullable** pattern: both
 
 ### CRUD Operations
 
+Create and update resource objects may carry
+`data.meta.save_advisory_acknowledgements`, a list of at most 32 exact
+lowercase 64-hex tokens (#2467). Malformed meta is a 400 and never reaches
+storage. `JsonApiController` threads valid tokens through `SaveContext` on
+create, plain update, and expected-revision update. A repository
+`SaveAdvisoryAcknowledgementRequiredException` becomes one 428 JSON:API error
+with code `SAVE_ADVISORY_ACKNOWLEDGEMENT_REQUIRED` and the deterministic
+advisory payload in `meta.save_advisories`. Validation remains 422 and cannot be
+acknowledged. Repositories outside the concrete context-aware
+`EntityRepository` accept the legacy no-token path only and fail closed when a
+caller supplies tokens.
+
 **`index(string $entityTypeId, array $query = []): JsonApiDocument`**
 
 1. Validates entity type exists via `$entityTypeManager->hasDefinition()`.
@@ -386,7 +618,7 @@ The `$accessHandler` and `$account` follow the **paired nullable** pattern: both
 6. Checks field edit access for each submitted attribute, against the gate entity `$entity` (see step 4's note).
 7. Applies updates via `$target->set($field, $value)` (requires `$target instanceof FieldableInterface`).
 8. Saves through `getRepository()->save($target)` in both cases (C-22 WP3 unified the two save paths onto the canonical repository) — **without** an expectation, the plain form; **with** an expectation, `getRepository()->save($target, context: SaveContext::default()->withExpectedRevisionId($n))` — and returns the resource serialized from `$target`. **A stated `expected_revision_id` against a DIVERGED working copy** (the tip has moved since the client's expectation was formed) hits the existing storage `\LogicException`/`RevisionConflictException` rejection matrix (`revision-system-unified.md` §3b) exactly as any other expectation mismatch does — no new machinery; the controller's `catch (\LogicException $e)` → 422 / `catch (RevisionConflictException $e)` → 409 mapping in `saveWithExpectation()` is unchanged.
-9. **Both save paths catch `Doctrine\DBAL\Exception\UniqueConstraintViolationException` → 409** (added 2026-07-02, audit-remediation WP2 review — previously only `store()` had this mapping and a PATCH tripping a uniqueness constraint, e.g. the attachment one-active-per-parent partial index under a race, surfaced a raw 500 with driver SQL). Same status/title shape as `store()`'s duplicate-ID 409, codeless (so `code: 'REVISION_CONFLICT'` stays the discriminator for the optimistic-locking 409), detail `"Updating entity of type '<type>' with ID '<id>' violated a uniqueness constraint."` — names the REAL entity id, not the request locator (locator honesty, contract §15). Pinned by `JsonApiControllerConflictTest::patchWithoutExpectationMapsUniqueConstraintViolationTo409` / `::patchWithExpectationMapsUniqueConstraintViolationTo409`.
+9. **Both save paths catch `Doctrine\DBAL\Exception\UniqueConstraintViolationException` → 409** (added 2026-07-02, audit-remediation WP2 review — previously only `store()` had this mapping and a PATCH tripping a uniqueness constraint, e.g. the attachment one-active-per-parent partial index under a race, surfaced a raw 500 with driver SQL). Same status/title shape as `store()`'s duplicate-ID 409, codeless (so `code: 'REVISION_CONFLICT'` stays the discriminator for the optimistic-locking 409), detail `"Updating entity of type '<type>' with ID '<id>' violated a uniqueness constraint."` — names the REAL entity id, not the request locator (locator honesty, contract §15). Pinned by `JsonApiControllerConflictTest::patchWithoutExpectationMapsUniqueConstraintViolationTo409` / `::patchWithExpectationMapsUniqueConstraintViolationTo409`. A repository `BundleUniqueKeyConflictException` is the more specific first catch: it returns 409 with code `BUNDLE_UNIQUE_KEY_CONFLICT` and bounded meta naming the bundle, declared key, fields, and submitted values. Create, plain update, and expected-revision update share this mapping; unrelated driver violations retain the codeless response.
 10. **Both save paths catch `EntityValidationException` → 422.** The plain and expectation-stated PATCH paths share the same validation-error factory, so invalid input is rejected without becoming an HTTP 500.
 
 **`destroy(string $entityTypeId, int|string $id): JsonApiDocument`**
@@ -399,13 +631,32 @@ The `$accessHandler` and `$account` follow the **paired nullable** pattern: both
 
 | Operation | Denied check | Response |
 |---|---|---|
-| GET single (`show`) | `view` not allowed | **404 not-found shape (changed — C-001)** |
-| GET single, id does not exist | — | 404 not-found shape (unchanged; byte-identical to the denied case) |
+| GET single (`show`) | `view` not allowed | **404 not-found shape (changed — C-001), `code: ENTITY_NOT_FOUND`** |
+| GET single, id does not exist | — | 404 not-found shape, `code: ENTITY_NOT_FOUND` (byte-identical to the denied case) |
 | GET collection (`index`) | row-level filter | 200 with filtered `data[]` (unchanged; #1605 out of scope) |
 | POST (`store`) | `createAccess` not allowed | 403 forbidden (unchanged) |
 | PATCH (`update`) | `update` not allowed | 403 forbidden (unchanged) |
 | DELETE (`destroy`) | `delete` not allowed | 403 forbidden (unchanged) |
 | Field edit (store/update paths) | field forbidden | 403 forbidden (unchanged) |
+
+#### The concealed-boundary code (#2789)
+
+The single-read 404 carries the stable machine-readable code
+`ENTITY_NOT_FOUND` (`JsonApiController::CONCEALED_NOT_FOUND_CODE`), so a client
+can branch on this boundary without parsing prose. It does not weaken the
+non-oracle contract, because it is a property of the *boundary* rather than of
+what happened behind it: the code is emitted from the one shared
+`notFoundDocument()`, never from a branch on the denial, so for the same
+type/id a missing entity and a view-denied entity still return byte-identical
+status, title, code, detail and full document. A caller that added the code on
+the denial path instead would have reintroduced the oracle inside the `code`
+member.
+
+Its scope is exactly that boundary. `JsonApiError::notFound()` keeps its
+codeless default, so every other 404 is byte-identical to before: the unknown
+entity type (`"Unknown entity type: <type>."`), the translation 404s, and the
+mutation 404s in `update`/`destroy` — which answer a denial with a plain 403
+rather than concealing it, and so are not this contract.
 
 FR-003's scope is deliberately the single read only — there is no blanket 404-ing of the API. Residual, accepted: a mutation (PATCH/DELETE) against a view-denied-but-existing entity still 403s, signalling existence to *authenticated* callers only (all mutation routes carry `requireAuthentication()`). An unknown entity type on any operation keeps its pre-existing distinct 404 (`"Unknown entity type: <type>."`) — it reveals only that a *type* is unregistered, which the discovery surface governs.
 
@@ -416,8 +667,37 @@ Mission `optimistic-locking-01KTXCHY`. Canonical contract:
 controller translates the storage contract (`revision-system-unified.md` §3b);
 it implements no conflict check of its own.
 
-**Request seam — resource-object meta, not `If-Match`.** The expectation rides
-the PATCH body:
+> **DB-03 aggregate-mutation contract supersedes the historical revision-only
+> request seam below.** Every externally routed update or delete of an existing
+> aggregate now requires exactly one strong `If-Match` value containing the
+> opaque aggregate mutation token returned by an authorized read. Missing
+> preconditions return 428, weak/wildcard/list or malformed validators return
+> 400, and an identity mismatch or stale token returns 412. The repository CAS
+> is authoritative at commit and a successful mutation returns the successor
+> token in both resource metadata and `ETag`. `expected_revision_id` remains a
+> compatibility input for the narrower historical revision-head contract; it
+> is not a substitute for the aggregate precondition. Because
+> `WaaseyaaContext` does not carry headers, the public HTTP router parses and
+> validates `If-Match` before dispatching to `JsonApiController` through
+> `Waaseyaa\Api\Http\EntityMutationPrecondition` (the L4 JSON:API envelope
+> adapter; `EntityMutationToken::fromHttpIfMatch()` remains the policy
+> authority). The same helper is used by the purpose-built admin OIDC client
+> controller (`PATCH|DELETE /api/oidc-clients/{id}`), translation mutations,
+> workflow transition POST, and field auto-save. Missing preconditions return
+> 428 before entity lookup on the JSON:API router and OIDC client mutations,
+> so a missing header cannot distinguish an unknown id from an existing one.
+> Field auto-save returns 404 for an unknown entity type first (F3 catalog
+> contract), then applies the same missing-If-Match 428 before entity-id
+> lookup. Translation and workflow POST still apply the view/load
+> gate first (403/404, including R8 byte-identical missing vs view-denied),
+> then the same envelope. Authorized
+> `GET /api/oidc-clients/{id}` returns the current token as a strong `ETag`
+> and `meta.mutation_token`. The auto-generated `/api/oidc_client/{id}`
+> JSON:API route remains fenced by `JsonApiRouter`; the two surfaces agree.
+> Conflict documents never include the winning token.
+
+**Historical revision-head seam.** The optional revision expectation rides the
+PATCH body:
 
 ```json
 { "data": { "type": "<type>", "attributes": { "...": "..." },
@@ -425,9 +705,9 @@ the PATCH body:
 ```
 
 Headers do not reach `JsonApiController` (`WaaseyaaContext` carries
-`account/parsedBody/query/method` — no headers), so `If-Match`/ETag is
-**explicitly not part of this contract**. A future additive change may map
-`If-Match` onto the same `SaveContext` seam without altering the body seam.
+`account/parsedBody/query/method` — no headers), which is why the aggregate
+precondition is enforced by the HTTP router rather than by this controller
+method. The body seam remains available only for revision-head compatibility.
 
 **Request-state table:**
 
@@ -459,11 +739,12 @@ whether the caller stated an expectation.
 `current_revision_id` is `null` when no readable head exists (the row vanished
 concurrently, or a pre-backfill row carries no revision pointer). Deterministic
 and assertable: the two revision ids plus static identity, no timestamps
-(NFR-003). **409 catalogue:** this controller now emits three 409 shapes — the
-pre-existing codeless `data.id`-vs-uuid mismatch, the codeless
+(NFR-003). **409 catalogue:** this controller emits four 409 shapes — the
+pre-existing codeless `data.id`-vs-uuid mismatch, the codeless generic
 uniqueness-constraint trip on create/update saves (2026-07-02, WP2 review —
-see `update()` step 7 above), and this one; `code: 'REVISION_CONFLICT'` is
-the machine-readable discriminator. **Locator honesty:** uuid-routed PATCHes
+see `update()` step 7 above), the specific bundle-key 409 with code
+`BUNDLE_UNIQUE_KEY_CONFLICT`, and this one; `code: 'REVISION_CONFLICT'` is the
+optimistic-lock discriminator. **Locator honesty:** uuid-routed PATCHes
 resolve to the real entity id before the save; the conflict payload names the
 real id, not the request locator.
 
@@ -695,6 +976,91 @@ differing-value refusal), `GenericAdminSurfaceHostWriteAllowlistTest` +
 
 `loadByIdOrUuid()` accepts `int|string`. If the entity type has a UUID key and the value matches UUID regex (`/^[0-9a-f]{8}-...-[0-9a-f]{12}$/i`), it queries by UUID with `accessCheck(false)`; otherwise it loads by primary key. Both branches perform identity resolution only and return the same underlying entity regardless of locator form. The caller then applies the operation-specific authorization gate: `show()` checks `view` and collapses denial to the canonical 404, `update()` checks `update`, and `destroy()` checks `delete`. A mutation target is never pre-filtered through the query layer's `view` decision.
 
+## Editing representation (#2552)
+
+`show()` accepts `?representation=editing`, which opts one serialization out of
+the `RichTextSanitizer` pass so HTML-bearing fields return the stored bytes
+byte-for-byte. Every `show()` response carries `meta.representation`
+(`rendered` or `editing`), so a read-modify-write client can tell which
+projection it holds before writing it back.
+
+Structural validation runs before the entity is loaded, so it is not an
+existence oracle:
+
+- an unsupported value → 400,
+- `representation=editing` without `?workingCopy=1` → 400 (the two are paired),
+- `representation=editing` on `index()` → 400; a collection establishes no
+  single entity's update access.
+
+Authorization is layered on the existing read and write boundaries. The pairing
+rule means the `?workingCopy=1` gate in step 3 of the access pipeline above has
+already required entity **UPDATE** access. Before lossless serialization,
+`show()` takes the effective outgoing attributes from the rendered projection
+(after internal-field, field-view and sparse-fieldset filtering) and requires
+field **edit** access for each HTML-bearing attribute, evaluated on the same
+`find()`-loaded gate entity PATCH uses. Any denial fails the whole request with
+a generic 403 and no resource body. View-hidden HTML fields, non-HTML read-only
+fields, and HTML fields excluded by the sparse fieldset remain compatible
+because their stored HTML bytes are not part of the outgoing projection.
+
+`ResourceSerializer::serialize()` grew a `$losslessHtml` flag for this, default
+`false`, set only after those gates pass. Every other serialization path —
+`index()`, the translation controller, the markdown presenter, the admin surface
+host — keeps the sanitized projection unchanged. The serializer performs no
+authorization of its own: a caller passing `true` asserts it has already
+established both entity-update and effective outgoing HTML field-edit access.
+
+## Mutation echoes (#2553)
+
+`store()` and `update()` accept `$query` and honour the same
+`?representation=` toggle, selecting the projection of the RESPONSE ECHO only —
+never what is written. `JsonApiRouter::handle()` threads `$ctx->query` into both
+(it already did for `show()`).
+
+Without this, a client that keeps the mutation response as its next edit state —
+the normal SPA pattern — was safe on its first round trip and destructive on the
+second, because the echo had been through the sanitizer.
+
+Three differences from the read side, each deliberate:
+
+1. **No `?workingCopy=1` pairing.** That pairing exists solely as the
+   authorization anchor for a read; a successful `PATCH`/`POST` has already
+   passed the entity `update`/`create` gate, so `representationError()` takes a
+   `$writeAnchored` flag that waives it. Requiring it on a write would be
+   ceremony with nothing behind it, and `workingCopy` has no read-side meaning
+   there anyway.
+2. **Structural validation runs before anything is written**, so an
+   unrecognized value is a 400 and not a write followed by a complaint.
+3. **A field-`edit` denial downgrades the echo instead of failing.**
+   `mutationEcho()` runs the same `losslessHtmlFieldEditDenied()` check the read
+   uses, but by the time the echo is built the write has committed — a 403 would
+   tell a client its successful mutation failed. It serves `rendered` and states
+   that in `meta.representation`, which every mutation response now carries
+   (as every single-entity read already did), so the downgrade is detectable.
+
+The projection stays opt-in rather than unconditional. A caller that may `PATCH`
+holds the access the editing read is gated on, so an unconditional lossless echo
+would disclose nothing new — but the sanitized projection is also what protects
+a consumer that renders the echo directly, and every existing `PATCH` consumer
+was written against it.
+
+`FieldAutoSaveController` honours the same flag on its single-field echo, where
+the argument is stronger still: it has already required field-`edit` access on
+that one field and just wrote the caller's own bytes to it. It deliberately does
+NOT mirror the structural 400 — refusing a completed write over a query-string
+typo would be worse than ignoring the typo — so an unrecognized value there is
+simply not the opt-in.
+
+The admin SPA does not opt in. It never reaches this JSON:API query: it loads
+and saves through `GenericAdminSurfaceHost`, which already serves the working
+copy to update-capable accounts and still serializes the sanitized projection.
+"Re-read" cannot restore stored markup. Lossless GET plus echo on that host is
+a follow-up, not a CW-v1 pointer change; see [jsonapi.md](jsonapi.md).
+
+The shared sanitizer allowlist was deliberately not widened; see
+[jsonapi.md](jsonapi.md) for why a looser baseline would have exposed
+protocol-relative off-site URLs on anonymous output.
+
 ## Resource Serialization
 
 ```php
@@ -726,8 +1092,12 @@ final class ResourceSerializer
 1. Uses UUID as resource ID if available, otherwise falls back to numeric ID (config entities: string machine name when UUID is empty).
 2. Iterates the resolved field names, drops keys that map to entity keys `id` and `uuid` (storage column names from `EntityType::getKeys()`), and reads each remaining value through `EntityInterface::get()`, so `EntityBase::$casts` apply (#1181 ST-7 / ST-9). If the activated accessor denies a Protected read (or no read context is available), that field is omitted without reading its value. This accessor check is the final authority when the legacy field policy is Neutral and cannot turn an otherwise authorized entity response into a 500. See `docs/specs/jsonapi.md` for the pipeline diagram.
 3. **Filters internal/credential fields** (#1531). Two layers, both applied **before** the per-account access handler so credentials never reach policy code:
-   - `ResourceSerializer::ALWAYS_INTERNAL_FIELDS = ['pass', 'password', 'password_hash']` — dropped unconditionally even when no `FieldDefinition` exists. Covers raw `_data` keys that hold credential material (e.g. `User::$pass` is set via `setRawPassword()` with no `#[Field]` attribute).
-   - Any `FieldDefinition` whose `getSetting('internal') === true` is dropped (e.g. `User::two_factor_secret`, `User::two_factor_recovery_codes_hash`). New sensitive fields opt in via `#[Field(... settings: ['internal' => true])]`.
+   - `ResourceSerializer::ALWAYS_INTERNAL_FIELDS = ['pass', 'legacy_pass', 'password', 'password_hash']` — dropped unconditionally even when no `FieldDefinition` exists. Covers raw `_data` keys that hold credential material (e.g. `User::$pass` is set via `setRawPassword()` with no `#[Field]` attribute).
+   - `InternalFieldVisibilityPolicy` is the single boot-scoped metadata authority
+     shared with Admin schema/detail and JSON:API query validation. It combines
+     `FieldDefinition.settings.internal`, the framework migration floor, and
+     application declarations under `entity.internal_fields_by_type`. The
+     credential-name floor above deliberately remains independent.
 4. When access handler + account are provided, calls `$accessHandler->filterFields($entity, array_keys($attributes), 'view', $account)` to remove view-denied fields.
 5. Applies field-definition coercions (`boolean`, `timestamp` / `datetime`, `text_long`): timestamps accept integers or `DateTimeInterface` (e.g. after a `datetime_immutable` cast); a `text_long` value is run through `RichTextSanitizer` (see "Richtext Sanitization" below).
 6. Normalizes values to JSON-serializable shapes via **`EntityValues::normalizeValueForJson()`** (backed enums → backing value, `DateTimeInterface` → ISO-8601 `ATOM`, `JsonSerializable` → `jsonSerialize()` then recurse, arrays → recurse) — shared with `EntityValues::toJsonReadyMap()` for other presentation sinks (#1181 ST-10).
@@ -741,6 +1111,9 @@ The fix is a single shared class, `Waaseyaa\Api\Sanitizer\RichTextSanitizer` (`p
 
 - `ResourceSerializer::castAttributes()` sanitizes any attribute whose field type is in `RichTextSanitizer::HTML_FIELD_TYPES` (currently `['text_long']` only -- plain-text types like `string`/`text` are excluded, since they render as literal text and sanitizing them would corrupt legitimate content).
 - `EntityTypeBuilder::buildOutputFields()` (GraphQL, `packages/graphql/src/Schema/EntityTypeBuilder.php`) wraps the plain-field resolver for a `text_long` field with the same sanitizer, covering both queries and the create/update mutation response (both resolve through the same field resolver). Safe to share one stateless `RichTextSanitizer` instance across the R12 per-process schema cache, since it carries no per-request/account state.
+- GraphQL declares `text_long` as a `String`, matching the sanitized scalar returned by that resolver. Formatted `text` remains the distinct `{value, format}` object adapter.
+- GraphQL's `json` wire adapter remains a `String`, but its resolver JSON-encodes the native array/scalar values returned by storage before handing them to the GraphQL scalar.
+- GraphQL exposes `decimal` as `String`, preserving the framework's lossless decimal storage contract; only `float` maps to the GraphQL `Float` scalar.
 - `FieldAutoSaveController::update()` sanitizes the value it echoes back in its 200 response when the target field's type is `text_long`.
 
 All three classes take an optional `?RichTextSanitizer` constructor parameter (default: a fresh instance, resolved in the constructor body), so every existing call site (JSON:API routers, `GenericAdminSurfaceHost`, `SsrPageHandler`'s Markdown presenter, `SchemaFactory`) is covered without a wiring change, and a caller with a container-resolved instance can inject one explicitly instead.
@@ -837,13 +1210,42 @@ System keys (id, uuid, label, bundle, langcode) are always shown as-is.
 
 ### Type and Widget Mappings
 
-Field type to JSON Schema type: `string->string`, `text->string`, `boolean->boolean`, `integer->integer`, `float->number`, `decimal->number`, `email->string`, `uri->string`, `date->string`, `timestamp->string`, `datetime->string`, `entity_reference->string`.
+Field JSON Schema shapes come from the registered field-type plugin through
+`FieldSchemaAuthority::fieldSchema()`. `SchemaPresenter` owns only admin
+decoration (`x-widget`, labels, weights, enum labels, bundle selection, and
+access hints); it has no structural type/format fallback. Unknown field types
+fail closed. The object schema is closed with `additionalProperties: false`.
+For a multi-value field, structural value constraints such as `enum`,
+`maxLength`, `minimum`, and `maximum` live on the array's `items` schema;
+admin-only labels remain decorations on the field property.
+
+When access context is supplied, all three values — prototype/subject entity,
+`EntityAccessHandler`, and account — are required. View-forbidden fields are
+removed before return and edit-forbidden fields are marked `readOnly` plus
+`x-access-restricted`. A partial context throws
+`PartialAccessContextException`; it never produces an unfiltered schema.
 
 Field type to widget: `string->text`, `text->textarea`, `text_long->richtext`, `boolean->boolean`, `integer->number`, `email->email`, `uri->url`, `date->date`, `timestamp->datetime`, `datetime->datetime`, `entity_reference->entity_autocomplete`, `list_string->select`.
 
 Format mappings: `email->email`, `uri->uri`, `date->date`, `timestamp->date-time`, `datetime->date-time`. Date values are transported as ISO `YYYY-MM-DD`; schema presentation does not introduce a default, null coercion, timezone conversion, or inference from field names/values.
 
 ### SchemaController
+
+Kernel-wired schema presentation uses `FieldSchemaAuthority` over the one
+boot-scoped, manifest-fed `FieldTypeManager`. `HttpKernel` passes that authority
+to `SchemaRouter`; Admin Surface and Wayfinding resolve the same authority from
+the kernel-services bus. GraphQL receives the same manager through
+`GraphQlServiceProvider` → `GraphQlRouter` → `GraphQlEndpoint` →
+`SchemaFactory`, so admission and wire adaptation consult one registry. Bare
+constructors retain the built-ins-only default solely for isolated use.
+
+GraphQL adapts the field-owned, transport-neutral `FieldValueKind` declared by
+the registered plugin. The field package does not depend on GraphQL, and the
+GraphQL mapper no longer owns an id roster. Built-in ids preserve their prior
+scalar/object mappings. A downstream plugin can opt into one of the supported
+semantic shapes; omission fails closed with `DomainException`, while an unknown
+id still raises `UnknownFieldTypeException`. There is no inferred or unknown-id
+`String` fallback.
 
 ```php
 // packages/api/src/Controller/SchemaController.php
@@ -926,8 +1328,8 @@ new FieldAutoSaveController(
 The user-facing surface of the content-workflow engine (`docs/specs/content-workflow.md` "Integration → API (WP-4)"). Registered per entity type (literal type segment + `->default('_entity_type', …)`, like field auto-save), **only when `TransitionService` resolves** — `ApiServiceProvider::routes()` and `httpDomainRouters()` both gate on `resolveOptional(TransitionService::class)`, so an install without `waaseyaa/workflows` wired registers neither the routes nor the router and requests 404 naturally.
 
 **Routes** (both `requireAuthentication()`):
-- `GET /api/{entityType}/{id}/workflow/transitions` (`api.{type}.workflow_transitions`) → `{"data": [{"id","label","to"}…], "meta": {"workflow_state": <string|null>}}`. `data` is exactly `TransitionService::getAvailableTransitions()` — the one sanctioned UI read side (permission- AND group-filtered; never offers what the write side would refuse). An unbound entity type returns 200 with empty `data` (no buttons is the correct UI), never 404/422.
-- `POST /api/{entityType}/{id}/workflow/transition` (`api.{type}.workflow_transition`), body `{"transition": "<id>"}` → 200 `{"data": {"transition","from","to"}}` from `TransitionResult`.
+- `GET /api/{entityType}/{id}/workflow/transitions` (`api.{type}.workflow_transitions`) → `{"data": [{"id","label","to"}…], "meta": {"workflow_state": <string|null>, "mutation_token": "<opaque>"}}`. `data` is exactly `TransitionService::getAvailableTransitions()` — the one sanctioned UI read side (permission- AND group-filtered; never offers what the write side would refuse). When at least one transition is available, the response also carries the working-copy token as a strong `ETag`; callers with no available mutation receive neither token nor ETag. An unbound entity type returns 200 with empty `data` (no buttons is the correct UI), never 404/422.
+- `POST /api/{entityType}/{id}/workflow/transition` (`api.{type}.workflow_transition`), body `{"transition": "<id>"}` plus the exact strong `If-Match` returned by a mutation-capable read → 200 `{"data": {"transition","from","to","public_changed"?}, "meta": {"mutation_token": "<successor>"}}` plus the successor `ETag`. `public_changed` is additive: the current framework controller always includes the boolean, but older packages or application-provided controllers may omit it. Clients must not treat a missing optional field as a failed transition.
 
 **Controller**: `Waaseyaa\Api\Controller\WorkflowTransitionController` (deps: `EntityTypeManagerInterface`, `?EntityAccessHandler`, `TransitionService`), dispatched by `WorkflowTransitionApiRouter` (`DomainRouterInterface`, same shape as the other resolveOptional-gated admin routers).
 
@@ -942,11 +1344,14 @@ The view gate includes the additive workflow-authority policy (#2081): an authen
 | Code | Condition |
 |------|-----------|
 | 200 | GET always (empty `data` for unbound types); POST when the transition applied |
-| 400 | POST body not valid JSON, or `transition` member missing/non-string/empty |
+| 400 | POST body invalid, or `If-Match` malformed, weak, wildcard, or a list |
 | 401 | No `_account` on the request |
 | 403 | `TransitionDeniedException` with `reason === 'permission'` |
 | 404 | Unknown entity type, entity not found, or view access denied (byte-identical, R8) |
+| 409 | Historical revision-head race between controller and transition service |
+| 412 | Aggregate token is stale or bound to another identity |
 | 422 | `TransitionDeniedException` with any other reason (`illegal_edge`, `unknown_transition`, `unbound`, `group_constraint`) |
+| 428 | POST omitted the required aggregate `If-Match` precondition |
 
 403/422 bodies carry the WP-2 contract: JSON:API error `code: 'WORKFLOW_TRANSITION_DENIED'`, `meta: {reason}` (same policy as `JsonApiController::workflowTransitionDeniedError()`, duplicated locally — that method stays private).
 
@@ -1044,7 +1449,7 @@ final class QueryApplier
 
 - **Allowed** — a field name that is either a key of `EntityTypeManagerInterface::resolveFieldDefinitions($entityTypeId)` (every declared `#[Field]`, class-declared base field, and registry/bundle field) **or** one of the entity type's structural keys (`EntityTypeInterface::getKeys()` — `id`/`uuid`/`label`/`bundle`/`langcode`/`revision`/...).
 - **Rejected (400)** — any other field name, unconditionally. This includes a syntactically ordinary but never-declared `_data` key (previously silently accepted) and any field name carrying SQL metacharacters (previously silently accepted and forwarded to storage).
-- **Rejected (400) even when allowed** — a field in `JsonApiController::ALWAYS_INTERNAL_FIELDS` (`pass`, `password`, `password_hash`) or a declared field whose `FieldDefinition::getSetting('internal') === true` (e.g. `two_factor_secret`). A field can be both "declared" and "off-limits to query" at the same time.
+- **Rejected (400) even when allowed** — a field in `JsonApiController::ALWAYS_INTERNAL_FIELDS` (`pass`, `legacy_pass`, `password`, `password_hash`) or a declared field whose `FieldDefinition::getSetting('internal') === true` (e.g. `two_factor_secret`). A field can be both "declared" and "off-limits to query" at the same time.
 
 The allowlist resolves `resolveFieldDefinitions($entityTypeId)` **without a bundle argument**, so it admits base + core fields (and entity keys) but not fields declared only on a specific bundle. A bundle-only field is therefore not filterable/sortable on this cross-bundle collection endpoint — a deliberate tightening; no current caller relies on it, and the allowlist is intentionally not widened to bundle fields.
 
@@ -1066,7 +1471,7 @@ The exclusion is **value-independent**: a row is dropped because the caller may 
 
 **Sort is rejected, not dropped.** The per-entity drop is sufficient for a *filter* but NOT for a *sort*: `QueryApplier::apply()` runs `sort()` and `range(offset, limit)` at the **storage layer, before** the post-fetch drop, so a Forbidden row still occupies a pagination **rank** even after it is dropped from the returned page. A caller sorting on a Forbidden field with a small `page[limit]` and scanning `page[offset]` reads the empty-vs-populated pattern of those ranks and reconstructs the hidden field's ordering — an ordering oracle the drop alone leaves open (found in adversarial review; the initial all-rows-Forbidden tests missed it because they collapse to `total: 0` on a single page). Storage cannot evaluate per-row field-access policy, so `JsonApiController::rejectForbiddenSort()` returns a **400** when a `sort` targets a field that is view-`Forbidden` on **any** entity-level-viewable matched row, refusing to order rows the caller cannot fully read. The reject is likewise **value-independent** — it depends only on *which* viewable rows carry a Forbidden sort field, never on the field's value or the sort direction — so it adds no oracle beyond the per-row "you may not read this field" boundary `show()` already exposes. A sort on a field the caller can read on every viewable matched row is unaffected.
 
-**GraphQL parity**: `GraphQL\Resolver\EntityResolver::resolveList()` had the identical oracle on its filter-argument path (`total` computed with only the entity-level `guard->canView()` predicate). It now applies the same value-independent exclusion in both its count loop and its item loop via `GraphQlAccessGuard::isFieldViewForbidden()`, and the same sort reject via `EntityResolver::rejectForbiddenSort()` (throws a `UserError`), both gated to the bound-account path (the system-context bypass keeps the raw storage `COUNT`, unchanged). **Structural allowlist closed (R15, audit A11):** the R14-flagged residual is now fixed. `EntityResolver::assertQueryableFields()` runs at the top of `resolveList()` (before any storage query, unconditionally, mirroring REST's `validateQueryFields()`) and throws a `UserError` for any filter/sort field that is not a declared field (`resolveFieldDefinitions()`) or entity key, is in `ALWAYS_INTERNAL_FIELDS` (`pass`/`password`/`password_hash`), or is a declared field with `getSetting('internal') === true`. This closes the two structural oracles R14's per-policy gate could not express: an undeclared `_data` key (which reached the `json_extract('$.<field>')` sink; SQL injection itself already contained by `JsonFieldName::assertQueryable`) and a declared `internal`-flagged secret (`User.two_factor_secret`, `OidcClient.client_secret_hash`). Pinned by `JsonApiControllerFieldFilterOracleTest` (REST), `EntityResolverFieldFilterOracleTest` (GraphQL R14) and `EntityResolverStructuralFieldAllowlistTest` (GraphQL R15).
+**GraphQL parity**: `GraphQL\Resolver\EntityResolver::resolveList()` had the identical oracle on its filter-argument path (`total` computed with only the entity-level `guard->canView()` predicate). It now applies the same value-independent exclusion in both its count loop and its item loop via `GraphQlAccessGuard::isFieldViewForbidden()`, and the same sort reject via `EntityResolver::rejectForbiddenSort()` (throws a `UserError`), both gated to the bound-account path (the system-context bypass keeps the raw storage `COUNT`, unchanged). **Structural allowlist closed (R15, audit A11):** the R14-flagged residual is now fixed. `EntityResolver::assertQueryableFields()` runs at the top of `resolveList()` (before any storage query, unconditionally, mirroring REST's `validateQueryFields()`) and throws a `UserError` for any filter/sort field that is not a declared field (`resolveFieldDefinitions()`) or entity key, is in `ALWAYS_INTERNAL_FIELDS` (`pass`/`legacy_pass`/`password`/`password_hash`), or is a declared field with `getSetting('internal') === true`. This closes the two structural oracles R14's per-policy gate could not express: an undeclared `_data` key (which reached the `json_extract('$.<field>')` sink; SQL injection itself already contained by `JsonFieldName::assertQueryable`) and a declared `internal`-flagged secret (`User.two_factor_secret`, `OidcClient.client_secret_hash`). Pinned by `JsonApiControllerFieldFilterOracleTest` (REST), `EntityResolverFieldFilterOracleTest` (GraphQL R14) and `EntityResolverStructuralFieldAllowlistTest` (GraphQL R15).
 
 ### PaginationLinks
 
@@ -1080,9 +1485,11 @@ final class PaginationLinks
 
 Returns `self`, `first`, and optionally `prev` and `next` links. Format: `{basePath}?page[offset]={N}&page[limit]={M}`.
 
-## Post-Fetch Access Filtering
+## Access Filtering
 
-Entity-level access is applied **after** query execution in `JsonApiController::index()`:
+The storage query applies deny-by-default entity-level access before its
+authorized range is sliced. `JsonApiController::index()` then repeats that
+entity gate while applying the API-specific field-read gate:
 
 ```php
 if ($this->accessHandler !== null && $this->account !== null) {
@@ -1096,11 +1503,11 @@ if ($this->accessHandler !== null && $this->account !== null) {
 ```
 
 This means:
-- On the authenticated path the SQL query binds the request account via `setAccount($this->account)`, so the storage layer performs per-row access checking (open-by-default: it drops only `Forbidden` rows). `accessCheck(false)` is used only on the system / no-account path.
-- Entities for the current page are loaded, then re-filtered by view access in PHP with `isAllowed()` (deny-by-default entity-level semantics — a `Neutral` row is not visible), mirroring `show()`.
-- `meta.total` reflects the **access-filtered total of matching rows the current account may view ACROSS ALL PAGES** — computed via `accessFilteredTotal()` using the same `isAllowed()` predicate as the per-page filter — **not** the size of the current page (audit C-26: the previous `$total = count($entities)` recount collapsed it to page size on the authenticated path) and **not** the open-by-default storage `COUNT` (which would inflate it with `Neutral` rows). On a paginated collection `count($data) <= meta.limit` while `meta.total` may be larger, and `meta.total` is page-invariant for a fixed query + account.
+- On the authenticated path the SQL query binds the request account via `setAccount($this->account)`, performs a deny-by-default per-row check, and applies page offset/limit to the authorized survivors. `accessCheck(false)` is used only on the system / no-account path.
+- Entities for the authorized page are loaded, then re-filtered by view access in PHP with `isAllowed()` (a `Neutral` row is not visible), mirroring `show()`. The controller also excludes a row when the account may not read a field used to filter or sort it (R14).
+- `meta.total` reflects the **access-filtered total of matching rows the current account may view ACROSS ALL PAGES** — computed via `accessFilteredTotal()` using the same entity and R14 field-read predicates as the per-page filter — **not** the size of the current page (audit C-26: the previous `$total = count($entities)` recount collapsed it to page size on the authenticated path). On a paginated collection `count($data) <= meta.limit` while `meta.total` may be larger, and `meta.total` is page-invariant for a fixed query + account.
 
-<!-- Spec reviewed 2026-06-21 - issue #1702 (audit C-7): the GraphQL list resolver now matches the REST `meta.total` contract above. `GraphQL\Resolver\EntityResolver::resolveList()` previously took `total` from the open-by-default storage `COUNT` (admits `Allowed` AND `Neutral`) while `items` were deny-by-default via `GraphQlAccessGuard::canView()` — so a restricted collection's `total` leaked its full cardinality (Neutral/policy-less rows inflated it) even though those rows never appeared in `items`. `resolveList()` now recomputes `total` across ALL matching rows (filters only, no pagination) with the SAME `guard->canView()` predicate as the per-item filter, so `total` and `items` reconcile and `total` is page-invariant. The query-layer survivor test (Layer 3) is unchanged and remains the open-by-default candidate window (see access-control.md "Layer 3 contract details"); deny-by-default stays a serializer/consumer concern. Acceptance: EntityResolverTest (`resolveListFiltersOutDeniedEntities`, `resolveListTotalReconcilesAcrossPagesWithAccessFilteredItems`). -->
+<!-- Spec reviewed 2026-06-21 - issue #1702 (audit C-7): the GraphQL list resolver now matches the REST `meta.total` contract above. `GraphQL\Resolver\EntityResolver::resolveList()` previously took `total` from the then-open-by-default storage `COUNT` while `items` were deny-by-default via `GraphQlAccessGuard::canView()`. It now recomputes `total` across all matching rows with the same guard predicate. The historical query-layer characterization in this note was superseded by audit C-6 and #2541: storage is deny-by-default and ranged access-checked queries page authorized survivors. Acceptance: EntityResolverTest (`resolveListFiltersOutDeniedEntities`, `resolveListTotalReconcilesAcrossPagesWithAccessFilteredItems`). -->
 
 
 **Empty `data` is access-filtering, not missing data.** When a restrictive view policy is registered for the entity type and filters out *every* matched row, `index()` returns HTTP **200** with `data: []` and `meta.total: 0` -- there is no logger on this controller and no error/warning is emitted, by design (an authenticated principal seeing nothing they may view is a normal authorization outcome, not a fault). Consumers debugging an unexpectedly empty collection should therefore not assume the rows are absent: check whether a registered `AccessPolicy` denied `view` for the current account before concluding the data does not exist. A genuinely empty table and a fully access-filtered table are indistinguishable on the wire by intent (no enumeration oracle). To tell them apart during development, re-issue the query in a system context (no account bound, `accessCheck(false)`) or inspect the policy directly.
@@ -1134,6 +1541,93 @@ GET /api/node?filter[uuid][operator]=IN&filter[uuid][value][]=550e8400-...&filte
 ```
 
 The `value` parameter must be an array when using `IN`. `QueryParser` passes the array value through to `QueryFilter`, and `QueryApplier` translates it to a SQL `IN (...)` clause via `EntityQueryInterface::condition()`.
+
+## RFC 9727 API Catalog
+
+`ApiServiceProvider` owns the optional `api.catalog` route at
+`GET|HEAD /.well-known/api-catalog`. It is registered only when both conditions
+hold:
+
+1. `api_catalog.base_url` (falling back to `APP_URL`) is a canonical HTTPS URL;
+2. at least one installed provider contributes an intentionally public endpoint
+   through `ProvidesApiCatalogEntriesInterface`.
+
+The catalog never derives an origin from `Host` or `X-Forwarded-Host`. An
+explicit `api_catalog.enabled: true` without a base URL fails boot; an absent
+setting and absent URL leaves the route absent. The response is an RFC 9264
+JSON Linkset with `linkset` as its sole top-level member, deterministic
+path-sorted `item` targets, and optional RFC 8631 `service-desc`, `service-doc`,
+and `service-meta` contexts. Exact duplicate definitions collapse; two
+different definitions for one endpoint fail boot. Contributor targets are
+root-relative, same-origin paths with no fragments, foreign schemes, control
+characters, or header-injectable media types.
+
+`GET` returns
+`application/linkset+json; profile="https://www.rfc-editor.org/info/rfc9727"`.
+`HEAD` returns no body, the representation headers and content length GET would
+have returned, and the RFC 9727 `Link: <...>; rel="api-catalog"` discovery
+relation. Unsupported `Accept` media ranges receive 406. Both methods are
+anonymous and stateless, with a deterministic ETag, five-minute public cache
+policy, `Vary: Accept`, and `X-Content-Type-Options: nosniff`. Matching weak or
+strong `If-None-Match` validators receive a bodyless 304; a 406 names the one
+available representation without disclosing application state.
+
+The stock catalog is deliberately narrower than the set of public URLs. MCP
+contributes `/mcp` and its server card only while the anonymous tier is enabled;
+Wayfinding contributes its public JSON anchor catalog. `/mcp/write`, OAuth
+metadata, admin APIs, authenticated OpenAPI/schema enumeration, sitemap.xml,
+robots.txt, and llms.txt are not catalog items. Public content search joins this
+catalog only when its separate access-checked endpoint ships.
+
+## Experimental ARD AI Catalog
+
+`ApiServiceProvider` separately owns `GET|HEAD
+/.well-known/ai-catalog.json`. It is absent unless
+`ai_catalog.enabled` is the PHP boolean `true`, a canonical HTTPS base URL is
+available, and at least one installed provider contributes an intentionally
+public artifact through `ProvidesAiCatalogEntriesInterface`. This explicit
+opt-in is independent of RFC 9727 and does not affect API or MCP operation.
+The route joins the anonymous session-stateless path set only under that same
+strict enablement gate, so disabled or absent configuration creates neither a
+route nor a hidden session-policy exception.
+
+The emitted document uses `application/ai-catalog+json` and literal
+`specVersion: "1.0"` as required by the schema shipped with the draft ARD v0.9
+repository. Waaseyaa pins that schema to commit
+`4a8a6b8fdd3ac4a50dcb63213573159c1eed7856` and validates representative output
+against a checksum-pinned fixture in the test suite. ARD extends the separate
+Linux Foundation AI Catalog draft with domain-anchored `urn:air` identifiers,
+capabilities, and `representativeQueries`. Where the drafts differ, the pinned
+ARD schema is the implemented compatibility target: `displayName` is always
+emitted because ARD requires it, even though the base draft recommends omitting
+it for some self-describing artifacts. This is an experimental compatibility
+promise, not a claim of final or universal adoption.
+
+Providers contribute deployment-neutral keys, public labels, media types,
+same-origin artifact paths, and optional generic capabilities. Applications
+alone may configure 2-5 public natural-language examples under
+`ai_catalog.representative_queries[entry-key]`. An unknown key is a boot error,
+so a typo cannot silently create misleading discovery metadata. Entries remain
+valid when no representative-query overlay exists. Queries are public data and
+must never contain private prompts, credentials, personal information, or
+production records.
+
+The initial closed set contains the RFC 9727 catalog when it actually exists
+and the public MCP compatibility card when the anonymous MCP tier is enabled.
+It never infers entries from the route collection and never advertises
+`/mcp/write`, OAuth or approval surfaces, admin APIs, authenticated OpenAPI or
+schema endpoints, internal filesystem paths, or tokens. Conflicting definitions
+for one key fail boot; exact duplicates collapse; providers and entries are
+sorted for stable bytes.
+
+The response supports strict content negotiation, GET/HEAD parity, ETag/304,
+five-minute public caching, `nosniff`, and public CORS without credentials. Its
+response advertises the draft `ai-catalog` link relation. Canonical artifact and
+Link URLs use only configured authority; hostile `Host` and forwarded-host
+headers are ignored. Artifact contributions reject absolute, protocol-relative,
+backslash, traversal, encoded-separator, query, fragment, and control-character
+paths. Disabling the feature or removing every contribution withdraws both the
+route and its response metadata.
 
 ## Route Building
 
@@ -1180,6 +1674,9 @@ $route = RouteBuilder::create('/node/{node}')
 | `requirePermission(string $permission)` | `_permission` | Require specific permission |
 | `requireRole(string $role)` | `_role` | Require specific role |
 | `allowAll()` | `_public = true` | Public route, no auth required |
+| `csrfExempt()` | `_csrf = false` | Skip CSRF validation — route has its own auth model (MCP bearer, API keys) |
+| `requireCsrf()` | `_csrf = true` | Force CSRF validation on state-changing methods even for the JSON content types that are exempt by default (cookie-authenticated JSON endpoints, e.g. MCP write-tier approvals). See `docs/specs/security-defaults.md` "CSRF token cookie" |
+| `refusalTransport(string $transport, array<string, int> $codes)` | `_refusal_transport`, `_refusal_codes` | Declare the wire vocabulary this route's **kernel-level** refusals (oversized body, malformed JSON) are rendered in, plus the `reason => error code` map. Without it those refusals answer in JSON:API, which shadows a JSON-RPC endpoint's own refusal (#2594). See `docs/specs/middleware-pipeline.md` "Route-declared refusal envelopes" |
 | `requirement(string $key, string $regex)` | (route requirements) | Regex requirement for parameter |
 | `default(string $key, mixed $value)` | (route defaults) | Default parameter value |
 | `build()` | -- | Returns configured Symfony Route |
@@ -1412,6 +1909,14 @@ final class TranslationController
 
 Creating a translation requires `MutableTranslatableInterface`. Deleting the original language returns 422.
 
+Translation creation, update, and deletion mutate the existing aggregate and
+therefore require the same strong aggregate `If-Match` precondition as other
+existing-resource mutations. Authorized mutation-capable reads expose the
+opaque token in resource metadata and `ETag`; view-only callers receive neither.
+Missing, malformed, and stale preconditions return 428, 400, and 412
+respectively without changing the entity. Each successful translation mutation
+returns the successor aggregate token and `ETag`.
+
 ### Error Handling Pattern
 
 Unhandled exceptions caught by `ControllerDispatcher` produce a JSON:API 500 with the fixed detail `An unexpected error occurred.` This response shape is environment-independent: `APP_DEBUG`/`WAASEYAA_DEBUG` must not add the exception class, exception message, filesystem path or line, or stack frames to an API response. The dispatcher logs the complete exception and trace server-side before returning the generic document. Rich debug HTML is owned by the separate error-page renderer and does not authorize response-body trace disclosure on JSON:API routes.
@@ -1505,7 +2010,7 @@ final class DiscoveryApiHandler
 | `prepareDiscoveryResponse(int $status, array $payload, string $cacheKey, AccountInterface $account): array` | Returns `[payload, headers]` tuple — caches for anonymous (public, max-age=120), sets `no-store` for authenticated |
 | `isDiscoveryEndpointPairPublic(string $fromType, string $fromId, string $toType, string $toId, ?AccountInterface $account = null): bool` | Checks both endpoints of a relationship exist, are publicly visible via `WorkflowVisibility`, AND (when `$account` is given and the handler is wired) viewable by that account — delegates to `isDiscoveryEntityPublic()` per endpoint |
 | `loadDiscoveryEntity(string $entityType, string $entityId): ?EntityInterface` | Loads an entity by type and ID (resolves numeric strings to int), returns null on any failure |
-| `isDiscoveryEntityPublic(EntityInterface $entity, ?AccountInterface $account = null): bool` | Publish-status check via `WorkflowVisibility::isEntityPublic()`, AND (when `$account` is given and the handler is wired) `EntityAccessHandler::check($entity, 'view', $account)->isAllowed()`. **Signature changed in R7 WP2** — previously `(string $entityType, array $values): bool`; both call sites already had the loaded entity, so the signature now takes it directly instead of re-deriving from a values map. |
+| `isDiscoveryEntityPublic(EntityInterface $entity, ?AccountInterface $account = null): bool` | Served-projection check via `WorkflowVisibility::isEntityServedPublicForEntity()`, AND (when `$account` is given and the handler is wired) `EntityAccessHandler::check($entity, 'view', $account)->isAllowed()`. The workflow-state id is not consulted. |
 | `createDiscoveryService(AccountInterface $account): RelationshipDiscoveryService` | Factory method — creates a `RelationshipDiscoveryService` with a `RelationshipTraversalService` wired to the handler's entity type manager, database, `WorkflowVisibilityFilter`, and (R7 WP2) `$this->accessHandler` + `$account` for the per-account endpoint-visibility gate. **Signature changed in R7 WP2** — previously took no arguments; `DiscoveryRouter` now passes `$ctx->account` (the `_account` request attribute) at all four call sites. |
 
 ### Discovery Cache Strategy
@@ -1615,7 +2120,7 @@ Per ratified C-005 (b), `bin/check-symfony-imports` is the codebase-wide gate th
 
 | Field | Purpose |
 |---|---|
-| `allowed_directories` | Path prefixes whose internal infrastructure is intentionally Symfony-coupled. Currently: `packages/foundation/`, `packages/routing/`, `packages/api/`, `packages/validation/`, `packages/cli/`. Tests are implicitly excluded — the gate only walks `packages/*/src/`, never `packages/*/tests/`. |
+| `allowed_directories` | Path prefixes whose internal infrastructure is intentionally Symfony-coupled. Currently: `packages/foundation/`, `packages/routing/`, `packages/api/`, `packages/validation/`, `packages/cli/`, `packages/frankenphp/`. Tests are implicitly excluded — the gate only walks `packages/*/src/`, never `packages/*/tests/`. |
 | `legacy_files` | Explicit list of source files that pre-date the boundary and still import Symfony. The gate locks the historical surface; new violations in any package fail CI. Refactor a file to use Waaseyaa surfaces, then remove its entry. |
 
 **Wiring.** Runs as part of `composer verify` (between `check-ingestion-defaults` and `test`). Standalone invocations:
@@ -1630,8 +2135,11 @@ bin/check-symfony-imports --list-stale # also reports legacy_files entries
 **Adding a new violation.** If a new file genuinely needs a Symfony import (e.g. a new directory acting as framework infrastructure), do one of:
 
 1. Replace the import with the equivalent Waaseyaa surface (`Waaseyaa\Foundation\Http\Request`, `Waaseyaa\Foundation\Event\EventDispatcherInterface`, `Waaseyaa\Api\Http\JsonApiResponse`).
-2. Add the file path to `legacy_files` in the JSON, with the rationale captured in the PR description.
-3. If a whole new directory should be allowed, add it to `allowed_directories` — but this should be rare and warrants discussion (every entry weakens the gate).
+2. Reference the class by its inline leading-backslash FQCN at the callsite instead of importing it — e.g. `\Symfony\Component\Uid\Uuid::v4()->toRfc4122()`. The gate matches `^\s*use\s+Symfony\\`, so a single-callsite dependency on a leaf utility does not need an allowlist entry at all. This is the established form in `packages/audit` (`AuditEventWriter`, `AuditCheckpointBuilder`) and, since #2492, in `packages/oidc` and `packages/ai-agent` too. Prefer it over widening the allowlist when the coupling is one expression deep; it keeps the file's `use` block free of Symfony and leaves the dependency visible at the point of use.
+3. Add the file path to `legacy_files` in the JSON, with the rationale captured in the PR description.
+4. If a whole new directory should be allowed, add it to `allowed_directories` — but this should be rare and warrants discussion (every entry weakens the gate).
+
+Note that the gate is an **import**-boundary gate, not a dependency gate: option 2 satisfies it without reducing the runtime coupling. The package's `composer.json` must still declare the Symfony package it calls — see `packages/oidc` and `packages/audit`, which both gained `symfony/uid` in #2492.
 
 **Refactoring legacy entries.** Replace the import with the Waaseyaa surface, run `bin/check-symfony-imports --list-stale` to confirm the file is reported as stale, and remove the entry from `legacy_files` in the same commit.
 
@@ -1666,3 +2174,70 @@ bin/check-symfony-imports --list-stale # also reports legacy_files entries
 <!-- Spec reviewed 2026-06-22 - cleanup WP03 (audit #23): GraphQL over HTTP is now query-only on GET. The `/graphql` route stays `GET,POST` (GET queries remain cacheable), but `GraphQlEndpoint::handle()` parses the selected operation and returns 405 ("Mutations are not allowed over GET; use POST.") for a mutation requested over GET *before* execution — closing the CSRF vector where `GET /graphql?query=mutation{...}` ran state-changing operations under the victim's session cookie (GET is a simple cross-site request, no preflight). `selectsMutation()` honours `operationName` (only the named op executes) and conservatively blocks any mutation when none is given; an unparseable query falls through to the normal error path. POST mutations and GET queries are unchanged. Acceptance: `GraphQlEndpointTest::{getMutationIsRejectedAndNotExecuted, postMutationIsStillAllowed, getQueryIsStillAllowed}`. Residual (out of scope, noted in PR #1721): the route's `csrfExempt()` still allows a `Content-Type: text/plain` cross-site POST to reach a mutation because `parseRequest()` json-decodes the POST body regardless of content type — a follow-up should thread Content-Type and require `application/json` (or a CSRF token) for POST mutations. -->
 <!-- Spec reviewed 2026-07-05 - audit-remediation R11 (audit A9): closes the GraphQL anonymous mutation existence oracle. `/graphql` is `allowAll()` (`GraphQlRouteProvider`) and executes mutations for the anonymous account; `EntityResolver::resolveUpdate()`/`resolveDelete()` threw "Entity not found: {type}/{id}" for an absent id but `GraphQlAccessGuard` threw the textually distinct "Access denied: cannot update/delete entity" for a real entity the caller could not modify, an anonymous (or any unauthorized) caller could enumerate entity existence by diffing the two error messages, despite every per-entity access policy being correct. REST's PATCH/DELETE are `requireAuthentication()`-gated and so were not anonymously exploitable; GraphQL had no equivalent operation-type-aware gate. Two-layer fix: (a) `GraphQlEndpoint::handle()` now rejects ANY mutation (`selectsMutation()`, already used for the GET-mutation CSRF check above) for an unauthenticated account (`!$this->account->isAuthenticated()`) BEFORE building the schema or invoking any resolver, for every HTTP method, the security-relevant property is that anonymous mutation operations are rejected with a UNIFORM error ("Authentication required for mutation operations.") that names no entity id/type, before any resolver runs, and the mutation never executes; no distinguishable path, no timing side channel, matching REST's `requireAuthentication()` parity. (The endpoint sets `statusCode` 401 in its return array, but the HTTP-status envelope is a SEPARATE pre-existing issue out of R11 scope and untouched here: `GraphQlRouter::handle()` hardcodes `jsonApiResponse(200, $result)`, serving every GraphQL response as HTTP 200 regardless of `statusCode`, so a client does not currently see a real HTTP 401, orthogonal to this oracle, tracked as a follow-up.) `parseRequest()` accepts only a single `{query, variables, operationName}` document (a JSON-array body finds no `query` key and falls through to "Missing query"), so there is no batched-request path that could smuggle a mutation past this check. (b) `EntityResolver::resolveUpdate()`/`resolveDelete()` catch the guard's `UserError` and rethrow the SAME "Entity not found: {type}/{id}" the absent-entity branch already throws, so an AUTHENTICATED-but-unauthorized caller (not blocked by (a)) also gets an indistinguishable not-found response, mirroring the pre-existing `resolveSingle()` read-path convention (already returns `null` for both absent and view-denied) and the R8 existence-oracle-closure pattern. This collapse covers BOTH the entity-level `update`/`delete` denial AND the per-FIELD `edit` denial: `resolveUpdate()`'s `assertFieldEditAccess()` loop runs INSIDE the same try/catch, because entity-level `update` can be ALLOWED while a specific field's `edit` is FORBIDDEN (e.g. `NodeAccessPolicy` grants `edit any {type} content` but field-forbids `uid`/`created`/`changed` for non-admins, and those non-`readOnly` fields are in the update input), and a distinguishable "Access denied: cannot edit field '{name}'" fires only for a real entity, re-opening the oracle for any ordinary editor. Only the two access-guard calls are inside the catch; the `FieldableInterface` support check and `set()`/`save()` field-validation stay outside, so a genuine validation/support error for an authorized caller is surfaced accurately, never masked as not-found; both access checks still run (a forbidden field-edit is still refused), only their denial wording is collapsed. `resolveCreate()` was audited and left unchanged: it builds a NEW entity (no caller-supplied existing id to probe), so its "cannot create {type}" and any field-edit denial reveal nothing id-specific, no oracle shape. Acceptance: `GraphQlMutationOracleTest` (`tests/Integration/GraphQL/`, anonymous + authenticated-low-privilege oracle closure, field-level residual `testAuthenticatedFieldEditOracleIsClosed` + `testEditorCanStillUpdateAnAllowedField` control via `FieldOraclePolicy`, anonymous-public-read control), `EntityResolverTest::{resolveUpdateDeniedAndAbsentAreIndistinguishable, resolveDeleteDeniedAndAbsentAreIndistinguishable}`, `GraphQlEndpointTest::{anonymousPostMutationIsRejectedBeforeExecution, anonymousGetMutationIsRejectedBeforeExecution, anonymousQueryIsNotAffectedByTheMutationGate, authenticatedPostMutationIsNotBlockedByTheAnonymousGate}`. -->
 <!-- Spec reviewed 2026-07-05 - audit-remediation R12 (audit A10): closes a cross-account bleed in the GraphQL static per-process schema cache. `SchemaFactory::$schemaCache` (`packages/graphql/src/Schema/SchemaFactory.php`) is keyed only by entity-type ids + mutation-override keys, not by account, and `GraphQlEndpoint::handle()` builds a fresh per-request `GraphQlAccessGuard`/`EntityResolver`/`ReferenceLoader` on every call, but `SchemaFactory::build()` returned the CACHED `Schema` on a hit; that cached `Schema`'s query/mutation resolver closures and the `EntityTypeBuilder` entity-reference field resolver had captured the FIRST request's `EntityResolver`/`ReferenceLoader` by closure. Under FrankenPHP worker mode (the documented production runtime) a process serves many requests without teardown, so every request after the first to build a given schema shape ran under the first request's account and saw its loaded-entity cache, defeating every per-entity access policy. Invisible under php-fpm/`php -S`/the test suite (per-process teardown/reset hides it): this is why the exploit test explicitly drives two accounts through one process with no `SchemaFactory::resetCache()` between them, the way two sequential worker-mode requests would. Fixed, fail-closed, by making the cached `Schema` itself account-free and request-free: the per-request `EntityResolver`/`ReferenceLoader` now travel as a new `GraphQlExecutionContext` (`packages/graphql/src/GraphQlExecutionContext.php`) passed as the GraphQL `contextValue` (the resolver's 3rd argument) to `GraphQL::executeQuery()`; every default resolver closure in `SchemaFactory`/`EntityTypeBuilder` reads its collaborator from that per-request context, never from a captured constructor property, and both classes dropped the `EntityResolver`/`ReferenceLoader` constructor dependencies entirely so the built schema is structurally proven to hold no per-request state. The static schema cache itself is KEPT (a deliberate worker-mode optimization, not the defect); `withMutationOverrides()` is unchanged (an override still receives the execution context as its 3rd resolver argument). R11's "Entity not found" collapse in `EntityResolver::resolveUpdate()`/`resolveDelete()` is untouched and reached identically via the context. Static-state sweep of `packages/graphql/src/`: the ONLY process-level mutable static is `SchemaFactory::$schemaCache`; `TypeRegistry` is a per-build instance (constructed fresh in `SchemaFactory::build()`), holding only structural `Type` objects, safely reusable once the schema itself is account-free. Acceptance: `GraphQlSchemaCacheCrossAccountBleedTest` (`tests/Integration/GraphQL/`, query-side and mutation-side two-account-one-process exploit, both red pre-fix). -->
+<!-- Spec reviewed 2026-09-01 - architecture-integrity #2764 corrects R12's cache-identity claim. Account-free resolver closures are necessary but did not make a schema structurally reusable across different kernels: the retained static cache still hashed only sorted entity-type IDs and override names, while lazy ObjectType thunks captured the first `EntityTypeManager`. A later composition with the same IDs but different base fields, bundle fields, keys, labels, or override implementation therefore received the first composition's schema. `SchemaFactory::$schemaCache` is now a WeakMap keyed by the exact manager/composition object. Its inner structural key covers the emitted base and bundle field shapes plus actual mutation-override contents; a same-named replacement resolver cannot collide. Cache hits remain possible inside one composition, and WeakMap releases the schema when that composition is no longer reachable. `resetCache()` clears all composition entries but production correctness no longer depends on calling it between kernels. Acceptance: `SchemaFactoryCompositionCacheTest` (same IDs/different fields and same override name/different resolver) and `GraphQlSchemaCacheCompositionIsolationTest` (two sequential endpoint compositions in one process, no reset between them). -->
+
+## Canonical snapshot compilation (ROUTE-METADATA-01)
+
+`RouteMetadataCompiler` translates a completed immutable Foundation snapshot to a fresh Symfony collection, preserving path, host, schemes, methods, condition, requirements, defaults and options. Handler identity is retained as the scalar `_controller` ID; compiler construction never checks handler classes or resolves services. Priority uses Symfony collection ordering with stable insertion ties. Caller-owned collection mutation cannot alter the snapshot or another compilation.
+
+`WaaseyaaRouter` accepts an optional snapshot after its existing request-context argument. The legacy empty-router construction remains available. Each snapshot-based router has its own compiled collection and request context. No process-wide cache is introduced. The current kernel HTTP composition and dispatcher do not yet use this path; the explicit resolver is available, while the mixed HTTP bridge remains a prerequisite for adoption.
+
+Routing requires Symfony ExpressionLanguage to support installed condition routes. Compilation parses conditions in Symfony's `context`, `request`, `params` vocabulary without evaluation; malformed syntax or unknown functions refuse explicitly. Matching performs evaluation against that request's context. Application-supplied `compiler_class` options refuse: canonical routes use the maintained Symfony compiler. Ordinary scalar routing/access/render options survive without changing runtime enforcement.
+
+## Canonical handler resolution boundary
+
+Routing's `RouteHandlerResolver` verifies the matched route name and exact metadata handler ID before execution lookup. Builtins retain their existing dispatch sentinel. Other targets require an explicitly registered service and a real public method; a missing binding cannot autowire a class, and `__call` cannot supply a missing or inaccessible method. Resolution returns a closure without invocation. Factory failures report route, handler and reason without retaining the original exception. The current Request belongs to the execution facade rather than the immutable snapshot. HTTP middleware, authorization, parameter conversion and invocation integration remain pending; this API alone does not qualify installed graph export.
+
+## Shared static declaration authority
+
+Foundation now admits the complete static route sources and finalized provider contexts to its kernel-owned snapshot epoch. Legacy HTTP registration consumes that same neutral static authority through `RouteMetadataCompiler::compileRoute`, then restores the existing builtin sentinels and defaults/options shape. Provider hooks, terminal fallback ordering and priority sorting remain compatible. The retained original-registrar fixture verifies every field and insertion order. The HTTP matcher/dispatcher still uses legacy registration; canonical provider bridging and actual Request matching remain pending.
+
+## Admitted HTTP route execution
+
+HTTP now consumes route metadata through a kernel-local execution projection.
+`WaaseyaaRouter::matchRequest()` supplies the actual Symfony request to maintained
+matching and condition evaluation; an optional path override preserves language
+stripping without replacing the request. `fromCollection()` returns an isolated
+execution collection. `RouteHandlerResolver` accepts either a complete snapshot
+or one admitted matched definition, so mixed HTTP never invents a partial
+snapshot. Explicit handlers resolve only after middleware, and custody is checked
+after factory resolution and domain-router construction before dispatch. Builtin
+sentinels and legacy hooks keep their compatibility behavior. `routing.mode`
+defaults only when keys are absent; present null or unknown values refuse routing.
+See [route-metadata.md](route-metadata.md) for the staged adoption boundaries.
+
+## Auth/OIDC metadata adoption
+
+ROUTE-METADATA-01 auth/OIDC adapter adoption: AuthOidcRouteServiceProvider contributes pure declarations and explicit nonshared auth controller bindings. /api/user/me retains priority10; paths, methods, public flags and OIDC CSRF exemptions are unchanged. Finalized service-binding presence controls optional OIDC endpoint inclusion individually, without probing controller construction. Presence is not health: selected failures refuse execution. OidcHttpRoutes derives both metadata and its object-based compatibility projection from one route table. Auth/OIDC domain policies and extension ownership remain unchanged. Installed parity is pending.
+
+
+## JSON:API metadata producer
+
+JsonApiRouteProvider now owns one pure declaration table for discovery, exposed CRUD, field-save, translations and workflow paths. Its compatibility constructor still evaluates EntityTypeApiExposurePolicy from the supplied manager; metadata generation takes finalized copied inputs instead. The bounded cache retains immutable definitions, and every registration compiles fresh Symfony routes. Hidden entities retain identical account-independent 404 envelopes via NotExposedController. ApiServiceProvider capability adoption, workflow/search/catalog/MCP gates and explicit terminal adapter wiring remain open. Do not execute class references directly where existing domain routers adapt parameters or responses.
+
+Entity IDs use a total string order in metadata generation and compatibility cache keys. Numeric-looking IDs such as 01 and 1e0 retain distinct deterministic positions; this repairs the former input-dependent numeric comparison tie without changing route fields.
+
+Normal ApiServiceProvider boot freezes content-search and MCP package-presence facts, including absence, before building catalogs. Later route and domain-router reads reuse those facts even if packages become loadable later in the process. Presence does not prove service health and does not instantiate execution services. Bare providers retain lazy compatibility probing. Workflow binding-based inclusion and complete metadata/terminal adoption remain pending.
+
+Queue terminal preparation: QueueAdminApiRouter exposes index/retry/discard Request-to-Response methods; legacy handle delegates to the same adaptation. ApiServiceProvider declares a nonshared explicit router factory. Required repository and queue bindings resolve only when selected; failures refuse resolution. Optional transport retains the existing failed-only fallback. Callable dispatch forwards named id arguments, but ID normalization still uses the matched request. Route admission and legacy domain-router construction are unchanged. Full API metadata adoption remains open.
+
+MediaVersionApiRouter and MercureMonitorApiRouter now expose their existing actions as explicit request terminals, shared with legacy handle. Media preserves account-aware filtering, UUID/version normalization and status-to-JSON:API response conversion. Monitor preserves its JSON envelopes and SSE response. Nonshared provider factories resolve models through the kernel-services bus only when selected. Missing media models preserve empty/404 shapes; missing individual monitor models preserve their fallbacks, while all monitor models absent refuses construction. Thrown and wrong-typed bindings refuse rather than becoming absence. Legacy route admission and resolveOptional router construction remain unchanged pending complete metadata adoption.
+
+Scheduler and notification routers now expose request actions shared with their legacy handle paths. Scheduler retains name normalization and Idempotency-Key forwarding; notification retains type normalization, internal-field authority and channel response envelopes. Their nonshared explicit factories strictly resolve required execution dependencies only when selected. Catalog router bindings reuse boot-finalized API/AI catalog objects, refuse disabled or unfinished catalogs, and preserve GET/HEAD/304/406 representation headers and bodies without contributor or service reads during selection. Full API metadata admission and legacy router construction remain unchanged.
+## Audit execution preparation
+
+For ROUTE-METADATA-01 staged metadata adoption, AuditApiRouter exposes a public Request-to-Response index action shared with its legacy handle path. ApiServiceProvider binds it nonshared and defers API-local audit read-model resolution until selection. An absent model preserves the controller's empty response. A thrown or invalid declared binding, including the provider's audit adapter with an unavailable backing service, refuses explicit handler resolution rather than returning an empty successful result. The route's admin role middleware remains authoritative. This binding alone does not admit the API provider to metadata composition or qualify installed graph export.
+MCP execution preparation exposes admin tools/tool/serverConfig and approval index/decide request actions shared with legacy adapters. Nonshared admin binding keeps nullable missing models and refuses unhealthy declared bindings. Approval keeps the store lazy inside controller execution, preserving pre-store pagination/origin refusals and sanitized 503 failures. Existing optional telemetry fallback, strict self-approval configuration and exact origin allowlist remain. Named callable arguments do not replace matched request attributes. Complete API metadata admission and installed graph-export proof remain pending.
+Content-search execution preparation binds ContentSearchApiRouter nonshared through the same private factory as legacy domain routing. Its existing public handle method validates authorization context before resolving optional search and limiter services; broken/missing services retain sanitized 503 and diagnostic correlation IDs, while missing context retains 500 without service reads. Existing install/config route gates and scalar rate-limit policy remain unchanged. Disabled explicit selection refuses construction. Complete API metadata admission remains pending.
+Workflow transition terminal preparation adds nonshared explicit router construction and public transitions/transition request actions shared with legacy dispatch. Matched _entity_type/id attributes retain scalar normalization and remain authoritative over callable arguments. Required manager/transition services resolve only on selection; absent optional access/audit models remain nullable, while unhealthy declared bindings refuse. Missing access continues to produce the controller's opaque 404. Principal checks, working-copy behavior, mutation preconditions and domain transitions remain unchanged. Full metadata admission and workflow binding-based route inclusion remain pending.
+Discovery/OIDC-client terminal preparation completes explicit bindings for API-owned router families. Discovery's public API index action shares legacy response adaptation and uses the same finalized kernel discovery handler delivered through ConfiguresHttpKernelInterface; HTTP finalization is required only for execution, never metadata inspection. OIDC's six public request actions retain scalar matched-ID authority, JSON envelopes, mutation fences and secret disclosure policy. Required execution dependencies and unfinished HTTP wiring refuse selection. This remains preparatory: Foundation API terminals and complete API metadata declarations are not yet admitted.
+
+ROUTE-METADATA-01 Foundation API terminal preparation: explicit nonshared provider bindings preserve JSON:API/translation request authority, access/exposure/internal visibility, mutation fences and existing document headers. Schema show reuses its legacy action and canonical registry; schema authority absence composes over the boot-scoped field-type registry, never the static default. Workflow list shares its legacy payload and allows absent optional model; unhealthy selected dependencies refuse. Full API metadata admission and installed qualification remain pending.
+
+ROUTE-METADATA-01 field autosave preparation: an explicit nonshared request adapter supplies the matched _entity_type/id/key attributes to the unchanged controller. Required kernel manager/access/field registry services fail closed on selection. The adapter retains media/body validation, working-copy mutation fencing, field/access checks, sanitization and representation behavior; named callable arguments cannot replace matched parameters. This preparatory binding adds no routes; complete API metadata admission and installed strict graph proof remain pending.
+
+
+ROUTE-METADATA-01 API availability publication: after existing successful boot install gates and catalog construction, ApiServiceProvider publishes copied effective exposure and api.route.content_search, api.route.mcp, api.route.catalog and api.route.ai_catalog booleans through the existing neutral RouteExposureInputs slot. No extra package probes or execution-service resolution occurs. Canonical composition reads the copied facts only after freeze; malformed, duplicate and late publication invalidate both views. This prerequisite does not admit the complete API route table or qualify installed strict Bimaaji export.
+
+
+ROUTE-METADATA-01 complete API admission: ApiServiceProvider contributes one pure table from finalized copied exposure, api.route availability and declared service presence. Fixed API rows and JsonApiRouteProvider structural rows share the same authority with bare compatibility replay through RouteMetadataCompiler. Canonical declarations identify explicitly bound, nonshared request adapters; no controller or domain-router construction occurs during inspection. The owned JSON structural generator is loaded during register, before cold reads. Canonical workflow inclusion uses declared TransitionService binding presence; an unhealthy selected dependency refuses execution rather than silently withdrawing routes. Bare compatibility retains its prior healthy-resolution gate and semantic controller/alias defaults until legacy callers migrate. OIDC admin inclusion uses copied entity presence. MCP permission/session/CSRF, retention roles/defaults, priorities and hidden opaque404 behavior remain unchanged. The stateless hidden handler accepts optional forwarded request/path arguments without service reads. Removal condition for semantic adapter mapping and bare replay is completion of legacy API callers under RM-06; owner waaseyaa/api. Admin Surface/FETDER producers and CLI/Bimaaji/installed strict export remain open.

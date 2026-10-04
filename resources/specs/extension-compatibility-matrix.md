@@ -1,5 +1,7 @@
 # Extension Compatibility Matrix (v1.0-v1.3)
 
+<!-- Spec reviewed 2026-08-04 - #2191: removed legacy MCP-controller rows were retired; the current application agent-tool contribution and duplicate-name refusal contract is the live extension surface. -->
+
 ## Policy
 
 - Runtime contract additions must be additive.
@@ -10,18 +12,15 @@
 
 | Surface | Introduced | Status | Compatibility Rule |
 |---|---|---|---|
-| MCP `tools/call` stable meta (`contract_version`, `contract_stability`, `tool`, `tool_invoked`) | v1.0 | Stable | Must remain backward compatible |
-| MCP alias normalization (`search_teachings` -> `search_entities`) | v1.0 | Stable | Alias retained; canonical tool contract unchanged |
-| MCP read-path caching (transparent) | v1.1 | Stable | Must not change tool payload shape |
 | Plugin extension interface (`KnowledgeToolingExtensionInterface`) | v1.2 | Stable | Method signatures additive-only |
 | Plugin extension runner (`KnowledgeToolingExtensionRunner`) | v1.2 | Stable | Ordered deterministic execution required |
 | Extension SDK scaffold (`scaffold:extension`) | v1.3 | Stable | Scaffold payload keys and template contract versioned |
 | Kernel bootstrap seam (`extensions.plugin_directories`) | v1.3 | Stable | Empty/default config preserves prior behavior |
-| MCP extension diagnostics in `tools/introspect` | v1.3 | Stable additive | Additive introspection-only; `tools/call` unchanged |
+| Application agent-tool contribution (`ProvidesAgentToolsInterface`) | Current main | Stable additive | Tool names are unique; registration order cannot select a winner |
 
 ## Required Contract Tests
 
-- MCP stable meta compatibility under extension registration.
+- Agent-tool contribution and duplicate-name refusal.
 - Kernel extension runner bootstrap fallback behavior (configured + empty).
 - Extension SDK scaffold deterministic payload and validation paths.
 - Cross-repo harness execution with auditable artifact output.
@@ -51,6 +50,7 @@ This is the canonical, package-level mirror of the seven-layer architecture enfo
 | typed-data | 0 | |
 | validation | 0 | |
 | access | 1 | |
+| audit | 1 | |
 | auth | 1 | |
 | config | 1 | |
 | entity | 1 | |
@@ -60,10 +60,10 @@ This is the canonical, package-level mirror of the seven-layer architecture enfo
 | testing | 1 | Ships entity fixtures; runtime `require waaseyaa/entity` is intentional |
 | user | 1 | |
 | engagement | 2 | |
+| attachment | 2 | |
 | groups | 2 | |
 | media | 2 | |
 | menu | 2 | |
-| messaging | 2 | |
 | node | 2 | |
 | note | 2 | |
 | path | 2 | |
@@ -71,31 +71,40 @@ This is the canonical, package-level mirror of the seven-layer architecture enfo
 | taxonomy | 2 | |
 | billing | 3 | |
 | github | 3 | |
-| northcloud | 3 | |
+| listing | 3 | Declarative, access-aware dynamic collections |
+| messaging | 3 | |
+| migration | 3 | |
 | notification | 3 | |
+| page-builder | 3 | Governed client-neutral layout documents; see `page-builder.md` |
+| publishing | 3 | |
 | search | 3 | |
 | seo | 3 | |
+| structured-import | 3 | |
 | workflows | 3 | |
 | api | 4 | |
 | bimaaji | 4 | |
 | routing | 4 | |
+| wayfinding | 4 | |
 | ai-agent | 5 | |
 | ai-observability | 5 | |
 | ai-pipeline | 5 | |
 | ai-schema | 5 | |
+| ai-tools | 5 | |
 | ai-vector | 5 | |
 | admin-surface | 6 | PHP host extension for the admin SPA (`packages/admin/`); see footnote 1 |
 | cli | 6 | |
 | debug | 6 | |
 | deployer | 6 | |
+| frankenphp | 6 | |
 | genealogy | 6 | |
 | graphql | 6 | |
 | inertia | 6 | |
 | mcp | 6 | |
 | ssr | 6 | |
 | telescope | 6 | |
+| workspace | 6 | |
 
-**Total: 62 PHP packages** across 7 layers (18 / 9 / 10 / 7 / 3 / 5 / 10).
+**Total: 73 PHP packages** across 7 layers (19 / 10 / 10 / 12 / 4 / 6 / 12).
 
 ### Footnotes
 

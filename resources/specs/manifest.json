@@ -1,23 +1,28 @@
 {
-    "framework_version": "v0.1.0-alpha.285",
-    "source_released_at": "2026-08-03T00:44:07+00:00",
-    "corpus_sha1": "fe37b87e0cdcb58dbe51d170a92f205467f7d39a",
+    "framework_version": "v0.1.0-alpha.305",
+    "source_released_at": "2026-10-04T14:48:22+00:00",
+    "corpus_sha1": "9eb724df613557b928a8ece82230b8eaa64d5a8f",
     "source": "vendor/waaseyaa/framework/docs/specs",
     "specs": [
         {
             "name": "access-control",
             "title": "Access Control",
-            "sha1": "31d531faea2aa7255b5c973dcad28a15f9ac234b"
+            "sha1": "5b17dee461d3356cbdc0025ce5707ed0c4209876"
         },
         {
             "name": "admin-spa",
             "title": "Admin SPA",
-            "sha1": "b41d2153591679634646b05b4af2240ce94e8fff"
+            "sha1": "041f10f66a92e27142e1ea87392140ecfda8cf7e"
         },
         {
             "name": "agent-executor",
             "title": "Agent Executor",
-            "sha1": "1ebbdbfd9e8758bf01117ff7a7f56b5cb1863fe9"
+            "sha1": "47676b67b53eae876fc332d85894b18a85c3da97"
+        },
+        {
+            "name": "agent-management",
+            "title": "Per-site management conformance",
+            "sha1": "dcb26f43877da9ee23192734e2c6c6b711110f56"
         },
         {
             "name": "agent-output",
@@ -27,22 +32,27 @@
         {
             "name": "ai-integration",
             "title": "AI Integration",
-            "sha1": "83f2d9753db5c5301774a3eb0b25b75f890f2bc5"
+            "sha1": "118fcf21ba2107649dd004acf28dc40a9bada21b"
         },
         {
             "name": "ai-schema",
             "title": "ai-schema",
-            "sha1": "a822c0f610e7af4577ec32b85f1b69d8bfa8ec07"
+            "sha1": "ebcb503fe7098b8da3a5b68ab599c76df9af3620"
         },
         {
             "name": "api-layer",
             "title": "API Layer",
-            "sha1": "5713f4528019dc5a12d6286bcd14bced352d4f6b"
+            "sha1": "083371eae47de7566f738d6e16b377c540a64b50"
         },
         {
             "name": "app-controller-invocation",
             "title": "App controller invocation (SSR `Class::method`)",
-            "sha1": "4fd174a047b11c4b9baa4cd9576592f6dcabb758"
+            "sha1": "c55091b9724872e3fb6371cf725a7b7ec1b53065"
+        },
+        {
+            "name": "auth-consumer-extensions",
+            "title": "Auth consumer extensions",
+            "sha1": "ae3eb6b0456c8569986fce03df9d3ea6bbe3010b"
         },
         {
             "name": "authoring-assist-contract",
@@ -52,27 +62,37 @@
         {
             "name": "bimaaji",
             "title": "Bimaaji \u2014 Application Graph & Agent Mutation Layer",
-            "sha1": "ba7b25a116b372a6b82eba1cf7f4c123e1799439"
+            "sha1": "add5d61164d0e0068f212ef5e387eb7f3ff6d777"
         },
         {
             "name": "bimaaji-install",
             "title": "Bimaaji install command (`bin/waaseyaa bimaaji:install`)",
-            "sha1": "623ef9a23f90dceaa6609b45e5b27562ce285d3a"
+            "sha1": "1485a4bbd9d7ef55241e527142f81c5723c32c00"
         },
         {
             "name": "broadcasting",
             "title": "Broadcasting (Server-Sent Events)",
-            "sha1": "a2872616122d952f93ceb3c7d57998aacc011f87"
+            "sha1": "ee63fdf51dc5ef33774dad8122d69bb6a037569a"
+        },
+        {
+            "name": "builder-product-boundaries",
+            "title": "Framework and builder product boundaries",
+            "sha1": "21f03d14f43c9eb72644c9c2904084533c341afe"
         },
         {
             "name": "bundle-scoped-fields",
             "title": "Bundle-scoped fields",
-            "sha1": "e98bb929f66ac28d8ab978d33980c1be459ac681"
+            "sha1": "6b17cab9f16403c967d8c4cb87e71215a0c0e1f3"
         },
         {
             "name": "bundle-scoped-storage",
             "title": "Bundle-scoped storage",
-            "sha1": "773b3a0bcf84bbc9597d8af00749458776a36ed5"
+            "sha1": "860b9913ac907eb39b60451d8d1a14c34fa94828"
+        },
+        {
+            "name": "ci-test-selection",
+            "title": "CI random-order sharding and the rejected selection design",
+            "sha1": "5715fccf323054ace0ebae0c8b48426405813386"
         },
         {
             "name": "classification-and-retention",
@@ -82,17 +102,17 @@
         {
             "name": "cli-kernel",
             "title": "CLI Console",
-            "sha1": "ff7a97ef8df2a35d6abed3c9e1e8d40a1dd98409"
+            "sha1": "22b6e135be5c4b47b1fff15327d87fa1f0c761fa"
         },
         {
             "name": "cli-symfony-console-migration-plan",
             "title": "CLI Migration Plan: Replace Native Kernel with Symfony Console",
-            "sha1": "919b413a0299b80dfec88fbfcc2c4c964fc4daf5"
+            "sha1": "3c3a598bf741c668792563d55513cff4fa9dca37"
         },
         {
             "name": "config-management",
             "title": "Configuration Management (CMI) \u2014 Active/Sync Store Split",
-            "sha1": "dd5d819ffd514c190b9479a8d1dd404a360ca1a3"
+            "sha1": "335e2b2c92678640fd6d59a592f0f780daf5b336"
         },
         {
             "name": "config-management-v1",
@@ -102,12 +122,12 @@
         {
             "name": "content-publishing",
             "title": "Content Publishing v1 \u2014 agent-operable editorial CRUD over the entity substrate",
-            "sha1": "df9171b5e41e346c5fcbc91ca2c75253e10e064a"
+            "sha1": "228cbffd7906eb40c6f0ed5637e3673e0a56cf0c"
         },
         {
             "name": "content-workflow",
             "title": "Content Workflow (CW-v1)",
-            "sha1": "e3c2556b43a1554f6b48511adf99b94c1fdefcc2"
+            "sha1": "b009b1c6fec2a13d7333b71cd091a096c7c71f53"
         },
         {
             "name": "controller-dispatcher-split",
@@ -122,17 +142,32 @@
         {
             "name": "debugging-dx",
             "title": "Debugging & Developer Experience",
-            "sha1": "8b82b1d97ee19ed3dcb59b0a22b666030ef43486"
+            "sha1": "c413612f1143c7623f4056ca88b1cfe1fd959a16"
+        },
+        {
+            "name": "delivery-agent-event-batches",
+            "title": "Delivery agent event batches",
+            "sha1": "dc5ba2921c9cae1f58b4df66550c951aab6432ca"
+        },
+        {
+            "name": "delivery-telemetry",
+            "title": "Delivery telemetry",
+            "sha1": "0f86bbdb95a86f3b7bb49fcc775057bf289307aa"
+        },
+        {
+            "name": "distribution-exclusion-policy",
+            "title": "Distribution exclusion policy",
+            "sha1": "4e76f56ff2faba0848c11a5c610c1f49af1c3f4d"
         },
         {
             "name": "drupal-comparison-matrix",
             "title": "Waaseyaa \u2194 Drupal Feature Comparison Matrix",
-            "sha1": "3e90f8f90dfb9ab70bdf3d2874b937a0849c0002"
+            "sha1": "dd4e394eed10dc8f5f0cfd5d8163ed8d6b8077a1"
         },
         {
             "name": "entity-field-read-boundary",
             "title": "Entity Field-Read Boundary",
-            "sha1": "838681dbbc237fa127712f7fa7dd4433c0bc5cc3"
+            "sha1": "556579decccad420e47c81a8b970790df3cbe2ad"
         },
         {
             "name": "entity-storage-translatable-revisions",
@@ -147,27 +182,32 @@
         {
             "name": "entity-storage-two-axis",
             "title": "Entity Storage \u2014 Two-Axis (Revisionable \u00d7 Translatable)",
-            "sha1": "bdf26473ce6a7decbce779fe8efad9356d7ad5f9"
+            "sha1": "8082a7aa4e8d8eac6cf531813e6007c2252e4955"
         },
         {
             "name": "entity-storage-v2",
             "title": "Entity Storage v2 \u2014 Multi-Backend Storage with Revisions",
-            "sha1": "f150a9212ee9a0a12fbcc14f1cdbab75d4ad0bba"
+            "sha1": "982f81a36c0d949dab9c9ceadbb80667e5a761f7"
         },
         {
             "name": "entity-system",
             "title": "Entity System",
-            "sha1": "c38eca8510bb0b3df5eb712e6d8d822a5a22e39d"
+            "sha1": "9f4e6c58bf09854dff2e9d2d1f58b56733d2450d"
+        },
+        {
+            "name": "exact-source-artifact",
+            "title": "Exact source artifact",
+            "sha1": "d659749e469e1a959e8cf4d943d25670b3451073"
         },
         {
             "name": "extension-author-onboarding",
             "title": "Extension Author Onboarding Kit",
-            "sha1": "3cac214a5301787daea907259258018e14e633fa"
+            "sha1": "d40042c1174816272f0e181f9226c14ad994a7bb"
         },
         {
             "name": "extension-compatibility-matrix",
             "title": "Extension Compatibility Matrix (v1.0-v1.3)",
-            "sha1": "852e9a5661281f8df242bf0148bb224d53c7085f"
+            "sha1": "ec05ecb5bff35bbbdfd99b76f4be9c045b89b117"
         },
         {
             "name": "extension-release-playbook",
@@ -187,7 +227,12 @@
         {
             "name": "field-access",
             "title": "Field-Level Access",
-            "sha1": "6513f92837c5cbbf125e25a742c78a5db0285b49"
+            "sha1": "20aa2290325e7200980cf7617271fca0d9537da5"
+        },
+        {
+            "name": "field-scaffold-projection",
+            "title": "Canonical field scaffold projection",
+            "sha1": "ccd44fd676fb7d0dcdf7a3accd19d665f51d23b7"
         },
         {
             "name": "field-storage-backends",
@@ -215,19 +260,24 @@
             "sha1": "dffd3222c9b358feaed1eb93c1ade42554e8756c"
         },
         {
+            "name": "governed-gates",
+            "title": "Governed Gates: Preflight, Refresh, and Recorded-Artifact Identity",
+            "sha1": "8147895bb70ac26c89dcad2ad333bdb2fa7552ec"
+        },
+        {
             "name": "http-entry-point",
             "title": "HTTP entry point (`public/index.php`)",
-            "sha1": "f68a39f9959f6e5bc045e2ef2be266969f9023c9"
+            "sha1": "be6a1a605c7b129b6798d73142410f6e4a1001ff"
         },
         {
             "name": "infrastructure",
             "title": "Infrastructure",
-            "sha1": "9f413832f158a9155ded1d0834c0d9adff232bc3"
+            "sha1": "63544a23f6153d75656949bb9270f2ffca2fa75c"
         },
         {
             "name": "ingestion-defaults",
             "title": "Ingestion Defaults",
-            "sha1": "197b0cff3a67d54e8f7f7ec42621560b4fb135d8"
+            "sha1": "150d961b124745c73fe31ab670913087aa60fdb1"
         },
         {
             "name": "ingestion-editorial-dashboard-contract",
@@ -252,32 +302,42 @@
         {
             "name": "jsonapi",
             "title": "JSON:API \u2014 cast-aware attributes",
-            "sha1": "bf9b50da8fb893609dd4ab1936c5c9e16146e973"
+            "sha1": "d49648c94bc1686bd22a94d9b5df1fc9f8ea6bfb"
+        },
+        {
+            "name": "landing-base-prequalification",
+            "title": "Landing-base prequalification",
+            "sha1": "27da96a9c66fe795b50ad9a77f2b2b0bc37b2bb8"
         },
         {
             "name": "listing-pipeline-v1",
             "title": "Listing Pipeline v1 \u2014 Views-equivalent surface for entity listings",
-            "sha1": "74876ef1a65125f2b58b5e02a1b5ea6a802571b2"
+            "sha1": "41508ba073d41fffdae8bf9d46a0aa23ac3c06ae"
         },
         {
             "name": "mcp-endpoint",
             "title": "MCP Endpoint",
-            "sha1": "072a615263a1dd5ff60becde9cfbfe70b373d18c"
+            "sha1": "4bdd2337647bea6a81e0f88046c2b80e0e3cc4c7"
+        },
+        {
+            "name": "mcp-enterprise-profile",
+            "title": "Enterprise MCP profile",
+            "sha1": "c40d700545acb58bd61bae4b8c45aad251a5d83f"
         },
         {
             "name": "messaging",
             "title": "Messaging \u2014 L3 Chat Substrate",
-            "sha1": "db452b4818c326ce029b189a009aa66d24e8ce86"
+            "sha1": "398f1ff3cf797b9f366b3edcf94df358f82f34d5"
         },
         {
             "name": "middleware-pipeline",
             "title": "Middleware Pipeline",
-            "sha1": "52afd35bff6d48a18fa0e110de5b8f5038ad9672"
+            "sha1": "5f66a3d1c8b490f5ab08181eaeedf4ab7c2c8068"
         },
         {
             "name": "migration-platform",
             "title": "Migration Platform",
-            "sha1": "3474702fa825f58b8f667ed396ea4f1f6f761956"
+            "sha1": "f8beedafa62a2d2a692c88c7f0e7518c0ea78aaa"
         },
         {
             "name": "migration-platform-v1",
@@ -285,34 +345,69 @@
             "sha1": "e343b1c1c769ed287b006e8573c52d23edabc15e"
         },
         {
+            "name": "native-host-support",
+            "title": "Native host support",
+            "sha1": "3fa524d1908b5b20abfc5c2d539a5323e3a87524"
+        },
+        {
+            "name": "oauth-provider",
+            "title": "oauth-provider",
+            "sha1": "d32da453414bc101dcf8da0f44a803ebbcbe32a7"
+        },
+        {
             "name": "ocap-audit-log",
             "title": "OCAP Audit Log Substrate",
-            "sha1": "0f44a2707041613b8c2b18f3442278e6b019e923"
+            "sha1": "4cf4e49b8d08577c06d8ba87b2b9781025277d4a"
         },
         {
             "name": "operations-playbooks",
             "title": "Operations Playbooks",
-            "sha1": "48f6983bf23f05e47a128854ad5da1aa81aab1b0"
+            "sha1": "f8e0638760bfac8d5e784019fc98e2f23824505f"
         },
         {
             "name": "operator-diagnostics",
             "title": "Operator Diagnostics",
-            "sha1": "e6a1901a3bd30e9a91a55f04ca4695273ed55713"
+            "sha1": "991745af3e5da30ea67e01375017425617d17682"
         },
         {
             "name": "package-discovery",
             "title": "Package Discovery",
-            "sha1": "276123bc113ed1cc72da04a890045a1b90886388"
+            "sha1": "ca1b3535603451d9ba1b9437f0434e8ab5542117"
+        },
+        {
+            "name": "page-builder",
+            "title": "Governed Page Builder",
+            "sha1": "8a795be1eb3e15583fa37286bda02eab7c098d70"
         },
         {
             "name": "per-site-convergence-audit",
             "title": "Per-site convergence audit (Waaseyaa ecosystem)",
-            "sha1": "9b6beca7c8cc9aa2b0f13287384f21272c394f0f"
+            "sha1": "150086333b19872e1fec65667c21fd85f5dc4f7b"
+        },
+        {
+            "name": "phpunit-skip-governance",
+            "title": "PHPUnit skip governance",
+            "sha1": "087f6a52ef882f449a4ae5663f06ff0715bf8f50"
         },
         {
             "name": "plugin-extension-points",
             "title": "Plugin Extension Points",
-            "sha1": "94ab978f9288ffed7c98d0fc245b6926c46ae7a3"
+            "sha1": "8dc5d5cecd268acd232a965af83caa0997253272"
+        },
+        {
+            "name": "project-board-synchronization",
+            "title": "Project board synchronization",
+            "sha1": "f600659b0ca9380b7880a25700353d8f48d4f304"
+        },
+        {
+            "name": "project-hooks",
+            "title": "Project Hooks",
+            "sha1": "4fc8990180f6a2009674564c6b6666a95b0f85b5"
+        },
+        {
+            "name": "public-surface-declarations",
+            "title": "Public-surface declarations",
+            "sha1": "a8c4d993089b5f584d063a50662baacbe90e99ca"
         },
         {
             "name": "relationship-inference-contract",
@@ -322,7 +417,12 @@
         {
             "name": "relationship-modeling",
             "title": "Relationship Modeling (v0.6)",
-            "sha1": "bc273234ff144d5681800f14f34b5f0aa47345d6"
+            "sha1": "912e97ec81bdac5e9b692e9b9c01f548900a51c9"
+        },
+        {
+            "name": "release-evidence",
+            "title": "Release evidence contract",
+            "sha1": "e083a12cdeb0f32df6e2f5ccc34eb1a9e6a38c3d"
         },
         {
             "name": "remediation-program-handoff",
@@ -332,17 +432,72 @@
         {
             "name": "revision-system-unified",
             "title": "Revision system (unified, with an optional translation axis)",
-            "sha1": "faf1416cd7da9002a11818d4ca8cb00c28f8da47"
+            "sha1": "77082441a5020918b9db776825a2decd1b087322"
+        },
+        {
+            "name": "route-metadata",
+            "title": "Route metadata composition",
+            "sha1": "5b5171d344cefefc429babbb2745011d99aa3cdb"
+        },
+        {
+            "name": "s1-concurrency-fencing",
+            "title": "S1 entity concurrency and scheduler fencing",
+            "sha1": "106840fa353fbc58d6cb1c772e2ec56307470257"
+        },
+        {
+            "name": "s1-configuration-authority",
+            "title": "S1 configuration authority",
+            "sha1": "aa47e7515ea80e095c52aded49e502f6cd3b47f3"
+        },
+        {
+            "name": "s1-configuration-schema-manifest",
+            "title": "S1 configuration schema, sync format, and manifest authority",
+            "sha1": "caf7c04608e0ac0217666148fa47c2af785a63ad"
+        },
+        {
+            "name": "s1-schema-authority",
+            "title": "S1 schema mutation authority",
+            "sha1": "25b978376a68eadfa38214476a5df134643c46b4"
+        },
+        {
+            "name": "s1-signing-key-lifecycle",
+            "title": "S1 OIDC signing-key lifecycle",
+            "sha1": "0ffa8af8d4f61be3c4ba91f05577a1318afd73c0"
+        },
+        {
+            "name": "s1-sqlite-topology",
+            "title": "S1 SQLite topology contract",
+            "sha1": "5d8417cd06163782a76ccf9fe5763be51e3f246a"
+        },
+        {
+            "name": "s1-support-lifecycle",
+            "title": "S1 support and lifecycle contract",
+            "sha1": "9b82ee65f67d0e936b4b9c1d88e701f5bb0fd6d5"
+        },
+        {
+            "name": "s1-upgrade-compatibility",
+            "title": "S1 Upgrade Compatibility",
+            "sha1": "1d4c94e9a652ba8dbc15514b31376788a4457311"
+        },
+        {
+            "name": "save-advisories",
+            "title": "Save advisories and candidate-bound acknowledgement",
+            "sha1": "8e2b359523b7229288200f68a4f4c57345553c94"
         },
         {
             "name": "schema-evolution-v2",
             "title": "Schema evolution v2.0 \u2014 SchemaDiff engine (design)",
-            "sha1": "f30bc35e2fe0a4682247fbfba73d8d0a74dc4721"
+            "sha1": "ac9008fbae0b177cf5f82b8af3e3fe34e605f577"
+        },
+        {
+            "name": "search",
+            "title": "Search",
+            "sha1": "028172a562791fc471da573e3e1b270f3f9c011a"
         },
         {
             "name": "security-defaults",
             "title": "Security Defaults",
-            "sha1": "1cf961c88a3aa31384bd1d645f6a80ff206a7835"
+            "sha1": "ed5535d41f4819a62e2e74deb77498551b23e2da"
         },
         {
             "name": "semantic-refresh-trigger-contract",
@@ -350,14 +505,34 @@
             "sha1": "32e282bc0f2fc647249dce58eec4eedc0a4ee129"
         },
         {
+            "name": "semantic-search-contract",
+            "title": "Canonical embedding storage and semantic-search contract",
+            "sha1": "a1239ae60acffc07891d2cc33fff801604d20b9a"
+        },
+        {
             "name": "seo",
             "title": "SEO package (`waaseyaa/seo`)",
-            "sha1": "198d0e5a2dead71c7d182acadd62e18cbb643712"
+            "sha1": "3fa71b1e64fe9ac16b3dbe28bb0b347be2206f2f"
+        },
+        {
+            "name": "site-golden-path",
+            "title": "Fresh-site golden path",
+            "sha1": "fcaef97882dd4b38cfafa977ec1b36964a739a41"
         },
         {
             "name": "source-priority-merge-contract",
             "title": "Source-Priority Merge Contract (v1.6)",
             "sha1": "1b2111249516f22841a2c1445918cde0c4ee9d19"
+        },
+        {
+            "name": "spec-corpus",
+            "title": "Specification corpus compiler",
+            "sha1": "26be82942811755fb9b599f48294398df915e966"
+        },
+        {
+            "name": "sqlite-artifact-installation",
+            "title": "SQLite artifact installation",
+            "sha1": "dea4c85ccd158189046752143908f23e467df35d"
         },
         {
             "name": "sqlite-capability-matrix",
@@ -367,12 +542,17 @@
         {
             "name": "ssr-page-composition",
             "title": "Generic SSR entity-page composition",
-            "sha1": "728d76c5fc14c87f5dfb40b66edb167bebad967d"
+            "sha1": "e767b2301d83526140075a8b28e19809be72cc46"
         },
         {
             "name": "stability-charter",
             "title": "Waaseyaa Stability Charter",
-            "sha1": "a53bc8cb57d89492a47fded8d176cefe844e55d5"
+            "sha1": "69e26e1680a34621bab7aa550b57e71960c500ef"
+        },
+        {
+            "name": "structured-import",
+            "title": "Structured import",
+            "sha1": "71e21f2bba926f3c2cf10d6b43ca8c4fedb3243d"
         },
         {
             "name": "symfony-version-floors",
@@ -382,7 +562,7 @@
         {
             "name": "testing-strategy",
             "title": "Testing Strategy (Framework)",
-            "sha1": "f424395ad126721f5dca70a48ce6760a9147e818"
+            "sha1": "8d90fa4ec025faf70c29ff9d905c1e45fb49e06b"
         },
         {
             "name": "two-factor-auth",
@@ -397,7 +577,7 @@
         {
             "name": "version-provenance",
             "title": "Waaseyaa version and provenance",
-            "sha1": "e29ed97f28b1068c56c9d1cfb2dab7da9f6f9dd8"
+            "sha1": "2072c95f3a9e62412cc85ff26c7796d7dfb1542d"
         },
         {
             "name": "waaseyaa-migrate-source-wordpress",
@@ -407,22 +587,27 @@
         {
             "name": "wayfinding",
             "title": "Wayfinding",
-            "sha1": "cfa857ce5e1f09e57af7d1b889bb9775234e0728"
+            "sha1": "30b43eb4de7f91eb448345e9d2f0b59f3dcd58c8"
         },
         {
             "name": "work-surface",
             "title": "Work Surface",
-            "sha1": "477d03390b1e9821f55ce6c4c9213d2bb8079bdf"
+            "sha1": "91e15dfce3bc65bbcc720ab1c4768cb2c6065e0d"
         },
         {
             "name": "workflow",
-            "title": "Workflow governance (anchor-issue + design-first)",
-            "sha1": "5cd954d774154f6d0afa8e2b27754bd100fb5772"
+            "title": "Workflow governance (forge-neutral change record + design-first)",
+            "sha1": "997d9e2a51a8cc7bedeb5047321d704ace6b4290"
         },
         {
             "name": "workspace-chat-surface",
             "title": "Workspace Chat Surface",
             "sha1": "5471b77f66ec462181b1d8c029468ceb38a8b06c"
+        },
+        {
+            "name": "worktree-coordination",
+            "title": "Worktree coordination",
+            "sha1": "a18be338e7c2c77d8ea677f7bbf2167799757110"
         }
     ]
 }

@@ -97,7 +97,7 @@ Compare the app’s layout and Composer metadata to the skeleton. Deviations are
 | Check | Pass |
 |-------|------|
 | `autoload` / `autoload-dev` | PSR-4 roots present and match `src/` and `tests/` (or documented alternate) |
-| `require-dev` | PHPUnit **10.5+** (skeleton allows `^10.5 \|\| ^11.0`). **PHPStan** is recommended for mature apps; minimal skeleton does not require it — if the app runs static analysis in CI, align `phpstan/phpstan` (or org standard) with lockfile |
+| `require-dev` | PHPUnit **13.x** on PHP 8.5. **PHPStan** is recommended for mature apps; minimal skeleton does not require it — if the app runs static analysis in CI, align `phpstan/phpstan` (or org standard) with lockfile |
 | `scripts` | Includes skeleton-equivalent `post-create-project-cmd` where the app is created from skeleton (chmod bins + post-create setup); existing apps may chmod in docs/CI |
 | `extra.waaseyaa.providers` | **If** the app registers a custom `App\*` (or branded-namespace) service provider, it appears under `extra.waaseyaa.providers` |
 | `config.optimize-autoloader` | `true` |
@@ -221,11 +221,10 @@ For each deviation, record:
 | 4 | northops-waaseyaa | Skeleton + app providers |
 | 5 | irc.waaseyaa.org | Autoloader / tooling recently touched |
 | 6 | dashboard-waaseyaa | Full skeleton consumer (clone if not in workspace) |
-| 7 | northcloud-search | Packagist-resolved consumer (clone if not in workspace) |
-| 8 | oneredpaperclip-waaseyaa | Partial stack, custom providers |
-| 9 | goformx-web | Metapackage / non-PHP — use **Reduced invariant set** below |
-| 10 | claudriel | Largest surface; run after smaller consumers |
-| 11 | minoo | Flagship; final invariant sweep |
+| 7 | oneredpaperclip-waaseyaa | Partial stack, custom providers |
+| 8 | goformx-web | Metapackage / non-PHP — use **Reduced invariant set** below |
+| 9 | claudriel | Largest surface; run after smaller consumers |
+| 10 | minoo | Flagship; final invariant sweep |
 
 Workspace roots that commonly host these clones (adjust to your machine): e.g. `~/dev/waaseyaa.org`, `~/dev/signalgarden`, `~/dev/scratch-waaseyaa`, `~/dev/northops-waaseyaa`, `~/dev/irc.waaseyaa.org`, `~/dev/claudriel`, `~/dev/minoo`.
 

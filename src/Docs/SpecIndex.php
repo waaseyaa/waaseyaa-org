@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Docs;
 
+use App\Mcp\SpecReaderAccount;
 use Waaseyaa\Database\DatabaseInterface;
 use Waaseyaa\Search\Document\MarkdownDirectorySource;
 use Waaseyaa\Search\Fts5\Fts5SearchIndexer;
@@ -53,9 +54,9 @@ final class SpecIndex
         $this->provider = new Fts5SearchProvider(
             $database,
             $this->indexer,
-            null,
-            self::TITLE_WEIGHT,
-            self::BODY_WEIGHT,
+            new SpecCandidateResolver($corpus),
+            titleWeight: self::TITLE_WEIGHT,
+            bodyWeight: self::BODY_WEIGHT,
         );
     }
 
@@ -69,7 +70,6 @@ final class SpecIndex
         // fresh deploy; the rebuild is sub-second so this never blocks long.
         $this->setBusyTimeout();
 
-        $this->indexer->ensureSchema();
         $this->ensureStateTable();
 
         $version = (string) ($this->corpus->frameworkVersion() ?? '');
@@ -99,7 +99,7 @@ final class SpecIndex
         // Body relevance: fuse the per-keyword rankings (reciprocal rank).
         $rrf = [];
         foreach ($keywords as $keyword) {
-            $result = $this->provider->search(new SearchRequest($keyword, pageSize: self::PER_KEYWORD_HITS));
+            $result = $this->provider->search(new SearchRequest($keyword, pageSize: self::PER_KEYWORD_HITS), new SpecReaderAccount());
             $position = 0;
             foreach ($result->hits as $hit) {
                 $name = $this->specName($hit->id);

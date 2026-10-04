@@ -12,6 +12,152 @@ This is the canonical doctrine spec. The original mission spec
 [`config-management-v1.md`](config-management-v1.md) is retained as a historical artifact;
 this file is the single source of truth post-mission.
 
+> **S1 authority amendment (2026-08-12).** The command and YAML surfaces below
+> remain stable, but active production configuration is now one versioned
+> SQLite generation composed through `configuration.authority.v1`. The sync
+> directory is desired-state input/output and is never a runtime fallback.
+> Production mutation remains refused until CFG-02 supplies atomic generation
+> activation and CFG-03 supplies schema, manifest, compatibility, and drift
+> gates. Environment overlays may select bootstrap authorities and opaque
+> secret references only; they cannot override deployable values.
+
+### S1 transactional activation amendment (CFG-02)
+
+Production mutation compiles a complete immutable successor generation and
+publishes it through one database transaction. The active token is the pair of
+a deterministic content `generation_id` and a monotonically increasing
+`activation_sequence`; both are compared at commit so rollback to familiar
+content cannot create an ABA hole. A caller-supplied activation request ID is
+bound to the canonical input and original expected token before staging, making
+lost-response retries idempotent and mismatched reuse a typed refusal.
+
+Ordinary input is additive: absence retains the active entry. Deletion requires
+an explicit tombstone bound to the expected active entry hash, or a separately
+authorized complete-replacement plan. The transaction's first operation claims
+the configuration activation counter, then rechecks the expected head and
+appends one immutable activation record. Any false result, exception,
+contention, or stale token leaves the previous head serving. Events and external
+evidence follow commit and never define the head.
+
+### S1 schema, sync-format, and manifest amendment (CFG-03)
+
+The normative closed schema dialect, strict versioned sync format, canonical
+authored/effective identities, package compatibility rules, signed-envelope
+boundary, and snapshot-consistent drift contract are defined in
+[`s1-configuration-schema-manifest.md`](s1-configuration-schema-manifest.md).
+Production continues to refuse unsigned activation until CFG-04 supplies
+independent key custody and trust policy.
+
+#### CFG-03 production composition (#2430)
+
+The verification types existed from the start but were never composed, so
+`config:import` always received `RefusingConfigImportPreflight` and always
+refused. Three of `VerifiedConfigImportPreflight`'s five dependencies had no
+production producer at all: `ConfigSyncBundleValidator` and
+`ConfigPackageCompatibility` were bound nowhere, and nothing could produce or
+load a `VerifiedConfigManifest` because no code signed a bundle manifest or read
+an envelope back. Restoring the path is one unit of work, because a producer
+without a verifier is unusable and a verifier without a producer is falsely
+reassuring.
+
+**The trust boundary is a split between two hosts.** Signing is an authoring
+action performed where custody lives — a maintainer machine or a protected CI
+environment. Importing is performed by the consumer, which holds public
+`trust_keys` and never the signing key. The signing secret must never be exposed
+to pull-request workflows or to ordinary production runtime.
+
+| Side | Holds | Does |
+|---|---|---|
+| Authoring host | signing key (via the secret registry), authored `config/sync` | validates the bundle, builds the canonical manifest, signs the envelope, writes it |
+| Importing host | public `trust_keys` only | recomputes the manifest, verifies byte identity, signature, compatibility, and replay, then imports |
+
+**Envelope location.** The envelope is a *sibling* of the sync directory, named
+from the same governed selector: `config/sync` yields `config/sync.envelope.json`.
+It cannot live inside the bundle — `ConfigSyncBundleValidator` is strict and
+complete, so every file in the sync directory must be a valid versioned config
+sync file and a JSON envelope there would fail the bundle. Deriving the path from
+`ConfigurationAuthorityContext::$syncPath` also means the envelope inherits the
+existing sync selector and its provenance rules rather than introducing a second,
+separately governed selector.
+
+`Waaseyaa\Config\Manifest\ConfigManifestEnvelopeFile` owns that path
+(`pathFor()`, `read()`, `write()`) and moves bytes only — it never verifies a
+signature, so reading an envelope grants nothing on its own. Writes are
+temp-then-rename: a partially written sidecar would fail verification in a way
+indistinguishable from tampering. An absent envelope reads as `null`, because a
+site may legitimately hold none yet and the preflight turns that into an
+actionable refusal; malformed, unreadable, or symlinked bytes throw, because
+something present and untrustworthy must never be mistaken for nothing being
+present.
+
+`Waaseyaa\Config\Manifest\ConfigManifestBundleSigner` is the authoring host's
+producer, driven by `config:manifest:sign`. It validates the directory, derives
+the required package contracts from the authored files, checks them against the
+installed cohort (so a file cannot name a contract into existence), builds the
+canonical manifest, signs it, and writes the sidecar. It reads no active
+configuration and activates nothing — producing an envelope is an authoring act,
+not a deployment. Signing is reproducible: identical bytes, cohort, scope,
+sequence, and producer evidence yield an identical envelope, so a sidecar can be
+reviewed by comparing it to what a rebuild produces. Producer evidence is
+therefore deterministic (`producer`, `authority_id`) and carries no timestamp,
+hostname, or operator name.
+
+Bundle scope and sequence default from the existing sidecar, so an operator
+continues a lineage rather than silently starting a second one. Sequence is not
+read from the consumer's database: replay is the importing side's check, and
+reaching for it here would put the two hosts back together.
+
+**Nothing self-attests.** `VerifiedConfigBundle::bind()` recomputes the manifest
+from the freshly validated sync directory and requires byte identity with the
+manifest carried inside the signed envelope. A signature therefore covers exactly
+the authored bytes on the importing host at import time. Package compatibility is
+built only from `extra.waaseyaa.config-contract` declarations discovered at boot
+(`PackageManifest::$configContracts`), never from the bundle under import — a
+bundle that could name its own contract version would be authorizing itself. A package whose declaration is malformed fails discovery outright
+rather than being skipped, so an under-specified cohort can never reach the
+signer or the verifier.
+
+`Waaseyaa\Config\Sync\SignedEnvelopeConfigImportPreflight` is the importing
+host's gate and the binding published for `ConfigImportPreflightInterface`. It
+reads the sidecar, verifies signature and replay sequence, then delegates to
+`VerifiedConfigImportPreflight`. Verification happens at import time rather than
+at container composition for two reasons: replay state needs the database, and a
+verification failure must surface as a refusal from `config:import` rather than a
+kernel that cannot boot. When replay state is unavailable the composition falls
+back to `RefusingConfigImportPreflight` — a gate missing one of its checks is not
+a weaker gate, it is a different one.
+
+**CFG-02 authorization.** `VerifiedNonDestructiveConfigurationActivationAuthorizer`
+is the production activation authority. It authorizes an ordinary activation
+carrying a verified *signed* bundle that deletes nothing, and refuses everything
+else — deletions, rollback, candidate sweep, unsigned verification, genesis.
+Tombstones are the deletion test rather than the activator's `$deletes` argument,
+which is `tombstones !== [] || completeReplacement` and therefore always true for
+a verified activation; the equivalence holds because a complete replacement must
+carry a content-bound tombstone for every active entry it omits. Ordinary
+activation remains compare-and-swap: the caller states the token it believes
+active, so `config:import` needs `--expected-generation` and `--expected-sequence`
+once a generation exists.
+
+**Unsigned stays refused.** `UnsignedConfigPolicy` remains `refusing()` pending a
+sealed CFG-01 bootstrap identity. The sealed-unsigned policy is not a shortcut
+around this work.
+
+**Genesis is separate.** `install:init` activates only the canonical empty
+generation (#2428). It can express no content, claims no CFG-03 verification, and
+is unaffected by any of the above. A freshly installed site is bootable but
+unconfigured until a verified import runs.
+
+Schema-owning feature packages participate in that import by declaring an
+`extra.waaseyaa.config-contract` and registering their schemas on the shared
+registry before freeze. Package-owned semantic validators may enforce
+deterministic, read-only constraints over installed definitions after structural
+schema validation and before content identity is accepted. In particular,
+`waaseyaa/workflows` owns `workflows.assignments@1` and rejects malformed or
+non-revisionable bindings through that semantic gate; consumer workflow
+bindings are never copied into genesis or read directly from the sync directory
+at runtime.
+
 ---
 
 ## 1. What ships
@@ -122,7 +268,8 @@ The table itself is stable; new field types extend additively. Removals / rename
 - Empty arrays/maps serialize as `[]` / `{}` (flow style) to reduce visual noise.
 - The `_meta` block always appears first.
 
-These rules are load-bearing — operator git diffs depend on them. They follow charter §4.
+These rules are load-bearing — operator and automation diffs depend on them,
+independently of the selected VCS or artifact service. They follow charter §4.
 
 ---
 
@@ -158,13 +305,20 @@ Walks the config-entity registry. For each entity, serialises to YAML per §3 an
 
 ### 5.2 `config:import [--dry-run] [--delete-orphans] [--halt-on-error] [--no-dependency-check]`
 
-1. Validates every sync file via `ConfigSyncValidator` (failures block unless `--no-dependency-check`).
+1. Validates every sync file via `ConfigSyncValidator`; schema and manifest
+   failures cannot be bypassed by `--no-dependency-check`.
 2. Builds the DAG (§4).
-3. Applies entities in topological order; each in its own DB transaction.
-4. Per-entity diffs displayed when interactive (TTY); suppressed in CI.
-5. Orphans (active-store entities with no sync file): default = warn-only; `--delete-orphans` opts into deletion.
-6. Per-entity errors are counted and the run continues unless `--halt-on-error`.
-7. Final exit code: 0 only if all entities succeeded.
+3. Executes mandatory schema/manifest/compatibility/drift preflight before any
+   apply or orphan deletion.
+4. In production, CFG-02 stages the complete generation and activates it with
+   compare-and-swap only after CFG-03 authorizes the manifest. Until those
+   bindings exist, import refuses without mutation.
+5. Per-entity diffs are displayed when interactive (TTY); suppressed in CI.
+6. Orphans default to warn-only; `--delete-orphans` makes deletion part of the
+   staged generation.
+7. Explicit testing adapters may retain the original per-entity apply/error
+   semantics to exercise command behavior, but they are not production
+   authority or recovery evidence.
 
 ### 5.3 `config:diff [<entity-type>.<id>]`
 
@@ -180,7 +334,10 @@ Parses every sync file. Instantiates the would-be entity without persisting. Run
 
 ### 5.6 `config:reset <entity-type>.<id> [--yes]`
 
-Loads the sync entity, overwrites the active entity (transactional, lifecycle events fire). Confirmation prompt unless `--yes`. Logs to `config.audit` with actor / before-after diff summary / timestamp.
+Loads and validates the sync entity, then requests a guarded generation change.
+Production refuses until CFG-02/03 provide activation and preflight. Confirmation
+is required unless `--yes`; authorized outcomes log actor, before/after digest,
+authority, and generation identity to `config.audit`.
 
 ---
 
@@ -190,9 +347,9 @@ Channel constant: `Waaseyaa\Config\Audit\ConfigAuditChannel::CHANNEL` = `'config
 
 The channel receives:
 
-- One event per `config:import` apply (per entity, after the per-entity transaction commits).
+- One event per authorized `config:import` outcome, generation-bound in production.
 - One event per `config:export` write (per file created/updated).
-- One event per `config:reset` apply.
+- One event per authorized `config:reset` outcome.
 - A `warning`-level event per `--no-dependency-check` bypass.
 - A `warning`-level event per detected orphan when `config:import` runs without `--delete-orphans`.
 
@@ -226,26 +383,28 @@ Apps and extensions may freely register `config:<custom>` verbs that are NOT in 
 
 ---
 
-## 9. Per-environment override pattern (load-bearing)
+## 9. Environment boundary and secret-reference pattern (load-bearing)
 
-CMI does **not** ship runtime config overrides (Drupal `$config['x']['y']` style). The supported pattern for per-environment values is **env vars consumed inside `config/waaseyaa.php`**.
+CMI does **not** ship runtime deployable-value overrides (Drupal
+`$config['x']['y']` style). Feature flags, endpoints, workflows, and similar
+behavior belong to the active generation and its reviewed sync artifact.
+Bootstrap environment inputs are limited to authority selection—environment
+identity, database location, sync path—and opaque secret references.
 
-Example:
+Credential-bearing configuration uses closed `SecretReference` fields that
+bind provider, identifier, expected secret class, and versioned purpose.
+`DeployableConfigurationPolicy` rejects raw secret-shaped fields and
+bootstrap-owned names in both sync files and database generations. CFG-04
+resolves a reference through the frozen kernel registry into a guarded handle;
+only an exact registered consumer may use the bytes, and only for one operation
+boundary. Secret bytes never enter active configuration, YAML, manifests, or
+evidence. Legacy environment-variable-name fields are migration input only and
+become central-provider references without reading the environment.
 
-```php
-// config/waaseyaa.php
-return [
-    'feature_x' => [
-        'enabled' => (bool) ($_ENV['FEATURE_X_ENABLED'] ?? false),
-        'budget'  => (int)  ($_ENV['FEATURE_X_BUDGET']  ?? 100),
-    ],
-    // ...
-];
-```
-
-`FEATURE_X_ENABLED=true` in staging's environment file, unset in production, no sync-store overrides involved. See [`docs/cookbook/config-sync.md`](../cookbook/config-sync.md) §6 for the full pattern.
-
-Charter §11 names runtime overrides as a future-ADR door; if and when they ship, they will be a parallel mechanism, not a sync-store extension.
+See [`docs/cookbook/config-sync.md`](../cookbook/config-sync.md) §10 for the
+operator mapping. If two environments intentionally differ in deployable
+behavior, promote two explicit reviewed generations; do not hide the difference
+in an environment overlay.
 
 ---
 
@@ -295,3 +454,38 @@ Mission `config-management-v1-01KRCDEC` (M-003, 2026-05-16) shipped FR-001..FR-0
 - Minoo round-trip (WP10) validates the substrate end-to-end: export → modify-in-sync → import → diff = 0.
 
 Acceptance criteria §9 of [`config-management-v1.md`](config-management-v1.md) are satisfied; mission complete.
+## Fresh-project signed activation
+
+`project:config:authorize` is the supported authoring-side composition for
+configuration generated by an application blueprint. It must compile the
+canonical site manifest before consumer initialization, sign the exact
+plan-owned sync bytes through the configured CFG-04 signer, and bind the site
+manifest and plan digests in signed producer evidence. The importing consumer
+receives the authorization document and public trust configuration only.
+
+Provision the two hosts once before unattended initialization. On the
+consumer, configure the authoring key's public `trust_keys` entry and select
+the generated application's canonical sync directory (`config/sync`) through
+`WAASEYAA_CONFIG_SYNC_PATH=<absolute-project-root>/config/sync` or the
+equivalent `config.sync_path` bootstrap value. On the authoring host, configure
+the matching CFG-04 `signing_key` secret reference and its separately operated
+secret provider. Do not place that secret reference, provider, or private key
+in the consumer. These are bootstrap authority inputs; they are not repeated
+for each initialization request.
+
+After provisioning, orchestration passes the same answer and decision-receipt
+documents to `project:config:authorize`, transports its canonical public
+authorization document, and supplies that document to
+`project:init --config-authorization=... --yes --json`. No generated config
+file is copied to an authoring host, and no manual `config:manifest:sign` or
+`config:import` step occurs between the `project:init` phases.
+
+`project:config:activate` is fresh-only. It verifies the embedded CFG-03
+envelope against the consumer's complete current sync directory and installed
+cohort. It re-parses the consumer's committed `.waaseyaa/site.yaml` and runs
+the canonical blueprint compiler itself; site and plan identity are never
+accepted as caller assertions. It may replace only that consumer's exact empty
+canonical genesis generation. A committed retry is read-only reconciliation: it revalidates the
+signature and current bytes, requires equality with committed replay state,
+and requires the current activation identity to equal the effective signed
+generation. This exception is unavailable to ordinary `config:import` replay.

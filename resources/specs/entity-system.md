@@ -1,4 +1,57 @@
+<!-- Spec reviewed 2026-09-21 - permission catalogue ownership (#3119): node, menu, and taxonomy package manifests own their static permission definitions; `NodePermissions` additionally centralizes validated bundle-scoped create/edit/delete ids and deterministic definitions, while taxonomy's helper does the same for vocabulary-scoped term operations. Access policies consume these canonical identifiers rather than maintaining parallel string templates. -->
+<!-- Spec reviewed 2026-09-08 - #3046: EntityRepository::create applies registered field defaults and then the entity class's pure EntityCreationValuesInterface contract before sealed instantiation. This is a new-entity-only integrity seam; instantiate/instantiateSealed stored-row hydration never invokes it. User owns canonical name/mail identity-key derivation through this contract, direct construction, and rename setters. Historical nullable rows require explicit preflight/backfill and are not silently normalized during hydration. -->
+<!-- Spec reviewed 2026-09-08 - #3040: `trace.label` joins the exact Internal defaults in `FrameworkFieldReadDefaults`; EntityReadRuntime and activation-preflight consumption remain unchanged and share that one classification source. The complete exact roster and read-channel analysis remain in field-access.md. -->
+<!-- Spec reviewed 2026-09-08 - #3034: a revisionable entity's `keys.revision` value names its base-row revision pointer and defaults to `revision_id`; repository-owned revision-history tables continue to use their internal `revision_id` column. EntityRepository save/load, pointer moves, promotion, rollback, pruning, translation hydration, and backfill honor that boundary. -->
+<!-- Spec reviewed 2026-09-02 - #2786 phase 2A: FieldValueKind is the field-owned, transport-neutral presentation seam. GraphQL adapts declared kinds without a Layer-1 GraphQL dependency; absent declarations fail closed. Attribute-first explicit custom-type admission uses the boot-scoped FieldTypeManager at registry admission; direct FieldTypeInferrer calls retain the closed scalar roster and PHPStan contract. -->
+<!-- Spec reviewed 2026-09-02 - #2786 contract edge: boot-time attribute inference defers only ids outside FieldTypeInferrer::VALID_TYPE_IDS to the boot-scoped registry; known ids still enforce inferred-PHP-type compatibility before admission. -->
+<!-- Spec reviewed 2026-08-27 - #2544: `RevisionRestoreChangedFields::CREDENTIAL_KEYS` gains `legacy_pass`, so an imported credential pending upgrade is never restored by a revision rollback - same treatment as `pass`. -->
+<!-- Spec reviewed 2026-08-26 - #2562: EntityRepository::promotePublishedRevision() is the complete-promotion entry point used by ContentPublisher. It dispatches the same BeforeRevisionPointerMoveEvent as setPublishedRevision(), then applies default-revision semantics so the served base row is rewritten from the target revision. setPublishedRevision() remains pointer-only unless a subscriber sets the event flag. Storage still does not infer discipline from published_revision_id (Playbook H). -->
+<!-- Spec reviewed 2026-08-26 - #2562 review: EntityRepository::clearPublishedRevision() drops the published pointer and unpublished the served row without a BeforeRevisionPointerMoveEvent. loadRevision() hydrates revision `_data` without the live subtable overlay when the revision is not the base pointer. shouldCreateRevision() duck-checks isNewRevision() so trait-only ContentEntityBase types honor setNewRevision(true). Waaseyaa\Entity\RevisionId is the shared revision-id extractor. -->
+<!-- Spec reviewed 2026-08-25 - #2131: `pipeline.label` is a Public framework-owned field-read default. The exact default roster remains in field-access.md; EntityReadRuntime and activation-preflight consumption of FrameworkFieldReadDefaults is unchanged. -->
+<!-- Spec reviewed 2026-08-24 - #1856: saveMany PRE/POST pairing is entity-object-correlated (WeakMap). The former pendingIsNew single-slot limitation is closed for EntityWriteAuditListener, EntityLifecycleAuditListener, and ThreadParticipantBootstrapSubscriber. Event order, transactions, and deleteMany PRE_DELETE buffering are unchanged. -->
+<!-- Spec reviewed 2026-08-21 - #2478/#2482: production HTTP asserts Framework SQL-backed entity tables only (S1-DB106). Custom EntityStorageInterface storageClass is not forced to own an SQL table. EntityStorageInterface and EntityQueryInterface are class-level @api. AttachmentSchema::apply() is the strict coordinated transition; local boot ensureTable() is best-effort. -->
 # Entity System
+
+<!-- Spec reviewed 2026-09-01 - #2761: production HTTP must not mutate
+taxonomy's term-to-vocabulary foreign key either (reusing the #2478
+no-request-DDL contract): TaxonomyServiceProvider::boot() and
+VocabularyAccessPolicy::access() both used to call
+VocabularyReferenceConstraint::ensure() unconditionally, so ordinary
+production request traffic — not just provider boot — could ALTER
+taxonomy_term. Coordinated schema sync remains the sole authoritative path
+via the entity type's declared `_foreignKeys`; assertRuntimeSchema() (the
+existing [S1-DB106] no-DDL contract) now also fails closed when a declared
+foreign key is missing. See infrastructure.md for the SqlSchemaHandler
+contract detail. The #2101 note below (taxonomy_term.vid carries an additive
+restrictive foreign key) is unchanged in substance — only WHEN and BY WHOM
+that foreign key is installed changed. -->
+<!-- Spec reviewed 2026-08-30 - #2728: EntityEvents::PRE_DELETE is a GUARD event and now dispatches IMMEDIATELY inside the delete transaction on both delete() and deleteMany() (doDelete() no longer passes $unitOfWork to it), so a refusing pre-delete listener rolls back the base row, its revisions and the mutation-authority tombstone for the whole batch. POST_DELETE is unchanged: still buffered, still dispatched only after a successful commit. deleteMany() interleaving changes from pre1,post1,pre2,post2 to pre1,pre2,post1,post2. The mutation-authority tombstone deliberately stays AHEAD of the guard, mirroring doSave()'s claim() before PRE_SAVE. EntityRepository::__construct() gains the symmetric invariant that a mutation authority requires a database. Supersedes the #1856 header's "deleteMany PRE_DELETE buffering is unchanged" note. -->
+<!-- Spec reviewed 2026-08-27 - #2624: configuration-authority composition
+uses the canonical RuntimePolicy development classifier for active-generation
+and mutation-storage decisions. Invalid explicit environment configuration is
+production-like and cannot grant mutable bootstrap behavior. The authority
+requires RuntimePolicy::isExplicitDevelopment(), so a missing configured
+profile cannot inherit mutable bootstrap behavior from process APP_ENV. -->
+
+<!-- Spec reviewed 2026-08-20 - #2467 save-advisory exception hierarchy: AbortOperationException remains final. SaveAdvisoryAcknowledgementRequiredException is a sibling RuntimeException, not a subclass, so existing abort catches keep prior semantics while BeforeSaveEvent throws still perform no write. -->
+
+<!-- Spec reviewed 2026-08-20 - #2464: RevisionRestoreChangedFields is the
+canonical copy-forward restore comparison. It excludes revision metadata and values storage
+preserves from the live row (publication pointer, status, credential hashes); current-only
+removals, workflow state, and other written privilege-bearing fields stay in the authorized
+changed set. Admin and AI restore both call this helper. -->
+<!-- Spec reviewed 2026-08-20 - #2464: rollback's existing
+BeforeRevisionPointerMoveEvent now carries the selected source revision id in a
+new optional trailing field. Repository copy-forward, pointer, mutation-token,
+and workflow-guard semantics are unchanged; the identifier lets the existing
+post-commit rollback audit distinguish source from pre-operation current. -->
+
+<!-- Spec reviewed 2026-08-20 - #2460: pre-DB-03 aggregate authority repair is reachable only through the explicit restricted `entity:backfill-mutation-authorities --reason=...` command. It raw-preflights NUL-free identities across every declared community, maps legacy empty owners to hydration's `_global` tenant, derives translatable authority only from canonical language rows, repairs each framework type atomically, explicitly reports skipped repositories, and propagates any unknown per-type count to an unknown aggregate total without token material. It binds retained operator evidence to a SHA-256 digest of the unrendered reason, preserves existing tenant/type/id-bound authorities, and is idempotent. Post-commit per-row events are notifications rather than the sole durable audit authority. Ordinary boot and reads remain fail-closed and never synthesize authority. -->
+<!-- Spec reviewed 2026-08-16 - S1-FW-DB-03: every persisted existing aggregate carries an opaque, tenant/type/id-bound EntityMutationToken. EntityRepository claims that token transactionally for saves, deletes, batches, revision-pointer moves, rollback, pruning, and translation writes; stale, missing, or transplanted authority fails closed without disclosing the successor token. Supported HTTP, GraphQL, AI, workflow, publishing, and Admin mutation surfaces must propagate the observed token. New aggregates establish authority during creation, while the audited backfill path exists only for legacy rows. Canonical contract and scheduler fencing companion: s1-concurrency-fencing.md. -->
+
+<!-- Spec reviewed 2026-08-09 - issue #2322: two-axis translation peer writes use the optional LangcodePeerStorageDriverV2Interface rather than repository-owned raw SQL. Scoped drivers require a visible canonical base owner, stamp that community_id onto new peers, and refuse foreign or legacy-empty exact peers before events or writes. CommunityTranslationPeerRepairer and tenancy:repair-translation-peers provide an explicit, UUID-guarded repair for existing empty-owner peers. -->
+<!-- Spec reviewed 2026-08-09 - issue #2320: the kernel passes one per-type CommunityScope to both base and revision drivers. Revision visibility and mutation authorization are anchored to the indexed base-table community_id; foreign revision payloads, histories, working copies, translation histories, and in-process pointers remain invisible, and foreign mutations fail before events or writes. Revision tables intentionally do not duplicate community_id. -->
+<!-- Spec reviewed 2026-08-08 - Anokii boundary remediation: community-scoped writes stamp the active community and refuse conflicting values in both storage drivers; SQL_BLOB types retain an indexed physical community discriminator. Framework field and agent providers now construct entity types from class attributes, and classification entities/migrations align bundle, language, and blob columns with the canonical schema contract. -->
 
 <!-- Spec reviewed 2026-07-19 - Sheguiandah gap batch: EntityValueContainer gains internal rawProjection(list<string>) for closed, fixed-shape authorities. It releases only the named values through the existing RestrictedEntityValue view binding, never exports the whole value bag, and is consumed through hard-coded EntityBase-bound projectors by the relationship directory; ordinary get()/toArray()/serialization and missing-context behavior are unchanged. Canonical authorization contract: entity-field-read-boundary.md. -->
 
@@ -35,7 +88,7 @@
 <!-- Spec reviewed 2026-05-10 - WP05 php-8.5 upgrade: @PHP8x5Migration cs-fixer pass — EntityRepository, SqlEntityStorage, FileStorage touched by octal_notation + new_expression_parentheses rules only; no semantic change to entity pipeline, storage, or lifecycle hooks. -->
 <!-- Spec reviewed 2026-05-10 - WP03 php-8.5 upgrade: EntityRepositoryInterface::find/findMany/findBy/loadRevision/rollback gained #[\NoDiscard] — no change to repository semantics, storage pipeline, or entity lifecycle. -->
 <!-- Spec reviewed 2026-06-09 - alpha.200/201 framework-hygiene: EntityRepositoryInterface gained the two-axis translation surface (saveTranslation / loadTranslation / listTranslationRevisions), promoted from the concrete EntityRepository — alpha.200 briefly carried all 8 two-axis methods; alpha.201 narrowed the interface to the 3 consumers actually call, the per-revision API (saveTranslationRevision(s)/loadTranslationRevision/loadTranslationTip/translationLangcodes) stays on the concrete. EntityRepository.php also dropped a useless `(int)` cast in listRevisions (getRevisionIds already returns int[]). No change to repository semantics, storage pipeline, or entity lifecycle. The interface code block below is an illustrative subset by design (omits the translation + published-revision surface); two-axis storage is specified in docs/specs/revision-system-unified.md (the live canonical; entity-storage-two-axis.md is the superseded M-004 vid model). -->
-<!-- Spec reviewed 2026-06-09 - alpha.201 doc-drift: RevisionableEntityTrait usage docblock corrected `'revision' => 'vid'` -> `'revision' => 'revision_id'` (doc-comment only; the live revision key is revision_id). No semantic change to the trait, repository, or entity lifecycle. -->
+<!-- Spec reviewed 2026-06-09 - alpha.201 doc-drift: RevisionableEntityTrait usage docblock corrected its example from `'revision' => 'vid'` to the default `'revision' => 'revision_id'` (doc-comment only). Entity types may configure another base-pointer key; see the #3034 note above. -->
 <!-- Spec reviewed 2026-06-09 - alpha.202 fork fix: TranslatableInterface::language() un-deprecated (removed #[\Deprecated] + the unresolved 'since: 0.next' placeholder). language() and activeLangcode() are distinct, supported accessors — language() returns a `langcode`/'en' fallback for entities without `default_langcode`, activeLangcode() throws. No schema, storage-pipeline, or entity-lifecycle change. -->
 <!-- Spec reviewed 2026-05-04 - issue #1376 (deferred WP07-A from mission #1257): EntityTypeManager constructor gained an 8th optional parameter `?\Closure $bundleSubtableExistsProbe = null` with signature `fn(string $entityTypeId, string $bundle): bool`. After a successful `addBundleFields()` registration, when a probe is configured and reports the per-bundle subtable absent, the manager emits a once-per-(entity_type_id, bundle) `[BUNDLE_SUBTABLE_MISSING]` notice via the injected logger. Probe failures are caught and logged at info — registration is never failed over an advisory check. AbstractKernel wires the probe with `$database->schema()->tableExists(SqlSchemaHandler::resolveSubtableName($entityTypeId, $bundle))`. Pre-existing callers (tests, bare bootstraps) that omit the probe stay silent. Companion to the load-side notice that landed in WP06 (SqlEntityStorage::mergeBundleSubtableRow); together they cover both registration-time and runtime detection of missing subtables. -->
 <!-- Spec reviewed 2026-05-13 - M-006 entity-storage-translations-v1 (squash 0f7e1809a): substantial additive surface for single-axis translations. EntityRepository gains findTranslations() (single SQL query, NFR-005) and optional ?LanguageManagerInterface + readActiveLanguage flag (C-004). Matching findTranslations() on EntityRepositoryInterface + EntityStorageDriverInterface. SaveContext::withLangcode(string) + langcodeRequired() guard in EntityStorageCoordinator. CoordinatorLifecycleDispatcher dispatches 6 new PRE/POST_TRANSLATION_* events with langcode payload. EntitySchemaSync routes translatable entity types to either widened sql-blob PK or sibling sql-column __translation table via new TranslationSchemaHandler + SqlColumnTranslationHydrator. SqlStorageDriver + InMemoryStorageDriver gain matching translation read/write paths. Non-translatable entity types preserve baseline behavior bit-identical (NFR-001 invariant). Full canonical surface and design rationale: docs/specs/entity-storage-translations-v1.md. M-006 is BETA-GATE per stability-charter §3.2 criterion 9 (now SATISFIED). -->
@@ -85,7 +138,7 @@ Subsystem specification for the Waaseyaa entity, entity-storage, field, and conf
 
 ## Public Surface
 
-Authoritative dispositions are in `docs/public-surface-map.php`, verified by `PublicSurfaceVerificationTest`.
+Authoritative dispositions are in each element's owning package-local `packages/<pkg>/public-surface.php` declaration; `PublicSurfaceVerificationTest` verifies the composed declaration plane.
 
 **Public API** (stable, semver-protected):
 
@@ -94,7 +147,7 @@ Authoritative dispositions are in `docs/public-surface-map.php`, verified by `Pu
 | entity | `EntityInterface`, `EntityBase`, `ContentEntityBase`, `ContentEntityInterface`, `ConfigEntityBase`, `ConfigEntityInterface`, `EntityTypeInterface`, `EntityType` (incl. `EntityType::fromClass()` static factory), `EntityTypeManagerInterface`, `EntityTypeRegistrationCollisionException`, `FieldableInterface`, `RevisionableInterface`, `TranslatableInterface`, `RevisionableEntityTrait`, `EntityRepositoryInterface`, `EntityEventFactoryInterface`, `EntityStorageInterface`, `RevisionableStorageInterface`, `EntityQueryInterface`, `HydratableFromStorageInterface`, `HydrationContext`, `EntityValues`, `CastDefinition`, `ValueCaster`, `CastException`, `FromArrayEntityValueInterface`, `FieldDefinitionConstraintBuilder`, `EntityTypeValidationConstraints`, `Attribute\ContentEntityType` (with `label`, `description` parameters), `Attribute\ContentEntityKeys`, `Attribute\Field`, `Attribute\EntityClassMetadata`, `Attribute\EntityMetadataReader`, `Attribute\ContentEntityTypeReader`, `Exception\EntityMetadataException` |
 | entity-storage | `EntityStorageDriverInterface`, `ConnectionResolverInterface` |
 | field | `FieldItemInterface`, `FieldItemListInterface`, `FieldDefinitionInterface`, `FieldStorage`, `FieldTypeInterface`, `FieldFormatterInterface`, `FieldTypeManagerInterface`, `FieldItemBase`, `ViewModeConfigInterface` |
-| config | `ConfigInterface`, `ConfigFactoryInterface`, `ConfigManagerInterface`, `StorageInterface`, `TranslatableConfigFactoryInterface` |
+| config | `ConfigInterface`, `ConfigFactoryInterface`, `ConfigManagerInterface`, `StorageInterface`, `TranslatableConfigFactoryInterface`, `ConfigSemanticValidatorInterface` |
 
 **`@internal`** (implementation details, may change without notice):
 
@@ -196,7 +249,8 @@ File: `packages/entity/src/EntityValues.php`
 |--------|----------------|----------------------------------|
 | Persistence (`entity-storage`, `EntityRepository`) | `toArray()` for save / `splitForStorage` | Calling `ValueCaster` or `EntityValues` inside drivers — hydration stays raw at the row boundary |
 | Presentation (JSON:API, GraphQL, SSR, MCP, discovery, `ai-*` pipelines, workflow listeners, relationship) | `get($field)`, `EntityValues::toCastAwareMap()`, `EntityValues::toJsonReadyMap()` | `toArray()` for attribute/visibility/embedding text when the entity defines `$casts` |
-| Workflow visibility | `WorkflowVisibility::isNodePublicForEntity(EntityInterface)` or an array already built with `toCastAwareMap` | `isNodePublic($entity->toArray())` for nodes with enum/bool `status` casts |
+| Served workflow visibility | `WorkflowVisibility::isEntityServedPublicForEntity(EntityInterface)` or `isEntityServedPublic()` with an array already built with `toCastAwareMap` | Comparing a literal workflow-state id, or calling `toArray()` for entities with enum/bool `status` casts |
+| Candidate workflow visibility | `WorkflowVisibility::isCandidateStatePublic(Workflow, stateId)` | Assuming a state named `published` is public |
 
 **Circular dependencies:** Package `composer.json` `require` must respect the Layer Architecture table in root `CLAUDE.md` (lower layers never depend on higher layers). `waaseyaa/entity` must not require `waaseyaa/api`; shared JSON shaping lives on `EntityValues` in `entity`.
 
@@ -208,6 +262,70 @@ File: `packages/entity/src/EntityValues.php`
 ### Admin JSON Schema vs `$casts`
 
 `SchemaPresenter` (`packages/api/src/Schema/SchemaPresenter.php`) builds widgets from **EntityType field definitions**, not from entity class `$casts`. A VO field may still serialize correctly over JSON:API via `EntityValues` when `$casts` is set on the entity class; **admin form schema** for structured VOs may require explicit field definition work (e.g. object / JSON widget) in a follow-up — not inferred automatically from `$casts` (#1184).
+
+### Canonical field schema authority
+
+`FieldSchemaAuthority` and `FieldTypeManagerInterface` are the Layer-1
+structural introspection authority (#2786). Each kernel owns one boot-scoped
+manager populated from the compiled package manifest: the built-in
+`#[FieldType]` plugins plus plugins contributed by participating downstream
+packages. The same instance is threaded through field admission, runtime DDL,
+JSON schema, Admin, GraphQL, and blueprint consumers. Bare construction outside
+a kernel uses the built-ins-only `FieldTypeManager::default()` registry.
+Unknown ids throw
+`UnknownFieldTypeException` and never degrade to `string`. Each plugin owns its
+field-item projection (`jsonSchemaFor`) and its explicitly distinct entity
+authoring projection (`entityValueJsonSchemaFor`). The latter feeds closed
+entity schemas with field type, cardinality, required/read-only state,
+translation/revision flags, and safe value constraints. Multi-value fields
+apply those constraints to each value through `items`, never to the array
+container. The `json` entity-value projection permits every native JSON type,
+matching the decoded values returned by both SQL storage backends. `decimal`
+remains a patterned string so SQLite and GraphQL preserve its lossless-text
+storage contract rather than coercing it through a binary float.
+
+The internal `FieldScaffoldProjection` composes this authority with declared
+`FieldValueKind` and `FieldTypeInferrer::isCompatible()` to derive scaffold PHP
+property shapes. It validates plugin-owned schema/storage projections and does
+not introduce another field-type-id allowlist. See
+[field-scaffold-projection.md](field-scaffold-projection.md) for admission,
+manual reference semantics and required boot-scoped command-provider injection.
+
+Each field-type plugin may also declare a transport-neutral `FieldValueKind`.
+GraphQL maps that semantic kind to its native scalar or structured type, so a
+manifest-discovered downstream plugin can cross the GraphQL boundary without
+depending on the Layer-6 GraphQL package. All first-party plugins declare their
+historical wire shape explicitly through the optional
+`FieldValueKindProviderInterface`. A registered plugin that omits the
+capability is refused instead of being guessed from JSON Schema or silently
+treated as a string; existing direct `FieldTypeInterface` implementors remain
+source-compatible.
+
+Attribute-first entity metadata resolves explicit `#[Field(type: ...)]` values
+through a named internal path during boot. It does not consult the
+built-ins-only `FieldTypeInferrer::VALID_TYPE_IDS` roster at that stage. The
+resulting definition must still pass the shared `FieldDefinitionRegistry`
+admission boundary, which uses the kernel's boot-scoped `FieldTypeManager`
+composed from the compiled package manifest. An unknown downstream id therefore
+fails closed with entity and field context. Direct `FieldTypeInferrer::infer()`
+callers retain strict static validation and pure scalar inference; the runtime
+seam is not an arbitrary caller-controlled bypass and keeps PHPStan's closed
+static vocabulary sound.
+
+Entity field enumeration remains owned by
+`EntityTypeManagerInterface::resolveFieldDefinitions()`. The schema authority
+accepts that effective set; it does not rediscover base or bundle fields.
+Authorization-aware adapters must bind an explicit principal and subject before
+exposing the result. Blueprint admission is also registry metadata via
+`blueprintFieldTypeIds()`; the Layer-0 site-contract enum is a closed mirror
+proven equal at the root architecture boundary.
+
+Field definition registration is the shared admission boundary. Core and
+bundle fields must resolve both an entity-value schema and, for
+`FieldStorage::Column`, a canonical entity-storage column shape before they can
+enter the registry. Attribute inference, runtime registration, and downstream
+schema consumers therefore converge on the same boot-scoped plugin authority;
+there is no second type map and no unknown-type fallback.
 - Direct mutation of `$values` from outside the entity class is unsupported; subclasses that override `get`/`set` must preserve cast semantics or document exceptions.
 
 ### Rules for `toArray()`
@@ -253,7 +371,7 @@ $storage->save($entity); // toArray() carries ISO string suitable for _data
 
 2. **Text-cast wrapping for `IN` against `json_extract` fields.** The underlying DBAL helper hardcodes `ArrayParameterType::STRING` for `IN`-set parameters, so PHP-side coercion alone cannot fix `IN` comparisons. When the resolved field is a `json_extract(...)` expression, `SqlEntityQuery::execute()` wraps it in `CAST(... AS TEXT)` and stringifies every IN-set value, forcing text-vs-text equality. Detection uses the `ResolvedField::isJsonExtract()` shape (WP6 #1816 — formerly the now-removed `expressionResolvesViaJsonExtract()` string scan) so the wrapping covers both K2 (`FieldStorage::Data` hint) and the column-absent fallback path. Since WP6 the wrapped expression is emitted through `SelectInterface::whereRaw('CAST(... AS TEXT) IN (?)', [$values])` (verbatim, array param expanded) rather than `condition()` — `condition()` now auto-quotes its `$field` and would corrupt the expression. Numeric ordering is preserved on `<` / `>` (those use mechanism 1, not the cast wrapping).
 
-`CONTAINS`, `STARTS_WITH`, `LIKE`, `IS NULL`, and `IS NOT NULL` skip coercion: they are explicit string-pattern or null-check operators where coercion would surprise callers.
+`CONTAINS`, `STARTS_WITH`, `LIKE`, `IS NULL`, and `IS NOT NULL` skip coercion: they are explicit string-pattern or null-check operators where coercion would surprise callers. `CASE_INSENSITIVE_EQUALS` retains ordinary field coercion and renders `LOWER(field) = LOWER(?)`; authentication identity lookup uses it for email only, while usernames retain exact equality.
 
 Reproduction case (#1257 anchor): integer `_data` field compared to a string literal. Pre-K3, the SQLite path returned an empty set silently. Post-K3, both single-value (`condition('user_id', '13')`) and IN-set (`condition('user_id', ['1', 13], 'IN')`) commute against the declared cast.
 
@@ -428,9 +546,17 @@ interface EntityTypeManagerInterface
 }
 ```
 
-`getRepository()` returns `EntityRepositoryInterface` (`EntityRepository` in practice) — the **sole persistence engine**, with hydration, lifecycle events, revisions, optimistic locking, save-time validation, two-axis translation, language fallback, `saveMany()`/`UnitOfWork`, and an access-checked `getQuery()`. The kernel registers a repository factory so consumers can wrap `EntityTypeManager::getRepository($entityTypeId)` in thin domain repositories without manually assembling `SqlStorageDriver`, `RevisionableStorageDriver`, and `EntityRepository` dependencies.
+`getRepository()` returns `EntityRepositoryInterface` (`EntityRepository` in practice) — the **sole Framework persistence engine**, with hydration, lifecycle events, revisions, optimistic locking, save-time validation, two-axis translation, language fallback, `saveMany()`/`UnitOfWork`, and an access-checked `getQuery()`. The kernel registers a repository factory so consumers can wrap `EntityTypeManager::getRepository($entityTypeId)` in thin domain repositories without manually assembling `SqlStorageDriver`, `RevisionableStorageDriver`, and `EntityRepository` dependencies. A definition that declares a valid custom `EntityStorageInterface` `storageClass` is not adapted into this richer repository contract: `getRepository()` refuses before SQL schema inspection and directs the caller to `getStorage()`. This prevents a custom backend from silently acquiring fabricated revision, translation, publication, or working-copy semantics (#2496).
 
-`getStorage()` returns `EntityStorageInterface` — a **generic, unwired extension seam**, not a first-party persistence path. See "The legacy save engine is gone (C-22)" below.
+`getStorage()` returns `EntityStorageInterface` — a **generic, unwired extension seam**, not a first-party persistence path. See "The legacy save engine is gone (C-22)" below. `EntityStorageInterface` and `EntityQueryInterface` are class-level `@api`. Production runtime-schema readiness is owned by the storage backend: Framework SQL-backed definitions (empty `storageClass`) fail closed with `[S1-DB106]` when their table is missing; a definition whose `storageClass` is a valid `EntityStorageInterface` implementation is not forced to own an SQL table (#2482) and is resolved only through `getStorage()`. An invalid `storageClass` still fails the existing "must implement EntityStorageInterface" contract.
+
+DBAL-backed runtime schema requirements inspect table availability once and
+canonical column names once per requirement (#3182). The factory groups registered runtime guards in one read-only
+`DBALDatabase::inspectSchema()` operation, sharing one catalog read and one
+column read per table. Results are discarded on completion or failure; a
+subsequent operation on the same connection reads the live schema again. Missing tables, missing columns and inspection failures
+still refuse startup with `[S1-DB106]`, without DDL or schema repair. Other schema
+adapters retain the `SchemaInterface::fieldExists()` validation contract.
 
 #### The legacy save engine is gone (C-22)
 
@@ -505,6 +631,12 @@ interface EntityQueryInterface
 }
 ```
 
+With access checking enabled, a bound account is required and only rows whose
+entity-level `view` decision is `Allowed` survive. `range(offset, limit)` is
+then applied to that authorized result: offset counts survivors and the page is
+dense until the authorized result is exhausted. Explicit `accessCheck(false)`
+system-context queries retain raw storage `LIMIT/OFFSET` behavior.
+
 ### RevisionableStorageInterface
 
 File: `packages/entity/src/Storage/RevisionableStorageInterface.php`
@@ -536,20 +668,31 @@ Higher-level API with language fallback:
 ```php
 interface EntityRepositoryInterface
 {
-    public function find(string $id, ?string $langcode = null, bool $fallback = false): ?EntityInterface;
+    public function find(int|string $id, ?string $langcode = null, bool $fallback = false): ?EntityInterface;
     public function findMany(array $ids, ?string $langcode = null, bool $fallback = false): array;
     public function findBy(array $criteria, ?array $orderBy = null, ?int $limit = null): array;
     public function getQuery(): EntityQueryInterface;   // C-22: same access-checked surface as EntityStorageInterface::getQuery()
     public function save(EntityInterface $entity, bool $validate = true): int;
     public function delete(EntityInterface $entity): void;
-    public function exists(string $id): bool;
+    public function exists(int|string $id): bool;
     public function count(array $criteria = []): int;
-    public function loadRevision(string $entityId, int $revisionId): ?EntityInterface;
-    public function rollback(string $entityId, int $targetRevisionId): EntityInterface;
+    public function loadRevision(int|string $entityId, int $revisionId): ?EntityInterface;
+    public function rollback(int|string $entityId, int $targetRevisionId): EntityInterface;
     public function saveMany(array $entities, bool $validate = true): array;   // int[] (SAVED_NEW/SAVED_UPDATED)
     public function deleteMany(array $entities): int;
 }
 ```
+
+Entity identity is accepted as `int|string` — the domain produced by
+`EntityInterface::id()` and `EntityQueryInterface::execute()` — and reduced once,
+at the repository boundary, to the driver SPI's `string` addressing domain.
+Nothing is re-interpreted numerically on the way in, so `'007'` addresses row
+`'007'`. On the way out a stored value is reported as an int only when the cast
+round-trips exactly (`(string) (int) $v === $v`); a bare `is_numeric()` test
+previously coerced `'007'` to `7` and `'1e3'` to `1000`, which addressed no row
+and left those entities unloadable (#2674). This matches the `int|string` the
+parent `EntityStorageInterface` and `RevisionableStorageInterface` have always
+declared — before #2674 this interface contradicted them, and the note above.
 
 `save()` accepts `bool $validate = true`. When true and an `EntityValidator` is configured, validates against the merged map from `EntityTypeValidationConstraints::forEntityType()` (field definitions + `getConstraints()`, see “Field definitions → constraints” below) before persisting. Throws `EntityValidationException` on failure. **Since alpha.204 (#1643) a validator is configured by default**: the kernel wires one shared `EntityValidator::createDefault()` into every repository it builds, so validation runs framework-wide unless opted out (boot-time `WAASEYAA_ENTITY_VALIDATION=0|false|off`, or per-call `validate: false`).
 
@@ -558,9 +701,61 @@ interface EntityRepositoryInterface
 **Event dispatch semantics under `UnitOfWork` (changed 2026-07-02, audit-remediation WP2 review):** the save path splits PRE-write from POST-write dispatch.
 
 - **PRE-write events dispatch IMMEDIATELY, inside the batch transaction** — `EntityEvents::PRE_SAVE` and `BeforeSaveEvent` fire before each entity's row is written, exactly as they do for a single `save()`. Rationale: a PRE event announces *intent*; listeners that mutate the entity (classification label resolution writes resolved columns via `$entity->set()`) or issue guarding DB writes (the attachment at-most-one-active sibling demote) only work if they run before the write — under the old buffer-everything model those mutations happened *after* the batch had committed, so they were silently never persisted, and two attachment-style guards in one batch cross-demoted each other post-commit. The "listeners never observe rolled-back work" goal that buffering exists for is still satisfied: an immediate PRE listener's DB writes JOIN the batch transaction and roll back with it. This also makes `BeforeSaveEvent`'s documented abort contract real inside batches: an `AbortOperationException` thrown for entity *k* of a batch aborts the `UnitOfWork` transaction and rolls back the WHOLE batch (no partial writes) — previously the buffered "abort" fired after every row had already committed. Pinned by `EntityRepositoryTest::saveManyDispatchesPreWriteEventsBeforeRowsAreWritten` / `::saveManyAbortFromBeforeSaveOnSecondEntityRollsBackWholeBatch`.
-- **POST/AFTER events remain buffered** — `POST_SAVE`, `REVISION_CREATED`, `AfterSaveEvent` are buffered by the `UnitOfWork` and dispatched only after successful commit (discarded on rollback), unchanged.
-- **The delete path is deliberately NOT aligned** — `doDelete()` still buffers `PRE_DELETE` under `deleteMany()`, so batch deletes bypass pre-delete guards (e.g. `RelationshipDeleteGuardListener`, documented as single-delete-only in #1852). Aligning it is a flagged follow-up (see the `dispatchEvent()` docblock in `EntityRepository`); it changes #1852's documented behavior and needs its own blast-radius pass.
-- **Stateful PRE/POST listener pairing caveat:** listeners that capture state in PRE and read it in POST (the audit listeners' `pendingIsNew`) now see all of a batch's PRE events before any POST event (`pre1, pre2, …, post1, post2, …`). For mixed new/updated batches the captured value can be stale by the time the paired POST fires — a pre-existing stateful-listener limitation (the old order was equally wrong in a different way: PRE fired post-commit when `isNew()` was already false, so batch writes always audited as "update"). Single saves are unaffected.
+- **POST/AFTER events remain buffered** — `POST_SAVE`, `REVISION_CREATED`, `AfterSaveEvent` are buffered by the `UnitOfWork` and dispatched only after the outermost managed commit (discarded on rollback). A nested repository mutation therefore releases its savepoint without installing its successor mutation token or publishing notifications. Each callback or event failure is logged with bounded metadata, later buffered effects still run, and the collected failures then surface as a committed `TransactionCompletionException` stamped with that outer `transaction()` call's commitment token (rotated per outer entry; nested in-instance calls keep it). Mutation-authority-backed `EntityRepository` entry points translate **only** a matching-token completion exception into `EntityMutationCommittedSideEffectsFailedException` for repository callers (#2999); foreign-token, prior-transaction, or bare completion failures are rethrown unchanged so an independent nested write — or a retained exception from an earlier reuse of the same UnitOfWork — cannot be mistaken for the current outer mutation's committed outcome.
+- **The delete path is aligned as of #2728** — `doDelete()` dispatches `PRE_DELETE` IMMEDIATELY (it no longer passes `$unitOfWork`), so a refusing pre-delete guard (e.g. `RelationshipDeleteGuardListener`) throws inside the open delete transaction and rolls back the base row, its revisions AND the mutation-authority tombstone — for the whole batch under `deleteMany()`. `POST_DELETE` still passes `$unitOfWork` and stays buffered until after commit. The earlier "buffering is batch-only / #1852 single-delete-only" framing was wrong in both directions: `delete()` opens its own `UnitOfWork` whenever a mutation authority and database are wired — which is every repository `EntityTypeManagerFactory` builds — so single deletes were unguarded in production too. Pinned by `EntityRepositoryTest::deleteDispatchesPreDeleteInsideTheTransactionBeforeAnyRowIsRemoved` / `::deleteManyRefusalOnSecondEntityRollsBackWholeBatchIncludingMutationAuthority` and `tests/Integration/Relationship/RelationshipDeleteGuardKernelWiringTest.php`.
+- **PRE/POST listener pairing must be entity-correlated** — `saveMany()` still dispatches `pre1, pre2, …, post1, post2, …`. Listeners that capture `isNew()` (or any other per-entity PRE state) in PRE and read it in POST must key that state on the entity object (`WeakMap` / `SplObjectStorage`), consume the matching entry on POST, and must not keep a listener-wide boolean slot. A single-slot `pendingIsNew` attributes every buffered POST from the last PRE in a mixed create/update batch (#1856). Framework listeners that pair PRE→POST on `isNew()` (`EntityWriteAuditListener`, `EntityLifecycleAuditListener`, `ThreadParticipantBootstrapSubscriber`) use object-keyed maps. Single saves remain PRE-then-POST and are unaffected. `deleteMany()` now interleaves `pre1, pre2, …, post1, post2, …` for the same reason (#2728) — a listener pairing PRE→POST per entity via an object-keyed map is unaffected; one assuming PRE/POST adjacency is not.
+
+### EntityIdentifierResolver
+
+File: `packages/entity/src/Repository/EntityIdentifierResolver.php` (#2557)
+
+The one place that turns an identifier which may be a primary key **or** a UUID
+into an entity. Surfaces that publish UUID as the resource id — JSON:API, the
+admin SPA, GraphQL, SSR canonical paths, media downloads — all receive both
+shapes on the same route parameter, and each had reimplemented this privately.
+
+```php
+final class EntityIdentifierResolver
+{
+    public function __construct(private readonly EntityTypeManagerInterface $entityTypeManager) {}
+
+    public function resolve(string $entityTypeId, int|string $identifier): ?EntityInterface;
+}
+```
+
+Resolution rule: the identifier is a UUID only when the entity type **declares**
+a `uuid` key (`EntityTypeInterface::getKeys()['uuid']`, not a column literally
+named `uuid`) **and** the value is RFC 4122 textual-shaped. The two branches are
+exclusive — a UUID-shaped value is never retried as a primary key, because the
+two columns never share a value space. Everything else goes to
+`EntityRepositoryInterface::find()`. An empty identifier resolves to null
+without touching storage; an unregistered `$entityTypeId` propagates the entity
+type manager's own failure.
+
+**Access posture: resolution is access-neutral, and it does NOT authorize.**
+The UUID branch runs `accessCheck(false)` and never binds an acting account —
+symmetrically with `find()`, which does not access-check either. **Every caller
+MUST run its own operation-specific check (typically
+`EntityAccessHandler::check($entity, $operation, $account)`) on the result
+before exposing or acting on the entity.**
+
+The posture is deliberate, and it is the substance of #2557 rather than a
+convenience. Authorization depends on the caller's operation and actor, which
+the resolver cannot know:
+
+- A `view` filter is the wrong check for a caller about to `update` or `delete`,
+  and applying it turns "you may not view this" into a misleading "not found"
+  for an editor legitimately entitled to edit.
+- Access-checking one branch and not the other makes authorization depend on the
+  **shape of the identifier in the URL**. GraphQL's copy did exactly that — the
+  UUID lookup bound the account, the numeric branch never checked — so the same
+  account updating the same entity succeeded via `/{id}` and got "Entity not
+  found" via `/{uuid}`. Pinned by
+  `tests/Integration/GraphQL/GraphQlUuidIdentityResolutionTest`.
+
+Contract-pinned by `packages/entity/tests/Unit/Repository/EntityIdentifierResolverTest`,
+whose `the_uuid_lookup_is_access_neutral` case asserts both that
+`accessCheck(false)` is applied and that `setAccount()` is never called.
 
 ### EntityConstants
 
@@ -710,14 +905,22 @@ The M1 *attribute-first entity definition* mission shipped the canonical surface
 
 Two specific PHP property types map to fallbacks in M1 because the matching field-type plugins haven't been implemented yet. When the proper plugins ship, entities can update their `#[Field]` attributes from the fallback to the canonical type without any other code changes.
 
-**`timestamp` field type missing.** Properties intended to store Unix-epoch timestamps (`User.created`, `UserBlock.created_at`, `Node.created`, `Node.changed`, the engagement and messaging timestamp fields, etc.) currently use:
+**Canonical timestamps remain integer subtypes.** Properties intended to store
+Unix-epoch timestamps (`User.created`, `UserBlock.created_at`, `Node.created`,
+`Node.changed`, the engagement and messaging timestamp fields, etc.) use:
 
 ```php
 #[Field(type: 'integer', settings: ['subtype' => 'timestamp'])]
 public int $created;
 ```
 
-A future `field-type-timestamp-plugin` mission will ship the proper plugin so the canonical declaration becomes `#[Field(type: 'timestamp')] public int $created;`.
+This remains the canonical first-party declaration. Its entity/API schema is an
+ISO-8601 date-time string and JSON:API serializes integer, `DateTimeInterface`,
+zero, and null values through the timestamp projection; storage remains an
+integer. The registered `timestamp` plugin is a non-blueprint compatibility
+type for historical downstream definitions: it retains their Unix input domain,
+text storage, ISO JSON:API projection, and GraphQL `String` contract. It is not
+an alias for `datetime`, and first-party declarations must not migrate to it.
 
 **Closed: `enum` field type missing.** Resolved by mission [`field-type-enum-plugin-01KQ6SJG`](../../kitty-specs/field-type-enum-plugin-01KQ6SJG/). Backed-enum properties now resolve to the dedicated `'enum'` field-type plugin (`packages/field/src/Item/EnumItem.php`), which owns validation against the declared cases and emits JSON Schema with explicit `enum: [...]`. The canonical declaration is:
 
@@ -728,7 +931,10 @@ public CourseStatus $status;
 
 `FieldTypeInferrer` emits `type: 'enum'` automatically for backed-enum-typed properties, so most callers can omit `type:` and `settings:` entirely. The transitional `'string' + settings.enum_class` bridge in `FieldDefinitionConstraintBuilder` has been removed; the setting is honored only on `'enum'`-typed fields. The `enumClass` (camelCase) settings alias has also been removed in favor of `enum_class` (snake_case).
 
-*Documented follow-ups carried forward from this mission:* (1) the per-definition `FieldTypeInterface::jsonSchemaFor()` path is currently exercised only by tests — no production `FieldDefinition` construction site threads the `FieldTypeManager` yet, because doing so requires converting `EntityMetadataReader`'s static API to instance-based and updating its caller sites; (2) `FieldDefinition::legacyJsonSchema()` lacks an explicit `'enum'` arm and falls through to `['type' => 'string']`, which is unreached today but will need attention once production wiring lands. A follow-up mission ("plumb `FieldTypeManager` into `EntityMetadataReader` and add the `'enum'` arm to `legacyJsonSchema`") is recommended.
+**Closed in #2786:** production `FieldDefinition::toJsonSchema()`, registry
+admission, entity schema presentation, and storage schema derivation now all
+resolve the registered plugin through `FieldTypeManager`. The former legacy
+mapping/fallback path is removed.
 
 ### 3. `#[Field]` attribute gaps surfaced by M1
 
@@ -765,8 +971,8 @@ The `EntityRepository::save()` pipeline (used for all high-level persistence):
 4. Writes to storage driver via `$driver->write()`, which returns the effective id of the persisted row (the backend-assigned pk for empty-id inserts, the caller-supplied id otherwise)
 5. For new entities with an empty id, back-fills the assigned pk via `$entity->set($idKey, $writtenId)` so POST_SAVE listeners see the real id
 6. Calls `$entity->enforceIsNew(false)` for new entities
-7. Dispatches `EntityEvents::POST_SAVE` event
-8. Calls `$entity->postSave($isNew)` lifecycle hook (if entity extends `EntityBase`)
+7. Calls `$entity->postSave($isNew)` lifecycle hook inside the mutation transaction (if entity extends `EntityBase`)
+8. Buffers `EntityEvents::POST_SAVE`, revision and after-save notification events until the outermost managed commit; discards them on rollback
 9. Returns `EntityConstants::SAVED_NEW` (1) or `SAVED_UPDATED` (2)
 
 **Optimistic locking (#1647, mission optimistic-locking-01KTXCHY).** The save
@@ -787,8 +993,24 @@ conflict branch skipped, zero added queries). Full mechanics, the rejection
 matrix, and null-current semantics: `docs/specs/revision-system-unified.md`
 §3b.
 
+**Candidate-bound save advisories (#2467).** After `preSave()` and the legacy
+`PRE_SAVE` event have produced the final candidate, the repository dispatches
+`BeforeSaveEvent(entity, context, isNewRevision, originalEntity)` before any
+backend write. Applications may build `SaveAdvisory::forEntityField()` values
+and call `SaveAdvisoryGate::requireAcknowledged()`. Missing exact tokens throw
+the typed `SaveAdvisoryAcknowledgementRequiredException` (a sibling
+`RuntimeException` of `AbortOperationException`, not a subclass), roll back
+the operation, and suppress `AfterSaveEvent`. Existing abort catches keep
+their prior semantics. `SaveContext` validates,
+deduplicates, sorts, and preserves at most 32 lowercase 64-hex tokens across all
+builders. The token binds entity type, bundle, stable identity, advisory code,
+field, and canonical candidate value; it is a review receipt, never
+authorization or a validation bypass. `originalEntity()` is storage-loaded for
+updates and null for creates. Full cross-surface contract:
+`docs/specs/save-advisories.md`.
+
 **Pointer-move operations are a separate pre-write choke point (CW-v1 WP-2 task 2.4, #1920).**
-`rollback()`, `setCurrentRevision()`, `setPublishedRevision()`, and the `saveTranslationRevision()` /
+`rollback()`, `setCurrentRevision()`, `setPublishedRevision()`, `promotePublishedRevision()`, and the `saveTranslationRevision()` /
 `saveTranslationRevisions()` / `saveTranslation()` trio move the revision pointer (or, for
 `rollback()`, copy a revision forward) WITHOUT going through this `save()` pipeline at all — no
 `EntityEvents::PRE_SAVE`/`POST_SAVE`. Each dispatches `Waaseyaa\EntityStorage\Event\BeforeRevisionPointerMoveEvent`
@@ -796,7 +1018,38 @@ matrix, and null-current semantics: `docs/specs/revision-system-unified.md`
 leaving storage untouched (including transactional rollback of any earlier write in the same
 transaction, for the multi-write translation paths). Full contract, payload shape, and the
 `Waaseyaa\Workflows\Listener\WorkflowPointerMoveGuard` consumer: `docs/specs/revision-system-unified.md`
-§4a.
+§4a. `promotePublishedRevision()` applies default-revision semantics after that dispatch so
+editorial publish can rewrite the served base row without a workflows subscriber (#2562).
+`setPublishedRevision()` stays the pointer-only operation unless a subscriber sets the event flag.
+`clearPublishedRevision()` is a served-row rewrite plus pointer drop, not a pointer-move event:
+it claims the aggregate mutation, sets served `status=0`, nulls `published_revision_id`, and
+dispatches `POST_SAVE` after commit. It does not copy a diverged working copy.
+
+`shouldCreateRevision()` honors `isNewRevision()` via a method-exists duck-check on
+**revisionable** types, not `instanceof RevisionableInterface`. Trait-only
+`ContentEntityBase` types (the consumer default) must be able to force a new
+revision when `revisionDefault` is false. The duck-check is not applied on
+non-revisionable types: config entities such as `NodeType` expose a same-named
+bundle knob that is not a per-save revision override.
+
+For a workflow-bound `publish` move, the pointer guard may also supply a closed
+`0|1` materialized-status value derived from the target revision's declared
+workflow state. Under default-revision discipline, complete promotion
+(`setPublishedRevision()` with the event flag, or `promotePublishedRevision()`)
+applies that value to the base serving projection after canonicalizing the
+target revision, without changing the historical revision row. This prevents a
+legacy revision's stale stored status from being copied into the serving row;
+content and selectors still come only from the authoritative pointer revision.
+An absent override preserves the repository's prior behavior for unbound and
+non-workflow consumers.
+
+**Copy-forward restore changed fields (#2464).** Surfaces that authorize a whole-row rollback
+by the fields that would actually change must use `Waaseyaa\Entity\RevisionRestoreChangedFields`
+(name-only `EntityValueComparator` for `EntityBase` views). Revision bookkeeping and values
+preserved from the live row—publication pointer, status, and credential hashes—are excluded
+because rollback never copies them from history. Workflow and every other written
+privilege-bearing field remain in the set, including keys present only on the current row that
+the restore removes. Admin restore and the AI restore tools share this helper.
 
 ### Save (via SqlEntityStorage — low-level)
 
@@ -811,11 +1064,16 @@ transaction, for the multi-write translation paths). Full contract, payload shap
 
 ### Delete (via EntityRepository)
 
-1. Calls `$entity->preDelete()` lifecycle hook (if entity extends `EntityBase`)
-2. Dispatches `EntityEvents::PRE_DELETE` event
-3. Removes from storage driver (`$driver->remove()`)
-4. Dispatches `EntityEvents::POST_DELETE` event
-5. Calls `$entity->postDelete()` lifecycle hook (if entity extends `EntityBase`)
+`delete()` and `deleteMany()` run this sequence inside a `UnitOfWork` transaction whenever a mutation authority and database are wired.
+
+1. Asserts the tenancy mutation gate (`revisionDriver->assertEntityMutationAllowed()`) — a read-only check that throws `TenancyViolationException` before anything is announced
+2. Tombstones the mutation-authority row (compare-and-swap `UPDATE`; throws `EntityMutationConflictException` on a stale token, `MissingEntityMutationTokenException` when the entity carries none). Deliberately **ahead** of the guard, mirroring `doSave()` where `claim()` precedes `PRE_SAVE` — so a stale-token delete is refused by the authority before any `PRE_DELETE` listener runs
+3. Calls `$entity->preDelete()` lifecycle hook (if entity extends `EntityBase`)
+4. Dispatches `EntityEvents::PRE_DELETE` **immediately, inside the transaction** (guard event, #2728) — a listener's throw rolls back everything above and below
+5. Deletes every revision row for the id (revisionable types)
+6. Removes from storage driver (`$driver->remove()`)
+7. Dispatches `EntityEvents::POST_DELETE` (notification event — buffered until after a successful commit, discarded on rollback)
+8. Calls `$entity->postDelete()` lifecycle hook (if entity extends `EntityBase`)
 
 ### Load
 
@@ -889,6 +1147,15 @@ Multi-bundle entity types (declaring `bundleEntityType`) may register bundle-spe
 - One column per registered bundle field (type translated via `deriveColumnSpec()`).
 - Foreign key `entity_id → {base}.{idKey}` with `ON DELETE CASCADE`. FK enforcement requires `PRAGMA foreign_keys = ON` on SQLite and is default-on for MySQL/InnoDB and PostgreSQL. `HealthChecker::checkForeignKeysEnabled()` emits `FK_ENFORCEMENT_DISABLED` if the probe shows FKs off.
 
+Bundle-scoped storage unique keys are declared through
+`EntityTypeManager::addBundleUniqueKeys()`. Key fields declared as
+`FieldStorage::Data` are promoted to column storage in the registry;
+schema sync backfills from base `_data`, refuses existing duplicate non-null
+tuples before index creation, and runtime readiness verifies the columns and
+named unique index without mutation. The bundle gateway maps database conflicts to
+`BundleUniqueKeyConflictException`. Null-containing tuples do not participate;
+empty strings do.
+
 **Field registry partitioning.** `FieldDefinitionRegistry` (implements `FieldDefinitionRegistryInterface`, extracted for cross-package consumption under `packages/entity/src/Field/`) keeps core-field and per-bundle-field maps separate. `ContentEntityBase::getFieldDefinitions()` returns the union of core plus the active bundle; entities created with an unknown bundle see only core fields.
 
 **Incremental core fields (`mergeCoreFields`).** Packages register their baseline core set via `registerCoreFields()`. Host applications may then call `FieldDefinitionRegistryInterface::mergeCoreFields(string $entityTypeId, array $fields)` to append additional **core** fields (same value shapes as `registerCoreFields`: metadata arrays or `FieldDefinitionInterface` instances). Use this for product-only overlays (feature flags, optional references stored in `_data`, etc.) without subclassing or replacing the package `EntityType`. New names must not collide with existing core fields; the implementation rejects duplicates. After merge, storage partitioning, schema materialization, validation, and query field resolution all treat the added definitions like any other core field.
@@ -917,7 +1184,7 @@ Multi-bundle entity types (declaring `bundleEntityType`) may register bundle-spe
 File: `packages/entity-storage/src/SqlSchemaHandler.php`
 Class: `final class SqlSchemaHandler`
 
-Constructor: `(EntityTypeInterface $entityType, DatabaseInterface $database, ?FieldDefinitionRegistryInterface $fieldRegistry = null, ?\Closure $bundleEnumerator = null, ?LoggerInterface $logger = null)` — the optional logger receives `warning` events when `deriveColumnSpec()` encounters an unknown field type (see below); callers that omit it get `NullLogger`.
+Constructor: `(EntityTypeInterface $entityType, DatabaseInterface $database, ?FieldDefinitionRegistryInterface $fieldRegistry = null, ?\Closure $bundleEnumerator = null, ?LoggerInterface $logger = null, string $primaryBackendId = 'sql-blob', array $entityLevelFields = [], ?FieldTypeManagerInterface $fieldTypes = null)`. Omitting the manager uses the canonical default plugin registry.
 
 Key methods:
 - `ensureTable(): void` -- creates entity table if it does not exist
@@ -927,7 +1194,28 @@ Key methods:
 - `getTableName(): string` -- returns entity type id
 - `getTranslationTableName(): string` -- returns `{type}_translations`
 
-**Field type → SQL column.** `deriveColumnSpec(string $fieldType, array $fieldDef): array` maps field-definition type strings to column shapes consumed by the schema layer (`type`, optional `length`, etc.), including explicit handling for `text_long`, `uri`, and `entity_reference`. Unknown types log at `warning` and fall back to `text`. Full mapping table, URI length default, `FieldStorage::Data` note, and vendor nuance: [`field/column-derivation.md`](./field/column-derivation.md).
+**Field type → SQL column.** `deriveColumnSpec(string $fieldType, array $fieldDef): array` normalizes the definition and delegates to
+`FieldTypeManagerInterface::entityStorageColumnSchemaFor()`. Plugin schema is
+the sole mapping authority; definition-level `length`, `not_null`, and `default`
+decorate that result. Unknown types and ambiguous multi-column projections fail
+closed before DDL. The same seam is used by SQL-column, translation, and revision
+schema builders.
+
+### EntitySchemaTableMaterializer (#2701)
+
+The migration runtime's view of entity schema authority. Given the table names a
+v2 plan targets, it materializes exactly those that are registered entity **base**
+tables and do not yet exist, through the same `EntitySchemaSync` path `schema:sync`
+uses, so entity table shape keeps one authority rather than two.
+
+Ownership is keyed on `EntityTypeInterface::id()`. Bundle subtables are excluded,
+because `{base}__{bundle}` is materialized only when a field registry is wired and
+the bundle carries at least one field; revision and translation siblings are
+excluded for the same reason. It never touches an existing table, and leaves
+unowned names absent so the migration fails closed. Definitions are supplied as a
+callable and resolved at materialize time, because composition sites build the
+migration runtime before entity types finish registering.
+
 
 ### EntitySchemaSync
 
@@ -939,7 +1227,26 @@ Constructor: `(DatabaseInterface $database)`
 Key methods:
 - `syncAll(iterable $entityTypes): void` -- iterates `EntityTypeInterface` instances and calls `SqlSchemaHandler::ensureTable()` on each
 
-Thin wrapper around `SqlSchemaHandler` so application migrations and install commands can materialize tables for many registered entity types in one call without repeating construction boilerplate. Idempotent by delegation (`ensureTable()` is a no-op when the table exists).
+Thin wrapper around `SqlSchemaHandler` so application migrations and install
+commands can materialize tables for many registered entity types in one call
+without repeating construction boilerplate. Inputs are materialized once so a
+generator can be replayed. On SQLite, the first traversal runs with
+`PRAGMA query_only` enabled and with nested handler coordination suppressed: a
+completed traversal proves the entire operation is read-only and returns
+without acquiring schema authority; the first attempted write is refused before
+mutation and causes one replay through `SchemaMutationCoordinator`. This is the
+same ensure path in both phases, not a second shallow table-existence planner.
+Because it is the same path, what the first traversal logs is held and emitted
+only when no replay follows, so one `syncAll()` reports a condition once rather
+than once per traversal.
+Non-SQLite databases keep the coordinated path. Full writer-position and
+read-only-plan invariants: `docs/specs/infrastructure.md` “MigrationRepository”.
+The privileged-read ledger (`StrictLedgerSchema`, table `privileged_read_ledger`)
+that kernel-built validators and gateway audits declare on first use is created
+through the same coordinator, so a kernel boot cannot leave the recorded schema
+manifest stale and make the next coordinated transition refuse as drift (#2730).
+The `EntityMutationAuthoritySchema` test fixture follows the same rule because
+production creates that table by migration.
 
 Default table schema (from `buildTableSpec()`):
 - `{idKey}` -- `serial NOT NULL` (auto-increment primary key)
@@ -949,6 +1256,71 @@ Default table schema (from `buildTableSpec()`):
 - `{langcodeKey}` -- `varchar(12) NOT NULL DEFAULT 'en'`
 - `_data` -- `text NOT NULL DEFAULT '{}'`
 - Primary key on `{idKey}`, unique index on UUID, index on bundle
+
+`planMutatingEntityTypeIds(iterable $entityTypes): EntityTypeSchemaPlan` --
+reports, per entity type, whether synchronizing it would require a schema
+mutation, without applying anything. It reuses the exact same read-only
+traversal `syncAll()` already runs for its own no-op detection (one call to
+the query-only guard per entity type instead of once for the whole batch), so
+a table already present is correctly flagged when the current definition adds
+a column or index the live table lacks (#2732) — it is not a second,
+hand-maintained model of what would change.
+
+`EntityTypeSchemaPlan` (`packages/entity-storage/src/EntityTypeSchemaPlan.php`,
+`@api`) splits the input into `mutating` (ids the traversal proved need a
+mutation) and `indeterminate` (ids it could not determine either way). An id
+never appears in both, and one whose traversal completed and found no
+mutation needed appears in neither. Determination requires
+`CoordinatedEntitySchemaExecutor::canPreviewMutation()` to hold — a
+`DBALDatabase` connection on SQLite with no mutation already active on it. Off
+SQLite (MySQL/MariaDB/PostgreSQL in production), or on a connection where a
+mutation coordinator is already active, that read-only introspection has no
+equivalent, so every id under consideration is reported `indeterminate`
+instead: the earlier behaviour of `requiresMutation()`'s conservative
+"assume mutation" default leaking into a report as "will be altered" was the
+#2732 review defect (falsely calling every pre-existing table changed on
+production databases). Callers that only need to decide whether the singular
+mutation coordinator must run keep using
+`CoordinatedEntitySchemaExecutor::requiresMutation()` directly — its
+conservative default is the correct and safe answer for that question; it is
+only wrong to *report* as a confirmed alteration.
+
+### EntitySchemaSyncRunner and SchemaSyncReport
+
+File: `packages/entity-storage/src/EntitySchemaSyncRunner.php` (`final class
+EntitySchemaSyncRunner`), `packages/entity-storage/src/SchemaSyncReport.php`
+(`final class SchemaSyncReport`)
+
+The reporting wrapper `schema:sync` and `db:init --sync-schema` share.
+`run(iterable $definitions, bool $dryRun = false): SchemaSyncReport`
+classifies every definition's base table by pre-run existence into `created`
+(absent) and `existing` (present), then — for the `existing` set only —
+derives `altered` and `indeterminate` from the `EntityTypeSchemaPlan` returned
+by `EntitySchemaSync::planMutatingEntityTypeIds()`: `altered` is the subset
+confirmed to gain a column, index, or other physical schema on that
+already-present table; `indeterminate` is the subset whose status could not be
+determined at all (non-SQLite platform, or a mutation already active on the
+connection). A table existing before the run is not the same as that table
+needing no work: a field (and its index) registered since the last sync is
+additively materialized onto it, and `altered` says so instead of folding it
+into "already exists" (#2732) — and a table `schema:sync` genuinely cannot
+preview is not folded into `altered` either (#2732 review follow-up): claiming
+certainty about pending work on MySQL/MariaDB/PostgreSQL that the underlying
+mechanism cannot actually provide was itself misleading and shipped as a
+defect during review. `$dryRun` skips the apply call
+(`EntitySchemaSync::syncAll()`) but always runs the read-only plan derivation
+(altered/indeterminate), so preview and apply describe the same model and
+cannot disagree — including on an indeterminate platform, where the apply run
+genuinely executes the sync (it cannot skip the mutation coordinator just
+because it cannot preview) while the report still cannot claim more than "ran,
+could not confirm the outcome per table" for that subset.
+
+`SchemaSyncReport::changed(): bool` is `true` when `created` **or** `altered`
+is non-empty — indeterminacy alone never makes `changed()` true; an unresolved
+"cannot be determined" must not present as a confirmed change. `unchanged():
+array` is `existing` minus `altered` minus `indeterminate` — the genuinely
+untouched subset; an indeterminate id is not a confirmed no-op either.
+`total()` is `count(created) + count(existing)` (unchanged by #2732).
 
 ### EntityStorageFactory
 
@@ -978,7 +1350,7 @@ public function __construct(
 ```
 
 Higher-level layer that handles:
-- Entity hydration (`hydrate()` method with `_data` merge and constructor adaptation)
+- Entity hydration (`hydrate()` method with `_data` merge and constructor adaptation). `loadRevision()` skips the live bundle-subtable overlay when the requested revision is not the base `revision_id`, so a disciplined working copy keeps its revision `_data` snapshot.
 - Language fallback via `setFallbackChain(string[] $chain)` (default: `['en']`)
 - Event dispatch via `EntityEventFactoryInterface` (defaults to `DefaultEntityEventFactory`)
 - Pre-save validation via `EntityValidator` (injected by default by the kernel since alpha.204, `validate: true`) using `EntityTypeValidationConstraints::forEntityType()` (derived from field definitions, plus per-field declared constraints appended, plus manual `getConstraints()` per-field override)
@@ -986,7 +1358,7 @@ Higher-level layer that handles:
 - Batch operations via `saveMany()`/`deleteMany()` with `UnitOfWork` transaction wrapping
 - Batch reads via `findMany(array $ids, ...)` delegating to `EntityStorageDriverInterface::readMultiple()`
 - Revision management via `loadRevision()` and `rollback()`
-- Automatic revision creation based on `EntityType::getRevisionDefault()` and per-entity `isNewRevision()` override (via `shouldCreateRevision()` internal method)
+- Automatic revision creation based on `EntityType::getRevisionDefault()` and per-entity `isNewRevision()` override (via `shouldCreateRevision()`; duck-checked so trait-only `ContentEntityBase` types honor `setNewRevision(true)`)
 
 ### UnitOfWork
 
@@ -995,7 +1367,7 @@ Class: `final class UnitOfWork`
 
 Constructor: `(DatabaseInterface $database, EventDispatcherInterface $eventDispatcher)`
 
-`transaction(\Closure $callback): mixed` -- wraps callback in DB transaction, buffers events during transaction, dispatches after commit. On failure, discards events and rolls back.
+`transaction(\Closure $callback): mixed` -- wraps the callback in a completion-aware database transaction, buffers events during the transaction, and registers one drain with the transaction. Nested managed commits promote that drain to their parent; only the outermost commit runs it. Rollback discards it. A transaction implementation without `TransactionCompletionInterface` is refused before mutation because it cannot prove the notification boundary.
 
 `bufferEvent(Event $event, string $eventName): void` -- buffers events inside transaction, dispatches immediately outside.
 
@@ -1012,12 +1384,33 @@ Low-level I/O SPI without entity hydration or events:
 ```php
 public function read(string $entityType, string $id, ?string $langcode = null): ?array;
 public function readMultiple(string $entityType, array $ids, ?string $langcode = null): array;
-public function write(string $entityType, string $id, array $values): void;
+public function write(string $entityType, string $id, array $values): string;
 public function remove(string $entityType, string $id): void;
 public function exists(string $entityType, string $id): bool;
 public function count(string $entityType, array $criteria = []): int;
 public function findBy(string $entityType, array $criteria = [], ?array $orderBy = null, ?int $limit = null): array;
 ```
+
+**Row-identity invariant.** `write()` returns the *effective* id of the persisted
+row — the caller-supplied `$id`, or the one the backend assigned when `$id` was
+the empty string. The persisted row MUST carry an id under the entity type's id
+key, so every row later returned by `read()`, `readMultiple()` and `findBy()`
+carries it. A driver that assigns the id itself must write it into the row;
+where the caller supplies `$id`, the driver fills the key only when the value
+bag omits it. `$id` alone is authoritative for *addressing* the row — a value
+bag whose id contradicts `$id` is a caller error that no first-party driver
+currently reconciles (`SqlStorageDriver` drops a divergent id on UPDATE but
+writes it verbatim on INSERT; the in-memory driver preserves it), so callers
+must not rely on the driver reconciling the two. `EntityRepository::hydrate()` reads entity identity
+from row values alone and never re-injects the id it addressed the row by, so a
+row that omits the key hydrates an entity whose `id()` is `null`; `isNew()` then
+reports true and the next save inserts a duplicate instead of updating (#2646).
+`SqlStorageDriver` satisfies this structurally — the id is a physical column the
+database populates and every `table.*` SELECT returns. A backend that stores
+rows in an array keyed by id must stamp the id into the row itself; because the
+id key name is entity-type metadata this SPI does not pass, such a driver must
+be *told* the key. `AbstractEntityStorageDriverContract` pins the invariant for
+every implementation via its `AUTO_ID_ENTITY_TYPE` fixture.
 
 #### SqlStorageDriver
 
@@ -1028,22 +1421,53 @@ Handles raw SQL I/O. Supports translation tables: if `{entityType}_translations`
 
 When `$communityScope` is injected and active, all read/findBy/count/exists/remove operations add `WHERE community_id = ?` automatically. The `write()` method uses a scope-unaware existence check (raw ID lookup) to avoid duplicate INSERTs when the active community differs from the stored row's community, but scopes the UPDATE path to prevent cross-community overwrites. See **Community Scoping** section below.
 
+`SqlStorageDriverV2` implements the optional `LangcodePeerStorageDriverV2Interface`. Its preflight assertion accepts the canonical default langcode and an opaque `StorageSnapshot`, refusing unauthorized writes before lifecycle events; `writeLangcodePeer()` repeats authorization and owns the exact `(id, langcode)` upsert. With an active community scope, the canonical default-language base row must be visible, a new peer is stamped with that owner's `community_id`, and an existing foreign or empty-owner peer is refused. `EntityRepository::saveTranslation()` delegates to this capability so the peer and its revision share one authorization boundary and transaction. Custom V2 adapters that support two-axis translation writes must implement both capability methods; see `docs/upgrade-notes/community-translation-peer-tenancy.md`.
+
 #### InMemoryStorageDriver
 
 File: `packages/entity-storage/src/Driver/InMemoryStorageDriver.php`
-Constructor: `(?CommunityScope $communityScope = null)`
+Constructor: `(?CommunityScope $communityScope = null, ?string $idKey = null)`
 
-In-memory storage for testing. Accepts an optional `CommunityScope` and applies the same community isolation logic as `SqlStorageDriver` — all read/findBy/count/exists/remove operations are scoped when the context is active.
+In-memory storage for testing. Accepts an optional `CommunityScope` and applies the same community isolation logic as `SqlStorageDriver` — all read/findBy/count/exists/remove operations are scoped when the context is active. Scoped translation writes also require a visible base owner, stamp the active community, and refuse foreign ownership before mutation.
 
 Additional methods beyond the interface:
 - `writeTranslation(string $entityType, string $id, string $langcode, array $values): void`
 - `deleteTranslation(string $entityType, string $id, string $langcode): void`
 - `getAvailableLanguages(string $entityType, string $id): string[]`
 - `clear(): void`
+- `declareIdKey(string $entityType, string $idKey): void` — names the column an
+  entity type stores its primary key under, so an auto-assigned id is stamped
+  into the persisted row under that key (see the row-identity invariant above).
+  `V2EntityRepositoryFactory::create()` calls it from the entity type's own keys
+  before wrapping the driver, which is what makes a `nid`- or `uid`-keyed type
+  round-trip. Drivers receive only an entity-type id per call, so the key cannot
+  be derived; `new InMemoryStorageDriver(idKey: 'nid')` is the escape hatch for a
+  fixture written to directly, before any composition (#2646). An *undeclared*
+  driver falls back to `id`, which is right for the great majority of entity
+  types but a guess. The guess is used only on the auto-id branch, where the
+  alternative is a row with no identity at all; an explicit-id write is left
+  untouched, since it already round-tripped correctly and a wrong guess would
+  add an undeclared -- therefore read-level Internal -- column to it.
+
+#### RevisionableStorageDriver
+
+File: `packages/entity-storage/src/Driver/RevisionableStorageDriver.php`
+
+Constructor: `(ConnectionResolverInterface $connectionResolver, EntityTypeInterface $entityType, ?EntityClockInterface $clock = null, ?CommunityScope $communityScope = null)`
+
+When a community scope is active, every default-language and per-language revision read first resolves the entity's indexed base-table row. A row is visible only when its physical `community_id` matches the active community. Foreign `loadRevision`, history, working-copy, tip, language-history, and in-process pointer reads return the same null, empty, or false result as missing data. Revision mutations require the same visible base row and throw `TenancyViolationException` before revision payloads, lifecycle events, or writes can cross the boundary. For a new scoped entity, the repository writes the stamped base row before creating revision 1 in the same transaction, including when the caller supplied an explicit entity ID. Direct scoped revision writes cannot create orphan history without a base owner.
+
+Revision tables deliberately do not duplicate `community_id`. Their tenant ownership is anchored to the canonical base row, which avoids denormalized discriminator drift and protects existing revision tables without a schema migration. With no active scope, behavior is unchanged.
+
+#### Translation peer repair
+
+`CommunityTranslationPeerRepairer` is the explicit data-repair surface for historical two-axis peer rows whose physical `community_id` is empty. It only considers community-scoped, translatable entity types. A candidate is eligible when a non-empty canonical default-language sibling exists for the same entity ID and, when UUID is keyed, the peer UUID exactly matches that canonical row. Ownerless, ambiguous, default-language, UUID-mismatched, or already-owned rows are skipped. Repairs are transactional and never run during boot.
+
+The CLI command `tenancy:repair-translation-peers <entity_type> [--dry-run] [--json]` exposes the repairer. Operators must dry-run first and quiesce serving writes before applying it; see `docs/specs/operations-playbooks.md`.
 
 ### Community Scoping (Multi-tenancy)
 
-Waaseyaa supports row-level multi-tenancy via community-scoped query isolation. All entity queries are automatically restricted to the active community when a `CommunityContext` is set.
+Waaseyaa supports row-level multi-tenancy via community-scoped query isolation. All entity queries, revision histories, and revision mutations are automatically restricted to the active community when a `CommunityContext` is set.
 
 #### HasCommunityInterface / HasCommunityTrait
 
@@ -1275,7 +1699,12 @@ LIKE wildcard escaping: `str_replace(['%', '_'], ['\\%', '\\_'], $value)` before
 
 Count mode: `count()` switches `execute()` to return `[(int) $count]` instead of IDs.
 
-`accessCheck()` is a no-op in v0.1.0.
+`accessCheck(true)` is the default and requires `setAccount()` before execution.
+The query hydrates candidates, applies the deny-by-default entity policy, and
+returns only authorized IDs; `count()` reports that post-policy cardinality.
+For ranged queries the policy decision precedes offset/limit slicing, so
+inaccessible candidates do not consume observable ranks. `accessCheck(false)`
+is the audited system-context bypass and keeps SQL count and range fast paths.
 
 **Memoization**: When a `SqlEntityQueryResultCache` is provided, `execute()` fingerprints conditions, sorts, range, and count mode (`xxh128` of a normalized payload), stores `{entityTypeId, fingerprint} → result`, and returns cached ID lists or `[(int)count]` on hits. There is no cross-table invalidation: cache entries for a type are dropped only when that type’s `SqlEntityStorage` completes `save()` or `delete()` that performs a write.
 
@@ -1414,6 +1843,7 @@ Maps `EntityType::getFieldDefinitions()` metadata to per-field Symfony `Constrai
 | `enum_class` / `enumClass` (`BackedEnum`) | `Choice` on backing values | PHP enum class name. |
 | `type` scalar | `Type` | `bool`, `int`, `float`, `string` (incl. `email`/`text`/`slug`), `array`/`json`. Boolean fields accept only the canonical native PHP `bool` after definition-driven ingress normalization. Omitted for `entity_reference` and `timestamp` (storage shape varies). Integer fields with `settings.subtype: timestamp` use `AtLeastOneOf(Type(int), Type(DateTimeInterface))`, accepting both unix storage and cast-aware domain representations. |
 | `min` / `max` settings on `integer` / `int` / `float` / `double` | `Range` | Derived when `min` and/or `max` is numeric — both, either, or neither may be present (mirrors the Length shape). (#1643) |
+| `type: entity_reference` | `EntityExists` (+ `All` when `cardinality !== 1`) | Only on the **active** save-time validation path when `EntityRepository` carries an `EntityIdentifierResolver` and the field's settings resolve a non-empty machine name (`target_entity_type_id` / `targetEntityTypeId` / legacy `target_type`). Lookup is access-neutral ({@see EntityIdentifierResolver}); violations use the EntityExists message contract. Missing resolver or malformed target metadata throws `LogicException` before any write. Non-empty target IDs are opaque entity-type manager keys; save-time validation does not apply CLI-specific authoring grammar before resolver lookup. Composed **after** manual per-type constraints — manual layer-3 entries cannot remove existence checks. For non-Public fields the closed reader admits only the canonical resolver-backed checker, never an arbitrary public `EntityExists` callback. Malformed reference shapes fail as ordinary constraint violations without uncaught `TypeError`. (#2981) |
 
 Per-field declared constraints (`FieldDefinition::getConstraints()`, object-shaped definitions; array-shaped definitions carry `constraints` through `normalizeDefinition()`) are appended after the derived list for the same field.
 
@@ -1423,6 +1853,9 @@ File: `packages/entity/src/Validation/EntityTypeValidationConstraints.php`
 
 1. Derive constraints from `getFieldDefinitions()` via `FieldDefinitionConstraintBuilder::build()` (layers 1+2).
 2. Merge `getConstraints()`: **for each field name present in `getConstraints()`, the manual value replaces the derived list entirely** for that field (layer 3).
+3. When an `EntityIdentifierResolver` is supplied, append `entity_reference` existence constraints (`EntityExists` / `All`) for each resolved `entity_reference` field — orthogonal to layer 3 and never removable by manual per-type constraints.
+
+When validation is active (`EntityValidator` configured and `save(..., validate: true)`), `EntityRepository` refuses saves for entity types whose resolved field definitions include `entity_reference` but no resolver was injected — `LogicException` with a stable message, before any driver write. Kernel-built repositories always receive the resolver. `save(..., validate: false)`, a null validator (`WAASEYAA_ENTITY_VALIDATION` opt-out), and repositories for types without `entity_reference` fields remain unchanged. Reference **deletion lifecycle** (`on_delete` restrict/delete) is out of scope here (#2756 polymorphic engagement targets remain a separate contract).
 
 Opt-outs: boot-time `WAASEYAA_ENTITY_VALIDATION=0|false|off` builds repositories without a validator; per-call `EntityRepository::save($entity, validate: false)` (and `saveMany`) skips validation for that call. There is no separate flag for “manual only.”
 
@@ -1458,16 +1891,27 @@ public function postDelete(): void {}
 Called by `EntityRepository` (not `SqlEntityStorage`). Execution order within `save()`:
 
 ```
-preSave($isNew) → PRE_SAVE event → persist → POST_SAVE event → postSave($isNew)
+preSave($isNew) → PRE_SAVE event → persist → postSave($isNew)
+    → true commit → POST_SAVE / revision / after-save notifications
 ```
 
 Execution order within `delete()`:
 
 ```
-preDelete() → PRE_DELETE event → remove → POST_DELETE event → postDelete()
+tombstone (mutation authority) → preDelete() → PRE_DELETE event (in-transaction guard)
+    → delete revisions → remove → postDelete() → true commit → POST_DELETE notification
 ```
 
-Hooks are only called when the entity is an instance of `EntityBase`. They run inside `UnitOfWork` transactions for batch operations (`saveMany`/`deleteMany`).
+Hooks are only called when the entity is an instance of `EntityBase`. They run inside the `UnitOfWork` transaction (single and batch alike), but they are IN-MEMORY calls: a rollback undoes the database work around them, not the hook invocation itself. `postDelete()` has therefore already fired for every entity processed before a mid-batch refusal.
+
+`postSave()` and `postDelete()` are transactional extension hooks, not deferred
+notification listeners. A throwing hook rolls back source rows, mutation
+authority, projection invalidation and related writes on the same connection.
+In a batch, that rollback includes earlier entities and their hook writes. In
+an enclosing managed transaction, successful hooks run before the repository
+returns, while notification events wait for the enclosing commit and disappear
+if it rolls back. Provider calls belong to those after-commit notifications;
+moving networking out of the transaction does not move the hooks (#3142).
 
 ## Configuration Entities
 
@@ -1527,9 +1971,134 @@ interface ConfigFactoryInterface
 
 `get()` returns cached immutable Config. `getEditable()` always creates a new mutable Config wrapped in EventAwareStorage.
 
-**Production binding:** `Waaseyaa\Config\ConfigServiceProvider` (`packages/config/src/ConfigServiceProvider.php`, declared in `packages/config/composer.json`'s `extra.waaseyaa.providers`) binds `ConfigFactoryInterface` as a container singleton, backed by `FileStorage` pointed at `<projectRoot>/config/active` — the same active store `Waaseyaa\CLI\Provider\OptimizeServiceProvider` compiles for `optimize:config`; there is exactly one active store, not a second instance. Before this provider existed, no production ServiceProvider bound the interface at all, so any consumer resolving it via `resolveOptional(ConfigFactoryInterface::class)` (e.g. `Waaseyaa\SSR\ThemeServiceProvider`) silently received `null` and no-opped in a real boot (#1920 WP-1 follow-up).
+**Production binding:** `Waaseyaa\Config\Authority\ConfigurationAuthorityServiceProvider`
+is the sole configuration composition root. It binds `ConfigFactoryInterface`
+as a storage-blind compatibility adapter over the active-generation bridge
+published by entity-storage. The bridge and factory share one immutable
+`ConfigurationAuthorityContext`; neither can derive `config/active`, read the
+sync bundle as runtime state, or select a second store. `optimize:config`
+consumes that same context and emits generation-bound rebuildable derived state.
+Production-equivalent environments refuse capability publication when the
+active generation is absent.
 
-<!-- Spec reviewed 2026-07-06 - fix(#1920): bind ConfigFactoryInterface in production boot -->
+The same composition root binds `ConfigPackageCompatibility` (CFG-03, #2430),
+built from `PackageManifest::$configContracts` — the declarations discovered at
+boot, never the bundle under import. Absent manifest means the authority is
+unavailable (a typed `ConfigurationAuthorityUnavailableException`) rather than an
+empty-and-permissive compatibility; an undeclared package likewise has no
+contract and is refused. See
+[`config-management.md`](config-management.md) "CFG-03 production composition"
+for the full producer/consumer trust boundary. The same root binds
+`ConfigSyncBundleValidator` on that one frozen schema registry, so strict bundle
+validation always runs against the schemas the site actually has installed, and
+publishes `ConfigImportPreflightInterface` as
+`SignedEnvelopeConfigImportPreflight` — the binding whose absence made
+`config:import` refuse in every environment. When replay state is unavailable it
+publishes `RefusingConfigImportPreflight` instead, so a gate is never composed
+with one of its checks missing. The CLI provider composes
+`ConfigManifestBundleSigner` lazily for `config:manifest:sign`, so a
+verifier-only profile — one with no `config_manifest_signing.signing_key` —
+registers normally and the command refuses there rather than the provider
+failing to boot.
+
+Packages whose closed CFG-03 schema dialect cannot express every domain rule may
+register one `ConfigSemanticValidatorInterface` for an already-registered schema
+identity before the shared registry freezes. Each validator declares a
+deterministic `contract()` string; the registry binds that string into the
+schema identity's `canonical_schema_hash`, so content authored under a semantic
+contract is refused by a host running a different contract or none. Duplicate
+registration is idempotent only for the same authority — the same instance, or
+the same class with the same declared contract and the same dependency
+instances. A same-class validator with materially different dependencies, a
+competing class, a validator declaring no contract, and any late registration
+are all refused. `ConfigContentHasher` runs that package-owned semantic
+validation over the complete authored document after structural schema
+validation and before it derives authored or effective identities, so invalid
+domain values cannot acquire trusted hashes. The package's declared
+configuration contract version binds responsibility for those semantics and must
+advance when their compatibility changes.
+
+CFG-02 activation authorization is bound alongside it (#2430):
+`VerifiedNonDestructiveConfigurationActivationAuthorizer` replaces the refusing
+default for ordinary activation, and rollback and candidate sweep keep theirs.
+An application binding its own `ConfigurationActivationAuthorizerInterface`
+still wins, so this widens nothing an app has already narrowed.
+
+**Construction is side-effect free; refusal happens at access (#2426).**
+`DatabaseActiveConfigurationBridge` builds its `DatabaseActiveConfigurationStorage`
+on demand, and neither constructor asserts that a generation has been activated.
+The refusal lives on the access paths — `read()`, `readMultiple()`, `exists()`,
+`listAll()`, and `getAllCollectionNames()` each call `requireActiveGenerationId()`
+per query, and every mutation path refuses unconditionally — so a missing
+activation still fails closed and is never served from a file fallback.
+
+This boundary is load-bearing rather than stylistic. Access-policy discovery runs
+inside `AbstractKernel::boot()`, and resolving a policy can pull
+`ConfigFactoryInterface` and therefore this bridge. While the assertion sat in
+the constructor, a fresh install could not boot at all: it had migrated schema
+but no activated generation, and activating one requires a booted kernel. Two
+releases shipped unbootable for new installs before this was corrected. A
+constructor on this path must therefore stay free of state assertions; put new
+guards on the methods that touch configuration.
+
+**Genesis: the one activation without CFG-03 verification (#2428).** A site
+that has never been installed has no generation, and every verified path to
+creating one requires a generation to already exist — the activator refuses
+without a verified bundle plus a CAS token, and import callers assemble their
+baseline by reading the active store. `ConfigurationGenesisActivatorInterface`
+closes that loop and is deliberately kept off `ConfigurationActivatorInterface`,
+so ordinary activation consumers cannot reach it. It is reachable in practice
+only from the restricted `install:init` lifecycle. That lifecycle's definition
+discovery must not publish live `configuration.authority.v1` capabilities
+(#3064): capability publication outside explicit development calls
+`requireActiveGenerationId()`, which is the state `install:init` creates.
+Ordinary production boot keeps that refusal.
+
+Genesis produces exactly one thing: the canonical empty generation, whose id is
+derived from the authority alone. `ConfigurationActivationRequest::genesis()`
+refuses files, tombstones, expectations, bundles, tokens, and target
+generations, so there is nothing it could attest to and no verification it could
+claim. It is valid only when `currentToken() === null`, replays its committed
+result for a repeated installation request id, and refuses a competing
+generation otherwise. It is not operator-authorized because it runs before any
+account exists; its boundary is the lifecycle plus that precondition. Every
+configuration change after it uses the ordinary verified import path.
+
+Fresh generated projects may make that first verified change through the
+initial-project coordinator after `install:init` creates genesis. The coordinator
+accepts only a signed bundle at sequence 1, requires the current token to be the
+canonical empty genesis token, and binds its deterministic request identity to
+the resolved configuration authority and signed manifest. It derives the
+consumer site's canonical manifest and plan digests from the committed site
+rather than accepting caller assertions. A committed retry revalidates the full
+sync bundle and requires both the recorded result and the currently serving
+token to match before returning read-only completion. Existing applications are
+outside this fresh-only composition and are refused explicitly.
+
+In the ledger, genesis keeps `operation = 'activate'` — it truthfully is an
+activation — and is marked by an additive `is_genesis` column rather than a new
+verb, so the existing CHECK is not widened and the ledger's security triggers
+are neither dropped nor recreated.
+
+**Transactional activation:** Production writes through
+`ConfigurationActivatorInterface`, which stages a complete immutable successor
+generation and compares both the content generation ID and monotonic activation
+sequence before commit. `ConfigurationActivationResult` exposes the committed
+token and a value-free evidence hash for idempotent retry correlation. Legacy
+editable `StorageInterface` callers are adapted to the same whole-generation
+CAS; omission retains an entry and deletion requires a hash-bound tombstone.
+After commit, cached immutable config reads are invalidated by the runtime epoch
+rather than switching to a second active store.
+
+Every primary and unique key in the configuration lifecycle schema is prefixed by
+`authority_id`, so a unique violation reaching the activation commit always
+implicates one authority. That conflict names the authority, the activation
+request, and the driver's violated constraint, because the message is the only
+evidence an operator has: the activator's own idempotency check clears before
+the INSERT, so the branch is reachable only by a genuinely racing duplicate and
+cannot be reproduced by inspection (#2545).
+
+<!-- Spec reviewed 2026-08-12 - S1-FW-CFG-01 typed authority supersedes the former config/active FileStorage binding. -->
 
 ### ConfigManagerInterface
 
@@ -1632,7 +2201,9 @@ public function __construct(
 )
 ```
 
-`toJsonSchema()` maps types: `string` -> `{'type': 'string'}`, `integer` -> `{'type': 'integer'}`, `boolean` -> `{'type': 'boolean'}`, `float` -> `{'type': 'number'}`, `text` -> object with `value`/`format`, `entity_reference` -> object with `target_id`/`target_type`. Wraps in `{'type': 'array', 'items': ...}` when `isMultiple()`.
+`toJsonSchema()` delegates to the registered field-type plugin's
+per-definition schema and wraps it in `{'type': 'array', 'items': ...}` when
+`isMultiple()`. Unknown types fail closed.
 
 **Storage hint.** `FieldStorage` (`packages/field/src/FieldStorage.php`, backed enum: `Column`, `Data`) tells the schema and storage layers where the field's canonical value lives:
 
@@ -1677,13 +2248,26 @@ Contains `FieldItemInterface[]` items. Supports `__get($name)` to access first i
 File: `packages/field/src/FieldTypeManager.php`
 Class: `final class FieldTypeManager extends DefaultPluginManager implements FieldTypeManagerInterface`
 
-Constructor: `(array $directories = [], ?CacheBackendInterface $cache = null)`
+Constructor: `(?array $directories = null, ?CacheBackendInterface $cache = null, array $extensionClasses = [])`.
+`null` discovers the built-in plugins; an explicit empty list discovers none.
+`FieldTypeManager::default()` supplies the process-static built-in authority
+only for isolated construction. `fromManifest(array $fieldTypes)` creates a
+boot-scoped manager from exact manifest `id => class` pairs and eagerly refuses
+missing, malformed, mismatched, or duplicate plugins.
 
-Uses `AttributeDiscovery` with `FieldType::class` attribute. Plugin discovery scans directories for `#[FieldType(...)]` attributes.
+Uses `FieldTypeDiscovery`, which combines `AttributeDiscovery` over the built-in
+directory with exact downstream classes recorded under the manifest's
+`field_types` inventory. Every class must be concrete, implement
+`FieldTypeInterface`, and carry a `#[FieldType]` id equal to its manifest key.
 
 Additional methods:
 - `getDefaultSettings(string $fieldType): array`
 - `getColumns(string $fieldType): array` -- returns `schema()` from the field type class
+- `jsonSchemaFor(FieldDefinitionInterface): array` -- field-item schema
+- `entityValueJsonSchemaFor(FieldDefinitionInterface): array` -- authoring/API value schema
+- `schemaFor(FieldDefinitionInterface): array` -- complete physical plugin schema
+- `entityStorageColumnSchemaFor(FieldDefinitionInterface): array` -- canonical direct entity column
+- `blueprintFieldTypeIds(): list<string>` -- sorted plugin-owned admission roster
 
 ### FieldType Attribute
 
@@ -1820,6 +2404,8 @@ Bundle-scoped field definitions can be declared declaratively using PHP attribut
 ### BundleTemplateCompiler
 
 `Waaseyaa\Field\BundleTemplateCompiler` accepts an explicit list of class names and registers the resulting `FieldDefinition` objects with `FieldDefinitionRegistry::registerBundleFields()`. Compilation is idempotent — subsequent calls are no-ops.
+
+In a booted kernel, `FieldServiceProvider` constructs the compiler with the exact `FieldDefinitionRegistryInterface` owned by `EntityTypeManager` and exposed through `KernelServicesInterface`; provider-local, HTTP, listing, schema, and storage consumers therefore observe the same compiled bundle definitions. Only standalone provider use with no kernel registry constructs an isolated built-in registry. A non-null kernel service that does not implement the interface fails closed.
 
 ```php
 $compiler = new BundleTemplateCompiler($fieldDefinitionRegistry);
@@ -2032,7 +2618,7 @@ The coordinator dispatches four lifecycle events:
 
 | Event class             | When dispatched                                      |
 |------------------------ |----------------------------------------------------- |
-| `BeforeSaveEvent`       | Before any backend write; listener may abort via `AbortOperationException` |
+| `BeforeSaveEvent`       | Before any backend write; includes candidate, context, revision intent, and stored original; listener may abort via `AbortOperationException` |
 | `AfterSaveEvent`        | After all backends commit; NOT dispatched on partial failure |
 | `BeforeDeleteEvent`     | Before any backend delete; listener may abort        |
 | `AfterDeleteEvent`      | After all backends confirm delete                    |
@@ -2113,10 +2699,10 @@ type-mapping table.
 - **In-memory test storage** lives at `Waaseyaa\Api\Tests\Fixtures\InMemoryEntityStorage`. Use it for unit tests; use `DBALDatabase::createSqlite()` for integration tests that exercise SQL behavior.
 - **`EntityTypeManager` constructor signature**: `(EventDispatcherInterface, ?\Closure $storageFactory = null)`. The factory receives `EntityTypeInterface $definition`.
 - **Entity types without a `uuid` key are config entities**: `SqlEntityStorage::save()` requires explicit non-empty string IDs for entities whose `EntityType` keys lack `'uuid' => 'uuid'`. Content entities with auto-increment IDs must include the `uuid` key even if they don't use UUIDs.
-- **`entity_reference` field definitions need `target_entity_type_id`**: `EntityTypeBuilder` looks for `target_entity_type_id` or `targetEntityTypeId`, not `target`. Wrong key causes silent fallback to String type with no reference resolution.
-- **`EntityBase` lifecycle hooks**: `preSave(bool $isNew)`, `postSave(bool $isNew)`, `preDelete()`, `postDelete()` are no-op by default. Override in subclasses. Order: `preSave()` → PRE_SAVE event → persist → POST_SAVE event → `postSave()`.
-- **`EntityRepository` auto-validation**: An `EntityValidator` is injected by default into every kernel-built repository (alpha.204, #1643) — `save()` validates against the merged three-layer constraint map (`EntityTypeValidationConstraints::forEntityType()`) and throws `EntityValidationException` before any storage write. Pass `validate: false` to bypass for migrations/bulk imports (`saveMany()` also respects this), or set `WAASEYAA_ENTITY_VALIDATION=0|false|off` to disable the kernel wiring globally at boot.
-- **`saveMany()`/`deleteMany()` use UnitOfWork**: Batch operations wrap all writes in a single transaction. Events are buffered and dispatched only after successful commit. Requires `$database` to be non-null (throws `LogicException` otherwise).
+- **`entity_reference` field definitions need a target**: `EntityTypeBuilder` accepts `target_entity_type_id`, `targetEntityTypeId`, and the legacy `target_type` alias. A missing target fails closed instead of silently becoming a scalar.
+- **`EntityBase` lifecycle hooks**: `preSave(bool $isNew)`, `postSave(bool $isNew)`, `preDelete()`, `postDelete()` are no-op by default. Override in subclasses. Order: `preSave()` → PRE_SAVE event → persist → `postSave()` → true commit → POST_SAVE notification. Post-save and post-delete hooks are transactional; notification events alone wait for commit.
+- **`EntityRepository` auto-validation**: An `EntityValidator` is injected by default into every kernel-built repository (alpha.204, #1643) — `save()` validates against the merged three-layer constraint map (`EntityTypeValidationConstraints::forEntityType()`) and throws `EntityValidationException` before any storage write. Kernel-built repositories also receive `EntityIdentifierResolver` for `entity_reference` existence checks on the active validation path (#2981). Pass `validate: false` to bypass for migrations/bulk imports (`saveMany()` also respects this), or set `WAASEYAA_ENTITY_VALIDATION=0|false|off` to disable the kernel wiring globally at boot.
+- **`save()`/`delete()` and `saveMany()`/`deleteMany()` use UnitOfWork when mutation authority is active**: Batch operations wrap all writes in a single transaction. Buffering is by event ROLE, not by batch-ness: GUARD events (`PRE_SAVE`, `BeforeSaveEvent`, `PRE_DELETE`) dispatch immediately inside the transaction so a refusal rolls the work back; NOTIFICATION events (`POST_SAVE`, `POST_DELETE`, `REVISION_CREATED`, `AfterSaveEvent`) and successor-token installs follow the outermost managed commit and are discarded on rollback. Requires `$database` to be non-null and its transaction object to implement `TransactionCompletionInterface` (throws `LogicException` before mutation otherwise).
 - **`_data` JSON blob**: `SqlSchemaHandler` adds a `_data` TEXT column. `SqlEntityStorage::splitForStorage()` puts non-schema values into it as JSON; `mapRowToEntity()` merges them back on load. Adding fields to an entity that aren't declared as columns means they live in `_data` and won't be queryable in SQL.
 - **`EntityEvent` uses public properties**: `$event->entity` and `$event->originalEntity` are public readonly — no getter methods. Common mistake: `$event->getEntity()`.
 
@@ -2125,3 +2711,22 @@ type-mapping table.
 <!-- Spec reviewed 2026-05-17 - dead-code Phase 3 Bucket 4: @api PHPDoc sweep on additional public-API classes. No behavioural change. -->
 
 <!-- Spec reviewed 2026-05-18 - WP07 (agent-executor mission) rebase + rewire: no behavioural change to this subsystem; touch refreshes drift-detector timestamp. -->
+
+## Transactional served-source notifications (FW-AIV-EXECUTION-01)
+
+EntityRepository emits EntitySourceChangedEvent after writes that change served
+content and before their database transaction commits. Its exact string identity
+and actual DatabaseInterface connection allow subscribers to invalidate derived
+state atomically with the source. Listener failure rolls back the source mutation;
+provider/network work must never run in this event. Post-save/delete notifications
+run after true commit, including nested transaction completion. Forward draft and
+history-only writes that do not change served content do not invalidate its vector.
+
+ai-vector uses this event to advance durable generations and invalidate vectors in
+the source transaction; it publishes only under the same generation lock after a
+fresh served read. See semantic-search-contract.md for topology, custom repository
+obligations and reconciliation. This event does not replace mutation authorization
+or transaction authority and does not make policy configuration versioned.
+FW-AIV-UNINDEXED-AVAILABILITY-01 skips projection deletion only for undeclared
+identities whose indexing history proves never indexed under that same lock.
+Potentially indexed and uncertain identities retain invalidation and rollback.

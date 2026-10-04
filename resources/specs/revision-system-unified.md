@@ -1,5 +1,14 @@
+<!-- Spec reviewed 2026-09-21 - permission catalogue ownership (#3119): node access and protected-read policy checks use `NodePermissions` constants/helpers for canonical administer/access/ownership and bundle-scoped operation ids; the node package manifest owns the static catalogue entries, and invalid bundle ids fail closed at the helper boundary. -->
+
 # Revision system (unified, with an optional translation axis)
 
+<!-- Spec reviewed 2026-09-08 - #3034: EntityRepository reads and writes the base-row revision pointer through the entity type's configured `revision` key (default `revision_id`). Revision-history tables retain their repository-owned internal `revision_id` column. References below to a base `revision_id` pointer describe the default key; they do not require entity types to use that name. -->
+<!-- Spec reviewed 2026-09-02 - #2786: NodeServiceProvider declares the `node_type` config entity's `dependencies` field with the registered `json` field-type plugin instead of the unregistered `map` id. Field registration is now the shared admission gate and fails closed for ids the plugin registry cannot project, so `map` would refuse kernel boot. Revision/default-revision behaviour documented here is unchanged; `node_type` is not revisionable. -->
+<!-- Spec reviewed 2026-08-26 - #2562: ContentPublisher is a second production arming site for default-revision discipline (draft saves after a live published pointer). `EntityRepository::promotePublishedRevision()` applies complete-promotion semantics without a workflows subscriber so unbound publish can rewrite the served base row. Storage still does not infer discipline from pointer presence (Playbook H). -->
+<!-- Spec reviewed 2026-08-26 - #2562 review: `clearPublishedRevision()` drops the published pointer and materializes unpublished status on the served base row without copying a diverged working copy. `loadRevision()` skips the live bundle-subtable overlay when the requested revision is not the base `revision_id`. `shouldCreateRevision()` honors `isNewRevision()` on trait-only ContentEntityBase types. -->
+
+<!-- Spec reviewed 2026-08-09 - issue #2322: saveTranslation delegates peer-row persistence to the optional tenant-aware LangcodePeerStorageDriverV2Interface. The peer owner is derived from the visible canonical base row, foreign and empty-owner peer mutations refuse before events or writes, and historical empty-owner peers require the explicit repair command. -->
+<!-- Spec reviewed 2026-08-09 - issue #2320: community-scoped revision visibility is anchored to the indexed base row. Default and translation revision reads fail as missing across communities; mutation entry points refuse before events and writes. Existing unscoped behavior and revision-table schemas remain unchanged. -->
 <!-- Spec reviewed 2026-07-14 - R21 #2010 / #1968: under default-revision discipline, setPublishedRevision() now partitions the target revision snapshot through BundleSubtableGateway and upserts column-stored bundle values in the same transaction as the base-row/pointer promotion. Draft saves remain revision-only and do not leak into the served subtable. -->
 
 **Status:** Design (2026-06-09). Supersedes the parallel two-axis storage stack
@@ -49,18 +58,25 @@ it does now.
 
 | Table | When | Key | Carries |
 |---|---|---|---|
-| `<entity>` | always | `id` (+ `revision_id`, `published_revision_id` pointers) | current/tip values |
+| `<entity>` | always | `id` (+ configured revision key, default `revision_id`; `published_revision_id`) | current/tip values |
 | `<entity>_revision` | `revisionable` | `(entity_id, revision_id)` | full snapshot per default-language revision (unchanged) |
 | `<entity>__translation__revision` | `revisionable` **and** `translatable` | `(entity_id, langcode, revision_id)` | per-language snapshot; `revision_id` monotonic **per `(entity_id, langcode)`** |
 
-We keep A's `revision_id` idiom on both tables (not the M-004 `vid` surrogate),
-so single-axis and the translation axis read the same way and the existing
-single-axis path is untouched. `<entity>__translation__revision` columns:
+The base pointer column is the entity type's `keys.revision` value and defaults
+to `revision_id`. Revision-history tables keep A's internal `revision_id` idiom
+(not the M-004 `vid` surrogate), so single-axis and translation-axis history
+use the same repository-owned identifier. `<entity>__translation__revision` columns:
 `entity_id`, `langcode`, `revision_id`, `revision_created`, `revision_log`,
 `revision_author`, and the field values (a `_data` JSON blob for sql-blob
 entities, the framework default). A composite `UNIQUE (entity_id, langcode, revision_id)`
 plus an index `(entity_id, langcode, revision_id DESC)` expresses the logical
 key and serves the per-language tip/list hot paths.
+
+### 2b. Community scope anchor
+
+Revision tables do not carry a second `community_id` discriminator. For an entity type declared with `tenancy: ['scope' => 'community']`, the kernel injects the same `CommunityScope` into `SqlStorageDriver` and `RevisionableStorageDriver`. The revision driver authorizes an entity ID against the indexed physical `community_id` on its canonical base row before touching either live revision table.
+
+With an active scope, foreign default and translation revision reads return the same null, empty, or false result as absent data. This includes individual revisions, revision ID lists, latest tips, language lists, working-copy resolution, and in-process per-language pointers. Mutating operations require a visible base row and fail before reading a foreign revision payload, dispatching a lifecycle event, or changing revision, pointer, translation-peer, or base storage. For a new scoped entity, the repository writes the stamped base row before revision 1 in the same transaction, including explicitly keyed entities; direct scoped revision writes cannot create orphan history without a base owner. `saveTranslation()` routes its peer upsert through the tenant-aware `LangcodePeerStorageDriverV2Interface`, which copies ownership from the visible canonical row and refuses foreign or historical empty-owner exact peers. Existing empty-owner peers are not mutated automatically; operators use `tenancy:repair-translation-peers` after a dry run. With an inactive or uninjected scope, the pre-#2320 behavior is preserved.
 
 ### 2a. Revision metadata columns (both live tables)
 
@@ -221,18 +237,19 @@ Phase 1 records per-language *revisions*; it does not by itself move the peer
 *base row* that holds a language's current value. `EntityRepository::saveTranslation($entityId, $langcode, array $values, ?string $log)`
 closes that gap: in **one transaction** it both
 
-1. upserts the peer `(id, langcode)` base row (the language's current value —
+1. asks `LangcodePeerStorageDriverV2Interface` to authorize before events and then upsert the peer `(id, langcode)` base row (the language's current value —
    blob entities ride `_data`; the label column mirrors the label field; a new
    peer row copies the shared `uuid` from the default row so the partial-unique
-   UUID index, which only constrains default-langcode rows, is satisfied), and
+   UUID index, which only constrains default-langcode rows, is satisfied; scoped
+   adapters derive `community_id` from the visible canonical base row), and
 2. writes the per-language revision (`writeRevision(..., $langcode)`).
 
 The base row and its history therefore move together: a language is a true peer
 with its own base row and its own independent `revision_id` sequence, not an
 overlay on another language's row. The default-language row and any
 non-translatable fields are untouched. This is the single repository entry point
-for editing a translation; storage logic stays in one place (the repository),
-not orchestrated across two storage APIs by the application. `loadTranslation($id, $langcode)`
+for editing a translation; orchestration stays in the repository while physical peer
+storage and tenant enforcement stay in the driver. `loadTranslation($id, $langcode)`
 reads a language's current value back from its peer base row (the driver's
 `read(..., $langcode)` selects the peer row directly on a widened-PK base table).
 
@@ -438,15 +455,15 @@ own); see `docs/specs/content-workflow.md` "Default-revision discipline
 section remains the storage-layer contract and is otherwise unchanged by
 PR-2 (no storage-mechanics edit was needed to wire the flags).
 
-### 7a. The keystone: discipline is a workflow-layer signal, honored mechanically
+### 7a. The keystone: discipline is a caller-layer signal, honored mechanically
 
 A naive storage rule ("published pointer present → revision-only saves")
 would break every install that carries a pointered-but-unbound row (Playbook
 H steps 1–4 without binding): their ordinary edits would silently stop
 reaching the base row. Storage (L1) also cannot ask "is this bound?" —
-bindings are L3 (`waaseyaa/workflows`). Therefore **the workflows layer
-decides when discipline applies; storage only supplies the mechanics** —
-two transient flags, honored mechanically wherever they are found:
+bindings are L3 (`waaseyaa/workflows`). Therefore **callers decide when
+discipline applies; storage only supplies the mechanics** — two transient
+flags, honored mechanically wherever they are found:
 
 - **Entity flag** — `Waaseyaa\Entity\RevisionableEntityTrait::$defaultRevisionDiscipline`
   (private bool, default `false`), with `setDefaultRevisionDiscipline(bool): void`
@@ -455,17 +472,25 @@ two transient flags, honored mechanically wherever they are found:
   boolean on every guarded save** (never set-on-true only) by
   `WorkflowStateGuard` (wired #1920 PR-2), so a stale `true` from a prior
   save of a long-lived entity object can never leak into a later, unguarded
-  save.
+  save. `ContentPublisher` also arms the flag on ordinary draft saves once
+  `loadPublishedRevision()` is non-null (#2562) — publishing is the editorial
+  mutation door and must not replace the served projection. Storage never
+  infers the flag from pointer presence.
 - **Event flag** — `Waaseyaa\EntityStorage\Event\BeforeRevisionPointerMoveEvent::$defaultRevisionSemantics`
   (private bool, default `false`), with `applyDefaultRevisionSemantics(): void`
   and `defaultRevisionSemantics(): bool`. Set by a binding-aware subscriber
   (`WorkflowPointerMoveGuard`, wired #1920 PR-2) on the pre-write choke point
-  (§4 "Pre-write choke point") for the specific pointer operation in flight.
-- **No workflows package / no binding / no pointer ⇒ byte-identical
-  behavior to today.** This is the hard regression gate, verified by a
-  Playbook-H-shaped test: a pointered-but-unbound entity's ordinary save,
-  `setPublishedRevision()`, and `rollback()` all produce IDENTICAL writes to
-  before this section existed.
+  (§4 "Pre-write choke point") for the specific pointer operation in flight,
+  **or** by `EntityRepository::promotePublishedRevision()` itself after that
+  dispatch so unbound publish can complete-promote without a workflows
+  subscriber.
+- **No workflows package / no binding / no publisher arming / no pointer ⇒
+  byte-identical behavior to today.** This is the hard regression gate,
+  verified by a Playbook-H-shaped test: a pointered-but-unbound entity's
+  ordinary save, `setPublishedRevision()`, and `rollback()` all produce
+  IDENTICAL writes to before this section existed. A raw repository save
+  after `ContentPublisher::publish()` (flag never set on that object) still
+  writes the base row.
 
 Both flags are duck-checked (`method_exists`) at their consumption sites,
 mirroring the `#1654` `method_exists(getRevisionId())` pattern — an entity
@@ -508,16 +533,19 @@ entity type is revisionable, and the entity is not new:
   carry a live `published_revision_id` pointer but were never flagged (the
   Playbook-H shape). This is the hard regression gate (§7a).
 
-### 7c. Promotion becomes a complete primitive (`setPublishedRevision()`)
+### 7c. Promotion becomes a complete primitive (`setPublishedRevision()` / `promotePublishedRevision()`)
 
 The pre-write `BeforeRevisionPointerMoveEvent` dispatch is unchanged in
 position; a subscriber may call `applyDefaultRevisionSemantics()` on it.
-When the event reports `defaultRevisionSemantics() === true`, in the SAME
-transaction as the pointer move: the base row is overwritten from the
-TARGET revision's full values (content, `workflow_state`, and the
-revision's own stored `status`) — bookkeeping keys stripped exactly like
-`rollback()` strips them (`revision_id`, `revision_created`, `revision_log`,
-`revision_author`, `entity_id`), id preserved — and BOTH `revision_id` and
+`EntityRepository::promotePublishedRevision()` applies that flag itself
+after the dispatch so editorial publish can complete-promote without a
+workflows subscriber (#2562). When the event reports
+`defaultRevisionSemantics() === true`, in the SAME transaction as the
+pointer move: the base row is overwritten from the TARGET revision's full
+values (content, `workflow_state`, and the revision's own stored `status`)
+— bookkeeping keys stripped exactly like `rollback()` strips them
+(`revision_id`, `revision_created`, `revision_log`, `revision_author`,
+`entity_id`), id preserved — and BOTH `revision_id` and
 `published_revision_id` are set to the target. The target revision row
 itself is never mutated. Without the flag: today's targeted single-column
 `UPDATE published_revision_id = …`, byte-identical (`EntityRepositoryPublishedRevisionTest`
@@ -574,6 +602,27 @@ knowing whether it is bound to a workflow. Every in-repo implementor of
 `EntityRepositoryInterface` (including test doubles) gained this method in
 the same change so the interface addition does not break any consumer.
 
+`loadRevision()` hydrates the revision row's `_data` snapshot. Entity-keyed
+bundle-subtable columns overlay that snapshot **only** when the requested
+revision is the base row's `revision_id`. A disciplined draft save skips the
+subtable upsert, so overlaying live columns onto `loadWorkingCopy()` /
+`loadRevision($id, $tip)` would replace unpublished field values with the
+served published body.
+
+### 7g. Clearing the published pointer (`clearPublishedRevision()`)
+
+`EntityRepository::clearPublishedRevision($id, $token)` (concrete repository,
+not the interface — same export shape as `promotePublishedRevision()`):
+claims the aggregate mutation, rewrites the served base row with `status=0`
+and `published_revision_id` NULL, and leaves `revision_id` on the previously
+served snapshot. It does not copy a diverged working copy and does not cut a
+new revision (that would steal the tip from a forward draft). It is **not** a
+`BeforeRevisionPointerMoveEvent` operation; unbound unpublish must not run
+the publish-path workflow pointer guard. After commit it dispatches
+`POST_SAVE` so search/cache listeners observe the unpublished projection.
+`loadPublishedRevision()` is a pure pointer follow: after this call it
+returns null, and later undisciplined drafts tip-track again.
+
 <!-- Spec reviewed 2026-07-13 - CW-v1 option-1 forward-draft rebuild, #1920 PR-1: added §7 "Default-revision discipline (CW-v1 option-1)" — the entity + event transient discipline flags, revision-only saves in doSave(), setPublishedRevision() as a complete promotion primitive, rollback() gone revision-only under discipline, the latest-revision immortality extension to pruning/deletion, and loadWorkingCopy(). All dormant in PR-1 (storage mechanics only; the workflows engine wires the flags in the next PR). Undisciplined behavior is byte-identical to before this section, including for pointered-but-unbound (Playbook-H-shaped) entities. -->
 <!-- Spec reviewed 2026-07-13 - CW-v1 option-1 forward-draft rebuild, #1920 PR-2: §7's flags are no longer dormant — WorkflowStateGuard/WorkflowPointerMoveGuard wire them live (removed "forthcoming" wording); cross-referenced docs/specs/content-workflow.md's new "Default-revision discipline (CW-v1 option-1, #1920 PR-2 — as-built)" section for the workflows-layer half (guard wiring, same-state republish, working-copy basis, revert denial, read-side re-sourcing). No storage-mechanics change in this file was needed for PR-2 — the primitives PR-1 shipped were already complete. -->
 
@@ -588,3 +637,19 @@ the same change so the interface addition does not break any consumer.
 
 <!-- Spec reviewed 2026-06-12 - mission optimistic-locking-01KTXCHY WP03 (#1647): added §3b optimistic locking — SaveContext::withExpectedRevisionId() expectation seam, two-stage check (fail-fast pre-check before any write/event + guarded pointer-claim UPDATE inside the save transaction, affected-rows unambiguous because the pointer always moves), RevisionConflictException payload with null-current = "no readable head (row vanished or pre-backfill pointer-less row)", the six-row LogicException rejection matrix (new / non-revisionable / two-axis / non-revision-creating / no-DB / no-revision-driver), context-less paths unstatable by construction, two-axis langcode-scoped-guard lift path beside §3a. No-expectation saves byte-identical (zero added queries, pinned). -->
 <!-- Spec reviewed 2026-06-12 - mission revision-audit-provenance-01KTWY5V WP05: added §2a (revision_author column + additive sync on both live revision tables), §4a (authorship recording/resolution order/null-vs-0/revert authorship, RevisionMetadata hydration on loads, RevisionPointerMovedEvent), §6a (explicit FR-009 retirement of the dormant RevisionTableBuilder `<entity>__revision` vid dialect incl. its revision_created_at metadata block; live revision_author is the single authoritative author definition). Refs #1644, #1645. -->
+
+## Transactional served-source notifications (FW-AIV-EXECUTION-01)
+
+EntityRepository emits EntitySourceChangedEvent after writes that change served
+content and before their database transaction commits. Its exact string identity
+and actual DatabaseInterface connection allow subscribers to invalidate derived
+state atomically with the source. Listener failure rolls back the source mutation;
+provider/network work must never run in this event. Post-save/delete notifications
+run after true commit, including nested transaction completion. Forward draft and
+history-only writes that do not change served content do not invalidate its vector.
+
+ai-vector uses this event to advance durable generations and delete vectors in
+the source transaction; it publishes only under the same generation lock after a
+fresh served read. See semantic-search-contract.md for topology, custom repository
+obligations and reconciliation. This event does not replace mutation authorization
+or transaction authority and does not make policy configuration versioned.

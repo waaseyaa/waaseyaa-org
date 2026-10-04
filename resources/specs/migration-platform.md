@@ -228,9 +228,22 @@ access-denial and rollback-best-effort log lines.
 ### 3.11 `SaveContext::isImport()` extension
 
 `EntityDestination::write()` constructs a `SaveContext` with `isImport: true`.
-Lifecycle subscribers can branch on `$event->context->isImport()` to skip
+Lifecycle subscribers can branch on `$event->saveContext()->isImport` to skip
 expensive non-essential work (cache invalidation, analytics) during imports.
 The new method extends charter §5.3; it is additive (default `false`).
+
+### 3.12 Declared save-advisory acknowledgement
+
+`MigrationDefinition::$acknowledgedSaveAdvisoryCodes` is a version-controlled
+list of at most 32 unique advisory codes; the default is empty. The runner
+applies it only to the canonical `EntityDestination`. Each changed record first
+saves without generated tokens. If every returned advisory code is declared,
+the destination retries the same in-memory candidate exactly once with the
+returned tokens inside the entity/id-map transaction. Undeclared advisories or
+a second refusal fail closed as a typed `DestinationWriteException`.
+Successful acknowledgements become deterministic, value-free
+`SaveAdvisoryEvidence` on the transient `WriteResult` and bounded `RunReport`;
+they are not persisted in the id-map. Hash-match skips emit no new evidence.
 
 ---
 
@@ -413,10 +426,13 @@ non-null, resolves the destination entity type's bundle key
    matches, no-op (idempotent re-run).
 2. If absent, instantiate the entity with a freshly-generated UUIDv7.
 3. Set field values from `DestinationRecord::$fields`.
-4. Construct `SaveContext(isImport: true)`; dispatch `BeforeSaveEvent`; call
-   `EntityStorageCoordinator::save()`; dispatch `AfterSaveEvent`.
+4. Construct `SaveContext(isImport: true)` and call `EntityRepository::save()`;
+   the repository is the single `BeforeSaveEvent` / `AfterSaveEvent` dispatch
+   authority. A fully declared advisory response is retried once as described
+   in §3.12.
 5. `upsert` the id-map row with the new `source_record_hash`.
-6. Return a `WriteResult`.
+6. Return a `WriteResult`, including transient acknowledged-advisory evidence
+   when the one-retry path succeeded.
 
 **Rerun-hash disclosure (G-015).** `source_record_hash` is computed by
 `EntityDestination::computeSourceRecordHash()` over `{values, bundle,
@@ -631,15 +647,17 @@ declarations for bundle config entities that a completed import persisted.
   — the same "provider capability" pattern as `HasMigrationsInterface`
   (§9 step 2), not a bespoke discovery mechanism.
 - `ContentModel` is a source-agnostic list of `ContentTypeModel`s (destination
-  entity type + bundle + label + typed `FieldDefinitionInterface[]` +
-  informational shared-field/note lists).
+  entity type + bundle + label + typed `FieldDefinitionInterface[]` + optional
+  named bundle `uniqueKeys` + informational shared-field/note lists).
 - `ContentModelRegistrar::register(ContentModel $model)` does two things per
   content type: `ensureBundleConfigEntity()` (creates the bundle config
   entity — e.g. a `node_type` row — via reflection on the destination entity
   type's declared `bundleEntityType`, reached generically so the registrar
   carries no compile-time edge to any Layer-2 content package) and
   `declareFields()` (`EntityTypeManager::addBundleFields()`, which also
-  auto-materializes the per-bundle subtable with real typed columns). Both
+  auto-materializes the per-bundle subtable with real typed columns), and
+  idempotent registration of any bundle unique keys before coordinated schema
+  sync. All
   steps are idempotent — a repeated registration for an existing bundle/field
   is a silent no-op, not an error.
 - Every id in `ContentModel::$vocabularies` is treated as an explicit

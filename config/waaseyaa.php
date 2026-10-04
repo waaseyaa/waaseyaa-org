@@ -31,6 +31,8 @@ return [
     'jwt_secret' => getenv('WAASEYAA_JWT_SECRET') ?: '',
     // API key map: raw key => uid. Example: ['dev-machine-key' => 1].
     'api_keys' => [],
+    // The site publishes its own read-only MCP corpus; no JSON:API catalog.
+    'api_catalog' => ['enabled' => false],
     // Dev-only fallback account for local built-in server workflows.
     // Must remain false outside local development.
     'auth' => [

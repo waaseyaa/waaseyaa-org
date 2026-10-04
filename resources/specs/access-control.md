@@ -1,6 +1,65 @@
 # Access Control
+
+<!-- Spec reviewed 2026-09-01 - #2757 recovery correction: verification resend
+and forgot-password use the dedicated audited findActiveByMail boundary. They
+never resolve the general login namespace, so an email-shaped username cannot
+shadow the User that owns the submitted address. -->
+
+<!-- Spec reviewed 2026-09-01 - #2757 follow-up: an ineligible password attempt
+returns the generic denial without mutating a different authenticated or pending
+identity already in the session. SessionMiddleware remains the authority that
+revokes the current account when that current account itself becomes
+ineligible. Login identity comparison preserves exact legacy matches before a
+bounded case-insensitive fallback and fails closed on ambiguous variants; mail
+recovery no longer shares that ladder — see the #2773 review-correction note
+below. -->
+
+<!-- Spec reviewed 2026-09-01 - #2757 review corrections (PR #2773): two
+fail-closed repairs. (1) AuditedUserIdentityLookup::findActiveByMail() runs the
+canonical bounded query as its ONLY probe — one reserved audited read,
+`mail CASE_INSENSITIVE_EQUALS ? AND status = 1` over range(0, 2) — and returns a
+User only when exactly one active row matches. It no longer probes exact
+equality first, so an upgraded database holding active case-variant duplicates
+refuses recovery instead of handing it to whichever row happened to match the
+submitted spelling exactly. findActiveByLogin() keeps its exact-first legacy
+ladder unchanged; the two methods deliberately no longer share it. (2) The
+verification token's atomic consume is the single admission decision:
+consumeTokenIfAvailable(tokenId, type, userId) re-checks token type, owning
+user, unconsumed state, and expiry inside the one conditional UPDATE, from a
+single injected-clock read that both satisfies the `expires_at > :now`
+predicate and stamps `consumed_at`. validateToken() is descriptive only and
+never authorizes a single-use operation, so a token that expires between
+validation and consumption can no longer verify an address.
+EmailVerificationTransaction binds the consume to the identity of the User it
+is about to mutate, so a token can only ever verify its own owner. -->
+
+<!-- Spec reviewed 2026-08-27 - #2544 legacy password upgrade: `User::$legacy_pass` is a NEW credential field carrying `pass`'s exact classification - FieldReadLevel::Internal, on every always-internal list, readable only through the audited `user.credentials` capability, and Forbidden on the generic field surface via UserAccessPolicy::CREDENTIAL_FIELDS (same as `pass`). HTTP POST /api/auth/login receives LegacyPasswordUpgrade from AuthOidcRouteServiceProvider. It holds a credential imported from another system pending one-time upgrade. Keeping it separate from `pass` is what makes "a current hash is never downgraded" structural: `pass` only ever holds a current Waaseyaa hash, only `legacy_pass` reaches a legacy verifier, and an account with a current hash never consults its legacy value. `UserCredentialSnapshot` gains `legacyPasswordHash`. Contract: docs/upgrade-notes/legacy-password-upgrade.md. -->
+
+
+<!-- Spec reviewed 2026-08-27 - #2619: AuthServiceProvider now consumes the
+shared Foundation RuntimePolicy resolver. AuthConfig and token-secret custody
+retain the #2617 precedence and failure semantics; this removes the private
+duplicate resolver without changing access decisions. -->
+
+<!-- Spec reviewed 2026-08-22 - #2500: AuthTokenSecret derives waaseyaa.auth.token-hmac.v1 from ApplicationSecret when auth.token_secret is omitted; valid explicit AUTH_TOKEN_SECRET remains an independent override; raw app_secret bytes are never the HMAC key; invalid explicit values fail in every environment. -->
+
+<!-- Spec reviewed 2026-08-20 - #2464: EntityAccessHandler composes view_revision
+through RevisionPolicyComposition against the supplied entity (the historical
+snapshot on generic Admin recovery). Neutral falls back to view; explicit
+Forbidden does not. Protected entity-read policies evaluate the snapshot before
+legacy composition, and context-aware policies retain the caller's context on
+both the primary view_revision decision and its view fallback. -->
+
+<!-- Spec reviewed 2026-08-10 - #2327 configured-community principal convergence: the real HttpKernel stack explicitly runs CommunityMiddleware before FieldReadContextMiddleware, normalizing the resolved authoritative community onto `_community_id` before immutable principal construction. Explicit route/session precedence is preserved, configured state is restored after dispatch for long-lived workers, a fixed-community route carries the same scope as storage/controllers, and an inactive context remains null. -->
+<!-- Spec reviewed 2026-08-09 - #2314 external extension policies: explicitly participating installed packages receive policy-only discovery outside Waaseyaa/root namespaces while complete declared-policy parity remains fail closed. -->
+<!-- Spec reviewed 2026-08-07 - #2304: interactive self-profile identity reads use the separate UserSelfProfileReaderInterface. Its audited implementation releases exactly name/mail only when an authenticated immutable principal matches the target User id, binds the capability and ledger receipt to that actor plus tenant/community claims, and otherwise fails before reserving authority. MailDelivery, SessionBootstrap, and MaintenanceCli reasons remain unavailable as substitutes. Principal construction remains exclusively AccountPrincipalFactoryInterface. -->
+<!-- Spec reviewed 2026-08-05 - #2194: `AgentCapabilities::CONTENT_SEARCH` (`tool.content.search`) is the dedicated authorization capability for principal-safe remote content search. It is not part of the anonymous MCP default; deployments must explicitly enable the public content-search flag, after which the normal principal capability intersection still applies. -->
+<!-- Spec reviewed 2026-08-05 - #2216: `AuthorizationPrincipalInterface` is now the required identity at MCP and agent execution boundaries. `AccountPrincipalFactory` passes existing principals through, continues to build audited immutable principals from entity-backed accounts, and refuses plain non-entity accounts rather than silently dropping authorization state. `DelegatingAuthorizationPrincipal` is the explicit compatibility adapter for identity providers that must retain live permission and role delegation while freezing claims, generation, tenant, and community metadata. -->
+<!-- Spec reviewed 2026-08-04 - #2177 boundary correction: `AuthServiceProvider` owns the durable `BearerTokenStoreInterface` binding only. The `bearer-token:*` Symfony Console commands and `BearerTokenConsoleCommands` class are owned by waaseyaa/cli (L6), preserving the auth (L1) dependency boundary. This supersedes the command-ownership portion of the 2026-08-03 F3 review note below. -->
+<!-- Spec reviewed 2026-08-03 - #2177 F3 (enterprise bearer-token lifecycle, waaseyaa/auth): new durable machine-credential store Waaseyaa\Auth\Token\Bearer\{BearerTokenStoreInterface, DatabaseBearerTokenStore, BearerTokenRecord, IssuedBearerToken, BearerTokenStoreException}; the Layer-6 CLI package owns BearerTokenConsoleCommands. Contract: plaintext never at rest (SHA-256 verifier of the full `mbt_<16hex>.<64hex>` wire token; 256-bit CSPRNG secret so a fast hash is the correct verifier; separate non-secret 16-hex fingerprint for display); mandatory bounded expiry (60s..7776000s, default 30d) via injected EntityClockInterface with inclusive-boundary comparison; durable idempotent revoke; transactional rotate (successor inserted + predecessor revoked under a `revoked_at IS NULL` guard in one transaction — partial failure rolls back the successor, so two usable credentials are impossible); explicit audience and canonicalized scopes (trimmed/deduped/sorted, 1..32 scopes, printable ASCII ≤128 chars, empty list refused — least privilege is not optional); owner must be a real uid (sentinels 0/PHP_INT_MAX refused); verify() is constant-time (hash_equals, dummy compare on unknown id) and fail-closed null on malformed shape/record and storage outage; mutating ops throw sanitized BearerTokenStoreException. Schema ownership: auth_bearer_token, lazily race-safe ensureSchema() like AuthTokenRepository. AuthServiceProvider binds BearerTokenStoreInterface; the Layer-6 BearerTokenServiceProvider yields bearer-token:issue/list/rotate/revoke — the ONLY surfaces that ever show a secret, once, on the operator's console. IssuedBearerToken holds the secret in a WeakMap-backed virtual property hook (not in the property table): print_r/var_dump/var_export/json_encode redact, serialize() throws. Consumed by the MCP write tier's durable default auth (see mcp-endpoint.md #2177 F3). -->
 <!-- Spec reviewed 2026-07-30 - #2154 (follow-up to #2146): a session.stateless_paths entry of exactly "/" now means the ROOT PATH only, not a prefix of every path. Prefix-matching it made every anonymous GET stateless including /admin/login (a GET that must mint a CSRF token, withheld when no session exists), so an app could not express a cookie-free homepage without silently breaking its own authentication. Named prefixes are unchanged. See middleware-pipeline.md "Stateless path gate". -->
 
+<!-- Spec reviewed 2026-08-29 - #2700 password-reset session revocation: every password-authenticated PHP session carries the User's audited internal session_generation. ResetPasswordController increments it in the password save; SessionMiddleware rejects and clears missing or mismatched generations. Pre-upgrade sessions therefore fail closed. Bearer authentication is unchanged. Contract: docs/change-records/FW-AUTH-SESSION-REVOCATION-01.md. -->
 <!-- Spec reviewed 2026-07-30 - #2146 stateless session paths: SessionMiddleware gains an opt-in session.stateless_paths gate (anonymous GET/HEAD on configured prefixes skip session_start; session-cookie-carrying requests resume; other methods unchanged; default [] is exact behavior parity). Access-control semantics unchanged: skipped sessions resolve to AnonymousUser under deny-unless-granted. Full contract in middleware-pipeline.md "SessionMiddleware". -->
 <!-- Spec reviewed 2026-07-21 - #2101: the canonical `administrator` superuser role satisfies legacy `_role: admin` route requirements. The existing `admin` role remains valid and is not promoted to `administrator`; ordinary role matching and comma-separated alternatives are unchanged. -->
 
@@ -30,6 +89,7 @@
 <!-- Spec reviewed 2026-05-20 - #1525 #1495-sweep miss in AuthController::findUserByName (pre-auth identity resolution) now opts out with accessCheck(false); semantics unchanged — the documented system-context bypass simply applies to a missed call site. Audit doc updated with two new entries. No change to access pipeline, gate logic, or access semantics. -->
 <!-- Spec reviewed 2026-05-19 - SqlEntityQuery query-layer access checking added per mission sql-entity-query-access-checking-01KRYP15 (#1495): EntityQueryInterface::setAccount() binds the account used for per-row filtering; SqlEntityQuery::execute() now runs EntityAccessHandler::check($entity, 'view', $account) for every candidate row; accessCheck(true) is the default and accessCheck(false) is preserved as an audited system-context opt-out (see docs/security/sql-entity-query-access-check-bypass-audit.md); MissingQueryAccountException is thrown when neither bypass nor account is bound. -->
 <!-- Spec reviewed 2026-05-10 - #1395 dead-code removal: CsrfMiddleware::attachXsrfCookie() instance method deleted; attachCookieIfHtml() static helper (called by HttpKernel) remains the sole live cookie-attachment path. No change to session resolution, gate logic, or access pipeline semantics. -->
+<!-- Spec reviewed 2026-08-16 - #2150: SessionMiddleware disables PHP's independent session cache limiter before framework-owned session startup and marks non-stateless requests for the outer final response policy. Any session-bound or Set-Cookie response is therefore private, no-store; cookie-free stateless requests remain shared-cache eligible. Identity and authorization semantics are unchanged. -->
 <!-- Spec reviewed 2026-06-23 - audit C-6: Layer 3 (entity query) flipped to deny-by-default. SqlEntityQuery::filterCandidates() survivor test is now isAllowed() (was !isForbidden()), so a Neutral row is dropped, not admitted; count() inherits this. The empty/unwired-handler fallback now denies every candidate (fail-closed) instead of passing the unfiltered window. Production wiring is unchanged (#1714 accessHandlerResolver). Consumers' isAllowed() re-filters become belt-and-braces. Genealogy SSR neighbor/ancestor topology now gathered via accessCheck(false) (system context) with per-person gate concealment, so living/private relatives still render as redacted placeholders rather than vanishing. Pinned by SqlEntityQueryDeniesNeutralRowTest + GraphQL/discovery/semantic/genealogy integration suites. -->
 <!-- Spec reviewed 2026-05-10 - WP05 php-8.5 upgrade: @PHP8x5Migration cs-fixer pass — AuthorizationMiddleware and EntityAccessHandler touched by octal_notation + new_expression_parentheses rules only; no semantic change to access pipeline or gate logic. -->
 <!-- Spec reviewed 2026-05-10 - WP03 php-8.5 upgrade: AccessResult::allowed/forbidden/neutral/unauthenticated gained #[\NoDiscard] — no semantic change to access pipeline, gate logic, or AccessChecker. -->
@@ -51,7 +111,7 @@ Route role matching is exact except for one directional superuser implication: a
 
 ## Public Surface
 
-Authoritative dispositions are in `docs/public-surface-map.php`, verified by `PublicSurfaceVerificationTest`.
+Authoritative dispositions are in each element's owning package-local `packages/<pkg>/public-surface.php` declaration; `PublicSurfaceVerificationTest` verifies the composed declaration plane.
 
 **Public API** (stable, semver-protected):
 
@@ -265,7 +325,7 @@ For `checkFieldAccess()` and `filterFields()`, see `docs/specs/field-access.md`.
 
 Policies are passed to the constructor or added via `addPolicy()`. In the current post-M10 boot flow, `AccessPolicyRegistry` builds the handler from `PackageManifest::$policies`, while the kernel still exposes the resulting gate to `AccessChecker` during boot:
 
-Every installed package that owns a `#[PolicyAttribute]` class declares that class in `extra.waaseyaa.policies`. Discovery must contain every declared class independent of Composer autoload optimization; a count/content mismatch or a class that cannot be loaded aborts boot with `POLICY_MANIFEST_MISMATCH`. There is no warning-and-continue path for incomplete enforcement.
+Every installed package that owns a `#[PolicyAttribute]` class declares that class in `extra.waaseyaa.policies`. An array-shaped `extra.waaseyaa` block is the package's explicit participation signal; its production PSR-4 namespaces are eligible for policy-only discovery even when they are outside `Waaseyaa\` and the root application's namespaces. Discovery must contain every declared class independent of Composer autoload optimization; a count/content mismatch or a class that cannot be loaded aborts boot with `POLICY_MANIFEST_MISMATCH`. The external-package path admits only policies and does not widen unrelated attribute surfaces. There is no warning-and-continue path for incomplete enforcement.
 
 ```php
 $accessHandler = new EntityAccessHandler([
@@ -507,12 +567,51 @@ Permissions are declared in `composer.json` under `extra.waaseyaa.permissions` a
 }
 ```
 
+**Boot-time catalogue authority (#2788, #3119):** the kernel composes ONE permission
+catalogue after provider registration and before any provider `boot()` hook — `PermissionHandler::fromProviders($providers, $manifest->permissions)`
+unions the compiled manifest's `extra.waaseyaa.permissions` entries with every
+provider implementing `Waaseyaa\Foundation\ServiceProvider\Capability\ProvidesPermissionsInterface`
+(`permissions(): array<string, array{title, description}>`, the sibling of
+`ProvidesRolesInterface`); a duplicate or empty id fails closed with a
+`LogicException`. `RoleRepository::assertPermissionsCatalogued($catalogue)` then
+refuses any `ProvidesRolesInterface` role that grants a permission the
+catalogue does not know, and `AbstractKernel::boot()` turns that into a hard
+`RuntimeException` naming every offending `(role, permission)` pair and the
+role providers — `user:assign-role` stamps role permissions onto accounts as
+opaque strings, so an uncatalogued grant would otherwise become live
+authority nothing declared. The composed instance is exposed as
+`AbstractKernel::permissionCatalogue()` and bound in the handler container as
+`PermissionHandlerInterface`, so `permission:list` and any catalogue-aware
+handler read the same instance the validation ran against. Enforcement is
+unchanged: `AccountInterface::hasPermission()` still decides over opaque
+strings; the catalogue governs which strings may be granted.
+
+The ordering is an authorization boundary. A provider's `permissions()` may
+use immutable inputs established during `register()` or already-authoritative
+read-only configuration, but it performs no durable writes, network discovery,
+or inference from the roles being validated. An invalid role therefore stops
+the process before a provider boot hook can seed or mutate durable state.
+
+**Framework-owned permission families (#3119):** node, media, taxonomy, and
+workflow packages expose public pure helpers that generate the exact permission
+ids their policies consume and complete id-keyed catalogue definitions for
+application-supplied bundle, media-type, vocabulary, and workflow inputs. An
+application provider that contributes concrete roles implements
+`ProvidesPermissionsInterface` and builds its grants and definitions through
+the same helpers. Applications supply the authoritative subject inventory;
+they do not copy string templates. Fixed policy ids live in the enforcing
+package's Composer manifest. Optional tool capabilities are contributed by the
+installed feature provider, so installing `waaseyaa/access` alone does not
+advertise tools that are absent.
+
+**Static capability seeds** (`packages/access/src/Capability/`): classes that are the single source of truth for a surface's permission identifiers, offering `all(): list<string>`, `seed(): array<string, {title, description}>` and `register(PermissionHandler): void` for apps that keep a registry. `AgentCapabilities` seeds the thirteen agent-executor permissions (`agent.run`, `tool.entity.*`, …); `McpApprovalCapabilities` (#2177 F1 C1b) seeds the MCP approval decision surface — `mcp.approval.view` (read the pending queue, `GET /api/mcp/approvals`) and `mcp.approval.decide` (durably approve/deny, `POST /api/mcp/approvals/{id}/decision`), deliberately distinct so a read-only triage audience is expressible. Enforcement is via the route-level `_permission` option (`AccountInterface::hasPermission()`); the registry is discovery/UI-only.
+
 ## Roles
 
 **Files:** `packages/user/src/Role.php`, `packages/user/src/RoleRepository.php`
 **Namespace:** `Waaseyaa\User`
 
-A role groups a set of permissions under a single machine name. `Role` is a `final readonly` value object with four fields: `id` (machine name), `label` (human-readable), `permissions` (string[], the permissions the role grants), and `weight` (ordering). Roles are contributed by service providers implementing `Waaseyaa\Foundation\ServiceProvider\Capability\ProvidesRolesInterface` and collected into `RoleRepository`, an id-keyed registry built via `RoleRepository::fromProviders($providers)` (later providers win on duplicate ids). See `docs/specs/package-discovery.md` for the discovery contract.
+A role groups a set of permissions under a single machine name. `Role` is a `final readonly` value object with four fields: `id` (machine name), `label` (human-readable), `permissions` (string[], the permissions the role grants), and `weight` (ordering). Roles are contributed by service providers implementing `Waaseyaa\Foundation\ServiceProvider\Capability\ProvidesRolesInterface` and collected into `RoleRepository`, an id-keyed registry built via `RoleRepository::fromProviders($providers)`. Duplicate role ids fail closed so authorization-bearing definitions never depend on provider order. See `docs/specs/package-discovery.md` for the discovery contract.
 
 Two CLI commands attach roles to a user, and they differ in what they write:
 
@@ -540,13 +639,12 @@ Layer 3 (query) is, since audit **C-6**, **deny-by-default in its own right**. I
 - **Account binding:** Call `$query->setAccount($account)` before `execute()` to bind the request's authenticated account. `EntityQueryInterface::setAccount(?AccountInterface): static` is required on every implementation.
 - **Fail-closed:** When `accessCheck(true)` is active and no account is bound, `execute()` throws `Waaseyaa\EntityStorage\Exception\MissingQueryAccountException`. This is the v1 default — the query layer cannot silently leak rows.
 - **System-context opt-out:** `$query->accessCheck(false)` preserves the pre-mission behaviour (no per-row filter, no account required). Every remaining call site is audited at [`docs/security/sql-entity-query-access-check-bypass-audit.md`](../security/sql-entity-query-access-check-bypass-audit.md); new bypasses MUST update that document.
-- **Filter semantics:** Per-row, `EntityAccessHandler::check($entity, 'view', $account)` is consulted; `Allowed` + `Neutral` admit the row, `Forbidden` drops it. **In production the handler is empty** (see above — the storage is built without it), so every row is `Neutral` and the query is a pass-through candidate window. Even if a real handler were wired here, `Neutral` would still admit (this is open-by-default at the query layer by construction). The authoritative deny-by-default decision is the consumer's re-filter via `isAllowed()`.
+- **Filter semantics:** Per-row, `EntityAccessHandler::check($entity, 'view', $account)` is consulted and only `Allowed` survives. `Neutral` and `Forbidden` both drop the row. Production threads the composed handler and entity loader into `SqlEntityQuery`; a missing handler or loader fails closed with no survivors.
+- **Range semantics:** With access checking enabled, `range(offset, limit)` applies to the surviving authorized IDs. Offset counts authorized rows and the page remains dense until that result is exhausted. `accessCheck(false)` retains raw SQL `LIMIT/OFFSET` semantics for audited system-context callers.
 
 The `view`-operation symmetry between layers 2 and 3 is deliberate: a row's visibility in a list and its visibility on a detail page are governed by the same policy code, so consumers cannot construct a query that returns rows they could not otherwise load individually.
 
-- **Regression-pinned (audit C-6 — reclassified, accurate rationale):** the candidate-window invariant (`Neutral` admits a row) is locked by `packages/entity-storage/tests/Unit/SqlEntityQueryNeutralAdmitsRowTest.php`, and the production reality (storage built without a handler ⇒ access-checked queries are a pass-through) is pinned by the `productionStorageWithoutHandlerIsPassThrough` case in that same test. Audit C-6 recommended flipping the survivor test to `isAllowed()` (deny-by-default). That is **not a safe standalone change** for two reasons: (1) because production storage does not wire the handler (above), the empty-handler query would resolve every row to `Neutral` and `isAllowed()` would **drop all of them** — every access-checked list/count would return empty; and (2) it is **unnecessary** — deny-by-default is already enforced at the Layer-2/serializer layer for both items and totals, so the candidate-window pass-through leaks nothing through any production consumer. The earlier "would hide legitimately-visible `Neutral` rows for the genealogy pedigree/family services" rationale was **incorrect**: genealogy's authenticated edges resolve to `Allowed` (via `GenealogyRelationshipAccessPolicy` + `orIf`), and a flip would *empty* the query, not hide `Neutral` rows. A genuine query-layer deny-by-default would require **completing the WP03 wiring** (construct `SqlEntityStorage` with the composed handler in `EntityStorageFactory`/`AbstractKernel`) **and** adding allowing `view` policies for the Neutral-reliant entity types (`group`, `group_type`, `trace`, `classification_label_definition`, `retention_policy`, and the orphaned-parent `attachment` case) so admins/legitimate viewers do not lose them — tracked as future work, not a one-line flip.
-
-<!-- Spec reviewed 2026-07-15: `group`/`group_type` deliberately opt in to JSON:API after the entity-type `api:` default changed to false. `GroupAccessPolicy` grants entity CRUD only to accounts with `administer groups` (#1871). This paragraph's query-layer Neutral-admits-a-row analysis is unaffected — it concerns list/count access-checked queries, not the single-entity CRUD policy. -->
+- **Regression-pinned:** `SqlEntityQueryDeniesNeutralRowTest` proves the deny-by-default survivor rule and missing-wiring refusal. `SqlEntityQueryAccessCheckTest` proves dense authorized ranges and the unchanged `accessCheck(false)` SQL-range control.
 
 
 ## Authorization Pipeline
@@ -588,6 +686,11 @@ Behavior:
 5. Mirrors the same account into the acting-account context (`$this->accountContext?->set($account)`) — unconditionally, on every request, including `AnonymousUser` (id 0). When `BearerAuthMiddleware` (higher priority) already resolved an authenticated `_account`, that account is mirrored instead. See "Acting-account context" below.
 6. Calls `$next->handle($request)`.
 7. Creates `NativeSession` with `$trustedProxies` so session cookie secure flag respects proxy trust.
+8. For non-stateless requests, disables PHP's independent session cache limiter
+   before startup and marks the request session-bound. The outer HTTP response
+   policy then replaces any `public`/`s-maxage` directives with
+   `private, no-store`; cookie-free stateless requests keep their public cache
+   eligibility.
 
 **Trusted proxy guard:** Both `NativeSession::isSecureConnection()` and `SessionMiddleware::isHttpsRequest()` only trust `X-Forwarded-Proto` when `REMOTE_ADDR` matches a configured trusted proxy IP. The header comparison is case-insensitive (`HTTPS`, `Https`, `https` all match). Both methods return `false` early when `REMOTE_ADDR` is empty or missing, preventing accidental matches against empty-string entries in the trusted list. Without trusted proxies configured, the header is ignored. Only exact IP addresses are supported (no CIDR notation). Configure via `'trusted_proxies' => ['127.0.0.1']` in `config/waaseyaa.php`.
 
@@ -596,6 +699,8 @@ Behavior:
 Does not handle login/logout. Only resolves "who is making this request."
 
 **Session lifecycle on login/logout (`AuthManager`).** `AuthManager::login()` calls `session_regenerate_id(true)` to defeat session fixation (a fresh id is issued the moment privileges change). Symmetrically, `AuthManager::logout()` clears **all** session data (`$_SESSION = []`, not just the uid) and then, when a session is active, rotates and destroys the underlying session (`session_regenerate_id(true)` + `session_destroy()`) so the pre-logout session id can never be reused. Both operations are guarded on `session_status() === PHP_SESSION_ACTIVE` because the session is started by the bootstrap, not by `AuthManager` (and is inactive in CLI/tests).
+
+**Account-wide revocation on password reset (#2700).** `AuthenticatedSession` binds `waaseyaa_uid` and `waaseyaa_session_generation` at every login, registration auto-login, and pending-2FA promotion. `SessionMiddleware` accepts a password-authenticated session only when the generation is an integer and exactly matches the User's Internal value read through the audited `user.session-identity` capability. Missing, stale, or unreadable generations are cleared and resolve to `AnonymousUser`. A successful password reset increments the User generation in the same save as the new hash, invalidating every older session without maintaining a server-side session index.
 
 Lives in the `user` package because it depends on `User`, `AnonymousUser`, and entity storage.
 
@@ -737,24 +842,26 @@ the per-save `withActorUid()` override is the only knob.
 
 `CsrfMiddleware` runs in the HTTP pipeline (priority 20) and enforces session-based CSRF protection for all state-changing requests (`POST`, `PUT`, `PATCH`, `DELETE`). On allowed requests it unwinds over the final dispatched response and attaches the readable token cookie to HTML.
 
-### XSRF-TOKEN cookie
+### CSRF token cookie
 
-After passing a non-validating request through the pipeline, the middleware writes an `XSRF-TOKEN` cookie to `text/html` responses so JavaScript clients can read the current session token. Cookie attributes:
+After passing a non-validating request through the pipeline, the middleware writes the configured CSRF cookie (default name `XSRF-TOKEN`) to `text/html` responses so JavaScript clients can read the current session token. Since the #2177 F1 prerequisite it also writes the same cookie (identical attributes) to **any** response — JSON included — whose request carries an authenticated `_account` and a non-empty `waaseyaa_uid` login-session marker (`attachCookieIfAuthenticated()`): the admin SPA boots against `GET /api/user/me` and never receives a kernel HTML response, so this session-authenticated path seeds its token. Anonymous and bearer-only non-HTML responses stay cookie-free. Cookie attributes:
 
 | Attribute | Value |
 |-----------|-------|
-| Name | `XSRF-TOKEN` |
+| Name | configured `session.cookie.csrf_name` (default `XSRF-TOKEN`; host-bound `__Host-XSRF-TOKEN`) |
 | Value | `rawurlencode($_SESSION['_csrf_token'])` |
-| `Path` | `/` |
+| `Path` | configured `session.cookie.path` (default `/`; host-bound requires `/`) |
 | `HttpOnly` | `false` (required — JS must be able to read it) |
-| `SameSite` | `Lax` |
-| `Domain` | not set |
-| `Secure` | mirrors `$request->isSecure()` |
+| `SameSite` | resolved `session.cookie.samesite` (default `Lax`; empty string omits the attribute; unknown values normalize to `Lax` — Symfony's cookie builder would otherwise throw on every response) |
+| `Domain` | configured `session.cookie.domain` (default unset; host-bound forbids Domain) |
+| `Secure` | resolved `session.cookie.secure` policy — a configured boolean always wins; `'auto'` (the default) mirrors `$request->isSecure()`; host-bound forces Secure |
 | Lifetime | session (no explicit `Expires`/`Max-Age`) |
+
+`Secure`, `SameSite`, name, path, and domain come from the same resolved `session.cookie` policy the session cookie uses (`Waaseyaa\User\Session\SessionCookiePolicy`, threaded in by `HttpKernel`, #2149/#3047): a deployment that forces `secure => true` keeps `Secure` on the CSRF cookie even when a request arrives over plaintext HTTP, instead of the flag silently tracking the request scheme. Malformed `host_bound`/path/domain values are rejected at policy construction — path and domain must not contain control characters or `;` (the Set-Cookie attribute delimiter), and domain must be a hostname-shaped cookie Domain value. Prestarted PHP sessions are checked against the full effective Secure/HttpOnly/SameSite attributes when those keys (or host-bound) are configured. Every packaged Admin HTML response served by `AdminSurfaceServiceProvider` — SPA fallback and direct `.html` assets such as `/admin/index.html`, `/admin/login/index.html`, and `/admin/200.html` — rewrites the embedded Nuxt `csrfCookieName` from this same policy (literal-safe replacement so names containing `$` are preserved) so host-bound `__Host-XSRF-TOKEN` matches the cookie the SPA decoder reads.
 
 Inertia consumers benefit automatically: axios reads the cookie and forwards its value as `X-XSRF-TOKEN` on subsequent mutation requests.
 
-**Known gap:** `$request->isSecure()` reads raw `$_SERVER['HTTPS']` without trusted-proxy awareness. Behind a TLS terminator the `Secure` flag will not be set unless a trusted proxy is configured. Tracked at waaseyaa/framework#1394. See also: `SessionMiddleware` trusted-proxy contract above.
+**Proxy awareness:** under the `'auto'` default, `$request->isSecure()` honors `X-Forwarded-Proto` when the kernel has registered trusted proxies (`Request::setTrustedProxies()` from the `trusted_proxies` config / `TRUSTED_PROXIES` env, #1394). Deployments that must not depend on correct proxy detection force `secure => true` instead. See also: `SessionMiddleware` trusted-proxy contract above.
 
 Cross-reference: `docs/conventions/csrf-token-cookie.md` for runnable integration examples.
 
@@ -770,7 +877,10 @@ The first matching source short-circuits; all comparisons are constant-time.
 
 ### CSRF-exempt requests
 
-Requests with a `Content-Type` of `application/json` or `application/vnd.api+json` are not validated (browsers cannot forge those content types from HTML forms). Routes may also opt out via `_csrf: false` in their route options.
+Requests with a `Content-Type` of `application/json` or `application/vnd.api+json` are not validated **by default** (browsers cannot forge those content types from HTML forms). The `_csrf` route option overrides the default in either direction (#2177 F1 prerequisite):
+
+- `_csrf: false` (`RouteBuilder::csrfExempt()`) — never validate; the route has its own authentication model.
+- `_csrf: true` (`RouteBuilder::requireCsrf()`) — always validate on state-changing methods, **including** the JSON content types above. The exemption is unsound when the session cookie is the sole authenticator of a JSON endpoint (cross-origin `fetch` can send JSON and the browser attaches the cookie unless SameSite blocks it); the first consumer is the MCP write-tier approval controller. On an opted-in route, a missing/invalid token yields the standard JSON:API 403, which still re-delivers the XSRF-TOKEN cookie to an authenticated session so the client can retry.
 
 ## Discovery
 
@@ -799,9 +909,25 @@ Layer discipline: Foundation (layer 0) uses string constants for attribute class
 | `POST /api/auth/forgot-password` | `_public: true` | `ForgotPasswordController` |
 | `POST /api/auth/reset-password` | `_public: true` | `ResetPasswordController` |
 | `POST /api/auth/verify-email` | `_public: true` | `VerifyEmailController` |
-| `POST /api/auth/resend-verification` | `_authenticated: true` | `ResendVerificationController` |
+| `POST /api/auth/resend-verification` | `_public: true` | `ResendVerificationController` |
 
-`ResendVerificationController` requires an active authenticated session. `AccessChecker` short-circuits with `unauthenticated` (401) if the `_account` attribute on the request is anonymous. The other seven endpoints are public — no session required. `LoginController` applies its own rate limiting (5 attempts per IP per 60s).
+All eight endpoints are public at the route layer. `ResendVerificationController`
+accepts an email address without granting pending or full authentication, uses
+uniform responses for absent/already-verified accounts, and rate-limits both
+the normalized address and source IP. This keeps verification recovery usable
+after a browser restart without creating an account-existence oracle.
+The bundled public verification page therefore collects the registration
+email explicitly; its in-session banner reuses the current account email.
+Successful password-login and `GET /api/user/me` account payloads carry the
+audited canonical state as the camelCase boolean `emailVerified`.
+
+`AuthenticationEligibilityInterface` is the one session-admission contract.
+The auth-owned implementation requires an active User and, when
+`auth.require_verified_email` is true, the audited canonical
+`email_verified` value. Registration, password login, direct `AuthManager`
+login, pending-2FA promotion, bearer resolution, and existing-session
+resolution all use that same policy before authorization. Policy false retains
+historical active-user behavior; invite registration remains verified.
 
 All auth controllers accept an optional `?LoggerInterface $logger` (defaults to `NullLogger`). DevLog-mode verification/reset URLs and best-effort email failures are logged via this interface rather than `error_log()`.
 
@@ -817,7 +943,7 @@ All auth endpoints apply rate limiting via `RateLimiterInterface` keyed on IP or
 | `POST /api/auth/forgot-password` | 3 per email per 15 min, 10 per IP per hour |
 | `POST /api/auth/reset-password` | 10 per IP per hour |
 | `POST /api/auth/verify-email` | 10 per IP per hour |
-| `POST /api/auth/resend-verification` | 3 per user per hour |
+| `POST /api/auth/resend-verification` | 3 per normalized email per hour, 10 per IP per hour |
 
 Rate limit responses return 429 with a `Retry-After` header.
 
@@ -827,11 +953,29 @@ All user-facing responses from `ForgotPasswordController` and `RegisterControlle
 
 ### AuthTokenRepository
 
-Replaces `PasswordResetTokenRepository` (which used raw PDO). Uses `DatabaseInterface` (DBAL). Tokens are 64-char hex strings hashed with HMAC-SHA256 using `auth.token_secret` from config. Plain tokens are never persisted.
+Replaces `PasswordResetTokenRepository` (which used raw PDO). Uses `DatabaseInterface` (DBAL). Tokens are 64-char hex strings hashed with HMAC-SHA256. Plain tokens are never persisted.
 
-**The token secret must be configured in real deployments.** `AuthServiceProvider` resolves the repository with `auth.token_secret` (falling back to `app_secret`). It never falls back to the literal `'change-me'` published in source — a known HMAC key makes reset/verify token hashes forgeable. If no real secret is configured, the provider **throws a clear `\RuntimeException` at resolution (boot)** in production/staging (any environment outside `local`/`dev`/`development`/`testing`), failing loudly rather than shipping a forgeable default. In dev/test only, it synthesises an ephemeral random secret so a misconfigured non-production app still boots; that secret is per-process (per-request under the boot-per-request runtime), so reset/verify token flows that must survive a reboot still require `AUTH_TOKEN_SECRET` to be set.
+**Token HMAC key (#2500).** `AuthServiceProvider` resolves the key through `Waaseyaa\Auth\Security\AuthTokenSecret` in `waaseyaa/auth`. A valid explicit `auth.token_secret` / `AUTH_TOKEN_SECRET` remains an independent override after trim. Otherwise the provider derives `ApplicationSecret::PURPOSE_AUTH_TOKEN_HMAC` (`waaseyaa.auth.token-hmac.v1`) from kernel `ApplicationSecret` custody. Raw `config.app_secret` / `WAASEYAA_APP_SECRET` bytes are never used as the HMAC key. Explicit values that are non-string, weaker than 32 characters, or case-insensitive placeholders (`change-me`, `change_me`, `changeme`) fail in every environment, including local — they do not become an ephemeral random key. Missing application-secret custody refuses derivation. Stock skeletons need not set a second secret (#1832): omitting `AUTH_TOKEN_SECRET` derives a stable purpose key from `WAASEYAA_APP_SECRET`. Downstream apps that previously HMAC'd with the raw application master will invalidate outstanding reset, verification, and invite tokens (longest TTL is seven days); plaintext is not retained, so rehashing is impossible. Auth configuration and secret classification use the kernel's canonical environment resolution (`config.environment` → process `APP_ENV` → `production`); they never make a second decision from bare `$_ENV` or the legacy `app_env` alias. Environment-variable parser consolidation is tracked by #2479.
 
 **Schema bootstrap — idempotent and race-safe.** `ensureSchema()` provisions the `auth_tokens` table and is resolved on the **request hot path** (`AuthServiceProvider` registers it during route registration). Under FrankenPHP classic `php-server` (the `composer run dev` runtime) the kernel boots afresh per request across many worker threads, so `ensureSchema()` runs on every request and can run concurrently on a cold DB. It therefore keeps an existence guard *and* tolerates a concurrent create: if `createTable()` throws (the race-loser's "table auth_tokens already exists"), it rethrows only when a fresh re-check shows the table genuinely absent. A bare `CREATE TABLE` behind a non-atomic check is a TOCTOU bug that 500s `/api/broadcast` (alpha.238). The cleanup-backlog (CL-11) tracks moving this provisioning off the request path into `db:init`/`migrate`; see `docs/specs/operations-playbooks.md` "Two runtimes, two launchers" for the per-request-boot invariant.
+
+**Single-use consumption is atomic and self-contained (#2757 review, PR #2773).**
+`validateToken()` describes a token at the moment it is read; it does not
+authorize spending one. `consumeTokenIfAvailable(int $tokenId, string $type,
+int|string|null $userId)` is the only admission decision — one conditional
+`UPDATE` predicated on `id`, `type`, the owning `user_id` (`IS NULL` matches
+only an unowned invite), `consumed_at IS NULL`, and `expires_at > :now`. That
+`:now` is a single read of an injected `EntityClockInterface` (defaulting to
+`UtcEntityClock`, the same pattern as `DatabaseBearerTokenStore`) and is the
+value written to `consumed_at`, so the instant that proved the row live is the
+instant recorded against it: a token can never be stamped consumed after its
+own expiry, and a timestamp the caller read earlier is never accepted — that
+would move the race rather than close it. `expires_at > :now` is deliberately
+the same strict boundary `validateToken()` applies, so the two never disagree
+about a single instant. `EmailVerificationTransaction` binds the consume to
+`$user->id()` — the identity it is about to mark verified — so a token can only
+ever verify its own owner. The non-atomic `consumeToken()` is retained for the
+password-reset and invite flows, which do not yet route through this predicate.
 
 **Token types and default TTLs:**
 
@@ -859,7 +1003,10 @@ Registered under `auth` key in `config/waaseyaa.php`:
 ],
 ```
 
-`mail_missing_policy` auto-resolves: `dev-log` when `APP_ENV` is `local`/`development`; `fail` in production. Explicit values `'dev-log'`, `'fail'`, and `'silent'` override the auto behavior.
+`mail_missing_policy` auto-resolves through the canonical `RuntimePolicy`
+classifier: `dev-log` for normalized `local`, `dev`, `development`, and
+`testing`; `fail` for production-like, missing, malformed, and unknown names.
+Explicit values `'dev-log'`, `'fail'`, and `'silent'` override the auto behavior.
 
 ## File Reference
 
@@ -1074,3 +1221,12 @@ unauthenticated calls. Track via the M-B.1 follow-up issue
 <!-- Spec reviewed 2026-05-17 - dead-code Phase 3 Bucket 4: @api PHPDoc sweep on additional public-API classes. No behavioural change. -->
 
 <!-- Spec reviewed 2026-05-18 - WP07 (agent-executor mission) rebase + rewire: no behavioural change to this subsystem; touch refreshes drift-detector timestamp. -->
+# Consumer auth policy boundary
+
+Application authentication customization is governed by
+`docs/specs/auth-consumer-extensions.md`. Consumer providers may contribute
+narrow registration, profile, redirect, mail-presentation, lifecycle, and
+initial-role policy, but cannot replace credential, session, token, CSRF, 2FA,
+rate-limit, controller, or authorization services. Role ids and permissions are
+expanded through the canonical `RoleRepository`; duplicate definitions and
+unknown initial assignments fail closed.

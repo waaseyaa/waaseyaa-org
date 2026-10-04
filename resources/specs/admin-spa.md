@@ -1,5 +1,105 @@
 # Admin SPA
 
+<!-- Spec reviewed 2026-09-02 - #2786 B1: AdminSurfaceServiceProvider now composes SchemaPresenter with the kernel's boot-scoped FieldSchemaAuthority, so manifest-discovered downstream field types retain their plugin-owned schema in generic Admin forms. Missing kernel authority refuses provider composition rather than narrowing to the built-ins-only registry. -->
+
+<!-- Spec reviewed 2026-09-02 - #2786: schema widgets consume the canonical entity-value shape. Array-valued enums read options and labels from `items.enum`, while scalar enums retain top-level `enum`; the committed Admin distribution is rebuilt through the canonical two-build acceptance operation. -->
+
+<!-- Spec reviewed 2026-08-27 - #2544: `GenericAdminSurfaceHost::ALWAYS_INTERNAL_FIELDS` gains `legacy_pass`, so the imported-credential field is rejected as an admin-surface filter/sort field exactly like `pass` - the same one-bit oracle R13 WP1 closed. -->
+
+<!-- Spec reviewed 2026-08-27 - #2611: embed lifecycle failure classification
+maps both an application conflict (409) and an entity mutation precondition
+failure (412) to the bounded conflict presentation. The classification carries
+only kind and status; server-side refusal and explicit operator recovery remain
+authoritative. -->
+
+<!-- Spec reviewed 2026-08-27 - #2609: Admin Surface detail routes may resolve
+an accepted identifier (for example a numeric entity id) to a different
+canonical resource id (for example its UUID). AdminSurfaceTransportAdapter
+binds an observed mutation token to both the requested identifier and the
+canonical response id. Successful updates and revision restores refresh both
+bindings so a second mutation cannot reuse the predecessor. This is transport
+aliasing only: server-side authorization, token identity, and conflict checks
+remain authoritative and unchanged. -->
+
+<!-- Spec reviewed 2026-08-24 - #2537: Admin GenericAdminSurfaceHost keeps body
+`mutation_token` (`fromOpaqueString()`). It does not switch to If-Match.
+Page-builder continues to fence on revision/fingerprint, not EntityMutationToken.
+JSON:API If-Match envelopes are owned by EntityMutationPrecondition. -->
+<!-- Spec reviewed 2026-08-20 - #2467 save-advisory Admin envelope: Generic Admin
+projects JSON:API errors through AdminSurfaceResultData::fromJsonApiError().
+Ordinary errors keep status/title/detail; only SAVE_ADVISORY_ACKNOWLEDGEMENT_REQUIRED
+emits code plus allowlisted meta.save_advisories. TransportError.meta is that
+closed AdminSurfaceErrorMeta type, not Record<string, unknown>. A missing
+mutation-token 428 stays codeless so SchemaForm can distinguish the two without
+parsing prose. -->
+
+<!-- Spec reviewed 2026-08-20 - #2464 generic revision recovery: exact reads compose
+view_revision plus protected/context-aware authority on the historical snapshot; restore uses
+shared RevisionRestoreChangedFields and preserves live pointer/status/credential values; preview
+grants reject fixed-point encoded traversal, controls, backslashes, and invalid UTF-8. -->
+<!-- Spec reviewed 2026-08-13 - shared workflow history: the entity editor's
+### Workflow transition preconditions
+
+The transition POST is an aggregate mutation. `WorkflowTransitionController`
+requires a strong `If-Match` entity mutation ETag and answers `428
+MUTATION_PRECONDITION_REQUIRED` without one, `400` for a malformed one, and `412`
+once the working copy has moved on.
+
+The only authoritative validator for that POST is `meta.mutation_token` on the
+discovery response, which the controller derives from the same working copy the
+transition targets. The apply response carries the successor in the same member.
+`useWorkflowTransitions` captures the discovery token, sends it as `If-Match`,
+and adopts the successor so a second transition in one session is fenced by
+committed state. `AdminSurfaceTransportAdapter`'s token map is not a substitute:
+it holds the entity-read token for the `/admin/_surface` transport, a different
+basis that can be stale for this endpoint.
+
+The fence is never weakened to make a call succeed. Applying without an observed
+validator, or with one observed for a different entity, is refused in the client
+rather than posted. A validator the server rejects with `412` or `428` is
+dropped, so the next attempt must re-read the transitions; the transition
+controls re-read on that refusal and never re-post on the operator's behalf. A
+discovery that offers no transitions carries no token, which is exactly when
+there is nothing to apply.
+
+A committed transition writes a new revision, which supersedes the entity
+mutation validator the admin-surface transport cached on its last read. Both
+transports carry the same `EntityMutationToken` opaque string, so the controls
+hand the successor across through `MutationTokenAwareTransport`
+(`adoptMutationToken` / `forgetMutationToken`), which is kept separate from
+`TransportAdapter` so a transport holding no validator cache need not implement
+it. A transition that issues no successor drops the cached validator instead, so
+the next write asks for a reload rather than presenting a stale one. The entity
+is never re-read behind the operator, which would discard unsaved edits, and a
+refused write is never silently retried.
+
+TransitionHistoryTimeline reads `meta.workflow_history` from the sanctioned
+workflow-discovery endpoint, not the obsolete inline `workflow_audit` field.
+The response is shape-validated, limited to successful transitions, ordered
+newest first, and refreshed with the shared editor workspace after saves and
+transitions. The same component is served in the Admin SPA and embedded Anokii
+client. -->
+
+<!-- Spec reviewed 2026-08-06 - #2271 publication-list projection: authenticated admin node lists may expose only workflow_state and status through AdminPublicationFieldReaderInterface after the row passes entity-view authorization. AuditedAdminPublicationFieldReader issues an account-bound StrictAuditProjection capability for exactly those two node fields and revokes its execution boundary after each projection scope. GenericAdminSurfaceHost uses that same projection in memory for display, filters, and sorting instead of SQL-pushing protected fields; boolean query values normalize to the projection's 1/0 representation. Ordinary ResourceSerializer output and NodeProtectedReadPolicy remain unchanged. AdminSurfaceServiceProvider registers the reader for both stock and application-owned host wiring. -->
+
+<!-- Spec reviewed 2026-08-06 - #2275 concurrent publication projection: GenericAdminSurfaceHost primes a cardinality-preserving BatchAdminPublicationFieldReaderInterface for the authorized page or projected filter/sort scope. AuditedAdminPublicationFieldReader keeps one descriptor and receipt per entity but reserves and finalizes the related receipts in two all-or-nothing transactions. No value enters audit storage, no value is returned before all reservations commit, and any failed finalization still fails the list closed. Readers without the optional batch extension retain the strict per-entity path. -->
+
+<!-- Spec reviewed 2026-08-06 - #2273 untitled rows: SchemaList treats the catalog reference.labelField as authoritative. An empty declared label renders the localized untitled placeholder only in that label cell, while the row and action accessible names append the stable entity id. Legacy catalogs without reference metadata keep the first-non-empty-column fallback; unrelated empty cells remain blank. -->
+
+<!-- Spec reviewed 2026-08-24 - #2524 one canonical Admin dist operation: bin/build-admin-dist now guards the source/generated boundary, builds twice into independent disposable snapshots, requires byte-identical published trees, replaces packages/admin-surface/dist wholesale with a proven obsolete-path removal inventory, enforces the declared source-contract markers in dist.markers.json, and emits the versioned dist.manifest.json whose identityDigest excludes the evidence-only acceptance section. bin/admin-dist-acceptance verify is the new blocking committed-state gate; check-admin-dist-fresh stays authoritative for staleness. -->
+
+<!-- Spec reviewed 2026-08-06 - #2233 reproducible distribution: bin/build-admin-dist derives Nuxt's build ID and a stable positive metadata timestamp from the complete admin source signature. A narrow post-build normalizer rewrites only the known Nuxt manifest and prerender payload timestamp fields and fails closed if their shapes change. Two clean Node 24 builds must therefore produce byte-identical tracked output, while source-signature freshness and genuine compiled-asset drift remain observable. -->
+
+<!-- Spec reviewed 2026-08-04 - #2181 pre-auth optionality: the authenticated session projects exact optional-package feature booleans. The Wayfinding overlay, SSE consumer, and session-token request activate only when an account exists and `features.wayfinding === true`; auth loss unmounts the overlay and aborts/clears token discovery. -->
+
+<!-- Spec reviewed 2026-08-04 - #2186 self-contained admin: the navigation toggle ships its decorative SVG inline. The SPA has no runtime icon-provider module, dependency, or external icon origin in its committed distribution. -->
+
+<!-- Spec reviewed 2026-08-26 - #2571 makes SurfaceQueryPolicy authoritative for finite x-list filter options. Optioned filters accept only the declared scalar/null HTTP spellings and refuse compound, non-finite, empty-when-undeclared, and otherwise undeclared values through the unchanged generic 400 envelope; filters without options remain free-form. -->
+
+<!-- Spec reviewed 2026-08-04 - #2185/#2187 retire NorthCloud: the generic dashboard retains only its catalog-gated ingest_log counters; all NC Sync requests, state, routes, translations, markup, and shipped assets are removed. -->
+
+<!-- Spec reviewed 2026-08-16 - #2113 replaces the Admin-only internal-field list with boot-scoped InternalFieldVisibilityPolicy. Admin form schema/detail projection and generic JSON:API serialization/filter/sort now consume the same framework/application metadata (`entity.internal_fields_by_type` plus FieldDefinition.settings.internal); credential-name floors remain independent defense in depth. -->
+
 <!-- Spec reviewed 2026-07-22 - #2108 browser-channel follow-up: the GenericAdminSurfaceHost itself owns the shipped node.source_status/wp_status form-visibility floor, so application-owned routes that construct the host directly receive the same exclusion as provider-owned routes. Host-declared additions remain supported. The broader JSON:API metadata convergence is tracked in #2113. -->
 <!-- Spec reviewed 2026-07-22 - #2108 WP-2: schema metadata can declare an editable slug widget with x-source-field; the widget requests the host's generate-slug action, which delegates to Foundation SlugGenerator so Indigenous orthography is preserved. Integer fields with subtype=timestamp project as string/date-time + datetime widgets. GenericAdminSurfaceHost accepts host-declared per-type internal form fields (the shipped host hides migrated node.wp_status). Failed create validation retains bundle state, and entity detail uses the standard confirmation modal for capability-gated deletion. -->
 <!-- Spec reviewed 2026-07-22 - #2108 WP-1: the legacy bundled-list path now emits the same closed {operator,value} filter condition consumed by AdminSurfaceTransportAdapter as host-declared x-list controls. Node lists default to created DESC, retain offset/limit on every request, and therefore keep new content on page 1 while pagination and bundle totals reflect distinct server results. Browser-shaped coverage uses migrated UUID/data-shaped rows. -->
@@ -12,6 +112,15 @@
 
 <!-- Spec reviewed 2026-07-16 - #2053: one --admin-target-size token gives ordinary authenticated-admin links, buttons, inputs, selects, date controls, autocomplete controls/options, rich-text controls, toggle labels, disclosures, actions, and pagination effective 44 by 44 CSS-pixel targets. Autocomplete clear is an adjacent non-overlapping control; the toggle label owns the effective target while focus and state remain on its native checkbox. Geometry is pinned at 360/768/1024/1440 and 200% text enlargement. -->
 <!-- Spec reviewed 2026-07-16 - #2051: schema listings retain one semantic table/action set, adapt that markup to labelled cards below 600px, contain wider tables in a named scroll region, and use bounded semantic pagination. Generic ordinary controls use 44px targets. Closed mobile navigation is inert/aria-hidden/pointer-disabled; open navigation manages focus, Escape, scroll, backdrop, route, and breakpoint cleanup. Shell boundaries shrink/wrap long content without document overflow. -->
+
+<!-- Spec reviewed 2026-08-18 - #2419 + #2421 per-record history: new GenericAdminSurfaceHost `history` action returns a record's revisions (revisionId, createdAt, author, log, isCurrent, isLatest) gated by the record's own view access, fail-closed like get(). Metadata only — never field values — so history cannot bypass the record's field-access rules. A refusal exposes no surface rather than an empty one (an empty timeline is itself a disclosure), and the SPA distinguishes refused from genuinely empty; a non-revisionable type is refused 404 rather than raising the repository LogicException. isCurrent (published/default) and isLatest (tip) are reported separately because they diverge under a forward draft; author keeps null (unattributed) distinct from 0 (anonymous). New page pages/[entityType]/[id]/history.vue, addressable at /admin/{entityType}/{id}/history and generated by AdminDestinationPaths::history(). The record editor moved from [id].vue to [id]/index.vue so history can be a sibling rather than nested inside the editor by Nuxt's parent-layout rule; its URL is unchanged. -->
+<!-- Spec reviewed 2026-08-18 - #2418 + #2420 bundle-scoped Admin destinations: new Waaseyaa\AdminSurface\AdminDestinationPaths is the canonical generator for Admin SPA page destinations (list/create/edit/pipeline), companion to AdminSurfaceRoutePaths which covers only the _surface HTTP API. It owns its own encoding, refuses an empty entity type or record id, omits an empty bundle rather than emitting `?bundle=`, and makes no access decision. pages/[entityType]/create.vue and index.vue read the scope through app/runtime/bundleScope.ts, whose BUNDLE_QUERY_PARAM is pinned by test to the PHP QUERY_BUNDLE constant, as is each destination's correspondence to its SPA page file. Degradation is contractual: a repeated or blank parameter yields no scope; SchemaForm drops a bundle absent from the base schema's x-bundle-key enum before requesting it, so a stale link degrades to the unscoped create form instead of a refused scoped schema request; SchemaList seeds the visible bundle control (not a hidden filter) only when the value appears in bundleOptions. Per-record History remains without a destination pending #2419/#2421. -->
+<!-- Spec reviewed 2026-08-18 - #2422 consumer-supplied Admin Surface host registration: AdminSurfaceServiceProvider::routes() no longer hardcodes GenericAdminSurfaceHost. It resolves an optional AdminSurfaceHostFactoryInterface binding and registers the canonical admin_surface.* routes against the host the factory returns, falling back to the generic host when none is bound. A factory rather than a host binding because routes() runs after every provider's register(), so an application host may depend on sibling bindings. Paths, HTTP methods, authentication requirements, and the #2161 refusal-status promotion are unchanged and now inherited by application hosts instead of privately reimplemented. Registration happens exactly once; WaaseyaaRouter's duplicate-route-name refusal is retained so an accidental second registration still fails at boot. No SPA-side change. -->
+<!-- Spec reviewed 2026-08-25 - #2409: the seven `admin_surface.page_builder.*` routes now promote refusal statuses at the Admin Surface boundary, closing the exclusion #2453 recorded. The exclusion rested on the premise that a different host contract implied a different envelope; it does not. `GenericPageBuilderSurfaceHost::execute()` funnels every refusal through the same `AdminSurfaceResultData::error()` as the five canonical routes, so all seven emitted `{ok:false, error:{status}}` and all seven were flattened to HTTP 200 by `ControllerDispatcher`'s default — the #2161 defect, unfixed on these routes. The promotion is deliberately NOT `surfaceResponse()`: the page-builder closures reach the wire through `jsonApiResponse()`, so the five routes' compact `application/json` treatment would change both the media type (`application/vnd.api+json`) and the bytes (`JSON_PRETTY_PRINT`). Instead the closures return the `['statusCode' => ..., 'body' => ...]` shape `ControllerDispatcher` already honours, leaving body and Content-Type untouched — verified by hashing 17 envelope shapes across all seven routes before and after: exactly the promoted rows differ, and only in the status line. Fail-closed on the same terms as #2161: only an integer 400–599 promotes, and absent, string, float, array, null, `0`, `99`, `600`, `ok:true`, or a host-supplied `statusCode`/`body` all keep HTTP 200 with unchanged bytes rather than reaching the `Response` constructor. Foundation is untouched; the promotion knows the Admin Surface envelope, and `ControllerDispatcher` still does not. `tests/Integration/AdminSurface/PageBuilderRefusalWireStatusTest.php` drives the seven-route matrix through the registered closures and the real dispatcher. -->
+<!-- Spec reviewed 2026-08-19 - #2453 / Sheg #110: the five canonical `admin_surface.*` closures now return a compact `application/json` `JsonResponse` at the Admin Surface boundary. Their `{ok,data,error,meta}` envelope is not JSON:API; passing the prior `statusCode`/`body` wrapper through Foundation's generic `ControllerDispatcher` mislabeled it `application/vnd.api+json` and pretty-printed bytes that differed from the consumer contract #2422 was meant to consolidate. Refusal promotion remains fail-closed: only an integer 400–599 reaches the status line; absent, string, or out-of-range values keep HTTP 200 while the envelope is emitted unchanged. All five success and refusal paths pin status, media type, and literal bytes. `admin_surface.page_builder.*` remains out of scope because it uses a different host interface. **Superseded by #2409 — the seven page-builder routes now promote refusal statuses too; see the 2026-08-25 record below.** -->
+<!-- Spec reviewed 2026-08-17 - #2161: admin-surface refusals now carry their status on the wire. Every `admin_surface.*` endpoint previously answered a refusal with HTTP 200 and reported the real status only inside the envelope (`{"ok": false, "error": {"status": 403, ...}}`), because all five `AbstractAdminSurfaceHost::handle*` methods return the same flat envelope and all five landed on `ControllerDispatcher::handleCallable()`'s default HTTP 200. The Admin Surface route boundary promotes only a genuine 400-599 integer, so an absent, string, or out-of-range status cannot reach the `Response` constructor and turn a clean refusal into a 500. `admin_surface.session` therefore returns a real 401 when unauthenticated — `AdminSurfaceTransportAdapter.request()` already branches on `!response.ok || !json.ok` and prefers `error.status`, and `plugins/admin.ts` passes `ignoreResponseError: true` so its `error.status === 401` login redirect still runs rather than falling into the bare catch. -->
+
+<!-- Spec reviewed 2026-09-17 - #2177 F1 C1c prerequisite: server-authoritative session capability projection. AdminSurfaceSession has required `capabilities: Record<string, boolean>` (always emitted by the PHP host, `{}` when empty), computed in GenericAdminSurfaceHost::resolveSession() from the resolved immutable principal via hasPermission() over an explicit constructor `$capabilityAllowlist` (strict identifier validation, deduplicated, sorted, hard caps CAPABILITY_ALLOWLIST_MAX=32 / CAPABILITY_IDENTIFIER_MAX_LENGTH=128; malformed or oversized lists throw at construction — never a silent broadening, never permission enumeration). AdminSurfaceServiceProvider::defaultCapabilityAllowlist() projects exactly McpApprovalCapabilities::PERMISSION_VIEW/PERMISSION_DECIDE when the MCP package is installed and nothing on slim installs; `features.mcp` stays installation-wide while `capabilities` is per-account. SPA: the admin plugin threads session capabilities into AdminRuntime.capabilities and useAdmin() exposes the canonical fail-closed `can(permission)` helper (true only for exact boolean true; no role fallback). Server middleware/route permissions remain the enforcement boundary — this is a UI affordance signal only. -->
 
 <!-- Spec reviewed 2026-07-15 - #2050: schema fields share stable label/help/error IDs and required/invalid semantics; submission failures use a focused assertive summary, structured-error mapping and single-flight guard. RichText preserves untouched canonical HTML behind an inert visual projection plus explicit source mode. Date-only fields use ISO YYYY-MM-DD without timezone conversion and enforce authoritative x-min/x-max bounds. -->
 
@@ -44,12 +153,13 @@
 <!-- Spec reviewed 2026-05-24 - #1576 queue dashboard now shows queued + in-flight jobs in addition to failed. `TransportInterface::listJobs(int $limit, int $offset = 0, ?string $status = null): array` was added (M4B follow-up, mandatory on implementors) with two impls: `DbalTransport::listJobs()` issues a COUNT + SELECT against `waaseyaa_queue_jobs` with `reserved_at IS NULL` (queued) / `IS NOT NULL` (in_progress) / no filter (both); `InMemoryTransport::listJobs()` merges `$queues` + `$reserved` sorted by id. Abstract `Waaseyaa\Queue\Tests\Contract\TransportContractTest` (registered under the Unit suite via phpunit.xml.dist) verifies both backends in lockstep — covers empty, all-queued, queued+in_progress mix, status filter, limit/offset pagination, zero-limit, invalid-status. `GET /api/queue/jobs` now reads optional `?status=failed|queued|in_progress|all` (default `failed` — NFR-001 M4B backward compat preserved; meta envelope unchanged at `{page, per_page, total}` so M4B integration assertions pass UNCHANGED). Failed branch keeps the existing FailedJobRepository path; queued/in_progress branches call `TransportInterface::listJobs()`; `all` merges failed-first-then-transport on a single page. When `TransportInterface` is unbound (slimmed-down install), all non-failed statuses fall back to the failed shape. `ApiServiceProvider` extends the queue `resolveOptional()` block to also resolve `TransportInterface` (optional). `QueueController` constructor gains `?TransportInterface $transport = null` as the third arg. Frontend: `useQueueJobs()` returns `status` (`Ref<'failed'|'queued'|'in_progress'|'all'>`) and `fetchJobs(page, perPage, status)` accepts the third arg (default `'failed'`); response row type is now the union `QueueJob = FailedJob | TransportJob` with the `isFailedJob()` guard. `pages/queue/index.vue` adds a chip filter row above the table; failed chip keeps the M4B full-detail columns + retry/discard buttons, the live chips render a lean (id, queue, status pill, attempts, age-seconds) table with NO retry/discard buttons (C-001 — retry/discard remain failed-only). New i18n keys: queue_status_failed, queue_status_queued, queue_status_in_progress, queue_status_all, queue_age_seconds, queue_column_status, queue_column_age. queue_title flipped from "Failed jobs" to "Queue jobs" and queue_empty from "No failed jobs." to "No jobs in this view." to reflect the broader surface. -->
 <!-- Spec reviewed 2026-05-24 - M4C WP01 (#1472) admin notifications dashboard at /notifications: new NotificationController + NotificationAdminApiRouter, both gated by `_role: admin` via BuiltinRouteRegistrar. `GET /api/notification/channels` returns `{data: [{type, class}, ...]}` from `NotificationDispatcher::channels()` (new accessor — read-only view of the constructor-supplied channel map; no other dispatcher state touched). `POST /api/notification/channels/{type}/test` looks up the channel by type, builds anonymous `TestRecipient` (reads `_account` from the request, routes mail→email, database→account id) + `TestNotification` (subject `[Waaseyaa test]`, body explains "no action required"; returns a real `Waaseyaa\Mail\Envelope` from `toMail()` so `MailChannel` doesn't crash), and calls `ChannelInterface::send()` inside try/catch. 200 with `{type, status: "success", message: "Test sent."}` on success; 404 JSON:API error envelope on unknown type; 500 with `{type, status: "failed", message, exception_class}` on `\Throwable` — the controller never serialises a throwable directly (FR-010, M4B precedent). `ApiServiceProvider` gains a third `resolveOptional()` block for `NotificationDispatcher` after the queue + scheduler blocks; skips cleanly if absent (slimmed-down install). `packages/api/composer.json` adds `../notification` path repo + `waaseyaa/notification: ^0.1.0-alpha.188` require (L4 → L3, layer-clean). SPA route inventory: `/notifications` Nuxt page mirrors `/queue` shape; columns are channel type, implementation FQCN (truncated short class + tooltip with full FQCN), and a Send-test action. After a test send the page renders either a success chip or a failure card; failure card includes `exception_class` when present. New i18n keys: notifications_title, notifications_empty, notifications_column_type, notifications_column_class, notifications_column_action, notifications_action_test, notifications_confirm_test_title, notifications_confirm_test_body, notifications_status_success, notifications_status_failure, notifications_help. New composable useNotificationChannels (`{channels, loading, error, lastTestResult, fetchChannels, testChannel}`), new component NotificationChannelRow, new page pages/notifications/index.vue. NavBuilder gains a `/notifications` link in the Operations section right after `/scheduler`; NavBuilder test updated to assert 5 nav items + the new `[data-testid=nav-notifications]` link on an empty catalog. Delivery log + per-channel enable/disable are deferred — the notification package does not yet carry the persistence; the follow-up issue tracks adding a `delivery_log` table, a `ChannelConfig` model, an enable/disable flag, and a second tab to `/notifications`. Closes audit C-L3-02 + C-L0-03. -->
 <!-- Spec reviewed 2026-05-24 - M4B WP02 (#1471) admin scheduler dashboard at /scheduler: new SchedulerController + SchedulerAdminApiRouter, both gated by `_role: admin` via BuiltinRouteRegistrar. `GET /api/scheduler/tasks` returns `{data: [{name, description, expression, timezone, last_run_at, last_status, next_run_at}, ...]}` — `last_run_at`/`last_status` are nullable (no row in `waaseyaa_schedule_state` yet), `next_run_at` always set. `POST /api/scheduler/tasks/{name}/trigger` calls `ScheduleRunner::runOne()` (new public method that bypasses the cron check, honours the overlap lock, and records run state); 200 with `{status, message, exception_class?}` on success/failure, 404 on unknown task. `ScheduleRunResult` extended with optional `status`/`message`/`exceptionClass` fields so the controller never serialises a `\Throwable` (FR-010). `SchedulerServiceProvider` now binds `ScheduleStateRepository` as a container singleton (database driver only) so the L4 API provider can `resolveOptional()` it. M4B WP01 admin queue routes (landed 2026-05-23) likewise admin-only: `GET /api/queue/jobs` (paginated failed jobs), `POST /api/queue/jobs/{id}/retry`, `POST /api/queue/jobs/{id}/discard`. SPA route inventory under the always-present "Operations" sidebar section: `/queue` (failed jobs) and `/scheduler` (scheduled tasks) — both Nuxt pages at top-level paths, no `/admin/` prefix (matches the existing /workflows, /telescope convention). New i18n keys: scheduler_title, scheduler_empty, scheduler_column_*, scheduler_action_trigger, scheduler_confirm_trigger_*, scheduler_status_*. New composable useScheduledTasks, new component SchedulerTaskRow, new page pages/scheduler/index.vue. NavBuilder test asserts the /scheduler link renders alongside /queue under the Operations heading even with an empty catalog. -->
+<!-- Spec reviewed 2026-08-12 - S1-FW-DB-03 manual scheduler triggers require one `Idempotency-Key`. Missing/blank returns JSON:API 428 before execution; retries with the same key resolve to the same durable occurrence. Tasks that have not adopted durable occurrence and fence protection return 409 instead of accepting an idempotency promise they cannot honor. The SPA creates one UUID when the operator confirms and uses it for that request/retry. -->
 <!-- Spec reviewed 2026-05-20 - SSE history-replay defense: BroadcastMessage interface in composables/useRealtime.ts now matches what the server actually emits (id: number, created_at: number) — the never-emitted `timestamp` field was removed. SchemaList watch(messages, …) now skips any event whose created_at predates the component's setup-time mountedAtSec; a defensive second line if the server-side cursor ever regresses to history replay. SchemaList's realtimeEnabled check hardened to String(config.public.enableRealtime) === '1' since Nuxt's runtime-config serializer coerces digit-string env vars to numbers, which silently disabled SSE in some builds. Public admin surface contract unchanged. -->
 <!-- Spec reviewed 2026-05-20 - local-dev hardening: bump Nuxt 4.4.4 → 4.4.6 (latest 4.4.x patch); add vite.optimizeDeps.include for @vue/devtools-core and @vue/devtools-kit so Vite pre-bundles them at startup rather than discovering them mid-request and restarting the dev server (which kills the vite-node IPC socket and surfaces as "Vite Node IPC socket path not configured" 500 on the first /admin/ request). No runtime behaviour, public contract, or admin surface API change. -->
 <!-- Spec reviewed 2026-05-11 - M4A-3 (#1432 / umbrella #1414) per-entity transition-history widget on entity detail pages: new <WorkflowTransitionHistoryTimeline /> component reads `workflow_audit` from the entity's attributes (already surfaced by ResourceSerializer via _data JSON blob round-trip — no backend change), renders reverse-chronological timeline with transition chip / from→to states / uid / timestamp. Wired into pages/[entityType]/[id].vue below SchemaView/SchemaForm. Renders nothing when audit empty. 4 new i18n strings; M4A-4/5 deferred -->
 <!-- Spec reviewed 2026-05-11 - M4A-2 (#1430 / umbrella #1414) workflow detail page at /admin/workflows/[id]: states grid (id/label/weight/metadata) + transitions matrix (from×to grid with cell-level transition listing); new findById helper on useWorkflowDefinitions; WorkflowState TS interface gains `metadata: Record<string, unknown>`; backend serializer extended to include `metadata` per state (3-line additive change in WorkflowDefinitionsController); 10 new i18n strings; closes C-L3-01 detail-view portion; M4A-3/4/5 still deferred -->
 <!-- Spec reviewed 2026-05-11 - M4A-1 (#1428 / umbrella #1414) workflows list page: new GET /api/workflow-definitions endpoint (admin-role-gated, returns `{data: WorkflowDefinition[]}` shape) wired via WorkflowDefinitionsController (packages/api/src/Workflow/) + WorkflowDefinitionsApiRouter (kernel-adjacent, exempted in bin/check-package-layers); new useWorkflowDefinitions composable + /admin/workflows page list editorial workflow with state/transition counts; api/composer.json now requires waaseyaa/workflows; 7 new i18n strings; closes C-L3-01 list-view portion; detail page / history / dry-run / guard editing deferred to M4A-2..M4A-5 -->
-<!-- Spec reviewed 2026-05-11 - M1B-image/fonts (#1411) deferred indefinitely: admin SPA has zero <img>, zero background-image, zero static image assets (only public/favicon.ico), and uses system font stack in AdminShell.vue:109; adopting @nuxt/image and @nuxt/fonts now would add infrastructure for nothing; audit E-Mod-01 updated; M1B umbrella sub-set closed (eslint + icon adopted, image + fonts consciously deferred until SPA grows images or web fonts) -->
+<!-- Spec reviewed 2026-05-11 - M1B-image/fonts (#1411) deferred indefinitely: admin SPA has zero <img>, zero background-image, zero static image assets (only public/favicon.ico), and uses the system font stack declared in app/assets/admin.css; adopting @nuxt/image and @nuxt/fonts now would add infrastructure for nothing; audit E-Mod-01 updated; M1B umbrella sub-set closed (eslint + icon adopted, image + fonts consciously deferred until SPA grows images or web fonts) -->
 <!-- Spec reviewed 2026-05-11 - M2B-build-pipeline (#1412) E-Pkg-05 closed as stale: admin/contracts CI job at .github/workflows/admin.yml:22 already runs nuxi typecheck + npm run build:contracts (with dist/ artifact upload, 14-day retention) + ajv-cli bootstrap schema validation + vitest on every PR; dist/ correctly gitignored; build:contracts retained because it verifies emittability beyond what nuxi typecheck catches; documentation-only correction to audit and README -->
 <!-- Spec reviewed 2026-05-10 - M1B-icon (#1411) @nuxt/icon adoption: module registered in nuxt.config.ts with mode=css and cssLayer=base; AdminShell mobile sidebar toggle's `&#9776;` HTML entity replaced with `<Icon name="heroicons:bars-3" />`; other unicode glyphs in SchemaList/pages and styled SVGs in auth flows kept as-is (out of XS scope) -->
 <!-- Spec reviewed 2026-05-10 - M3B (#1413) SchemaForm bundle picker: when SchemaPresenter has a FieldDefinitionRegistry and the entity type has declared bundles, the bundle property now also carries x-widget=select, x-required=true, x-label='Bundle', x-weight=-100; SchemaForm renders it automatically as a top-of-form required select on create. Bundle stays hidden when no enum (pre-M3B behavior preserved). No SPA code change. -->
@@ -60,20 +170,25 @@
 <!-- Spec reviewed 2026-05-10 - Nuxt 4.4.5 dev-server regression (#1419): pinned `"nuxt": "4.4.4"` exact in packages/admin/package.json; Tech Stack table version unchanged; rationale and unpin condition in CHANGELOG -->
 <!-- Spec reviewed 2026-05-10 - M1B (#1411) @nuxt/eslint adoption: nuxt.config.ts gains modules and eslint config; new packages/admin/eslint.config.mjs imports `.nuxt/eslint.config.mjs`; lint/lint:fix scripts wired; @typescript-eslint/no-explicit-any et al. set to warn (61 deferred baseline warnings); admin contracts unchanged -->
 <!-- Spec reviewed 2026-05-10 - M1A (#1411) dep bumps: Tech Stack table refreshed to nuxt ^4.4.4, vue ^3.5.34, vue-router ^5.0.6, typescript ^6.0.3, @types/node ^25.6.2; admin contracts unchanged -->
-<!-- Spec reviewed 2026-04-21 - IngestSummaryWidget: NC sync status from `/api/staff/nc-sync-status`; dashboard link `/staff/ingestion` (staff surface, not admin SPA catch-all) -->
 <!-- Spec reviewed 2026-04-08 - normalizeAppBaseURL (ufo cleanDoubleSlashes + joinURL): shared by admin plugin and auth.global so adminPathBase matches normalized base; surface $fetch uses joinURL paths; packages/admin/app/runtime/normalizeAppBaseURL.ts -->
 <!-- Spec reviewed 2026-04-08 - Admin fetch baseURL: useRuntimeConfig().app.baseURL (trailing slash) for $fetch/apiFetch and auth.global navigateTo; plugins/admin tests stub app.baseURL (#814); ufo joinURL for path joins -->
 <!-- Spec reviewed 2026-04-08 - Admin SPA DX alignment; vue-router ^5 for Volar `sfc-route-blocks` + `nuxi typecheck`; IngestSummaryWidget typed ingest_log status guard for strict JSON:API attributes -->
 <!-- Spec reviewed 2026-04-08 - merge-conflict resolution kept @types/node at ^25.5.2 in packages/admin/package.json and package-lock.json; no runtime/admin contract change -->
 <!-- Spec reviewed 2026-04-08 - AdminSurfaceRoutePaths (waaseyaa/admin-surface PHP) + adminSurfaceRoutes.ts: named routes admin_surface.session|catalog|list|get|action; plugin bootstrap uses adminSurfaceFetchUrl(base, name); paths must stay aligned with WaaseyaaRouter registration (#815) -->
 <!-- Spec reviewed 2026-04-08 - Optional session `ui` (headerLinks, sidebarItems): AdminSurfaceUiPayload + AdminSurfaceSessionData; GenericAdminSurfaceHost::buildAdminUi(); SPA maps via normalizeSurfaceUi into AdminRuntime.ui; AdminShell + NavBuilder (#756) -->
-<!-- Spec reviewed 2026-04-08 - Session UI TypeScript mirror: `packages/admin/app/contracts/surface-ui.ts` duplicates admin-surface `contract/types.ts` ui shapes for `npm run build:contracts` (rootDir app only); keep in sync with PHP/contract (#756) -->
+<!-- Spec reviewed 2026-09-17 - Admin Surface TypeScript mirrors remain under `packages/admin/app/contracts/` so `npm run build:contracts` retains `rootDir: app`; `npm run check:contract-compatibility` mechanically proves exact key, value, and optionality equality with the concern-separated canonical modules under `packages/admin-surface/contract/`, including core, UI, schema, revision, and page-builder wire shapes (#3074). -->
 <!-- Spec reviewed 2026-04-09 - AdminSurfaceTransportAdapter: constructor takes normalizedAppBase; all CRUD/action URLs via adminSurfaceFetchUrl (parity with plugin bootstrap; #1161) -->
 <!-- Spec reviewed 2026-04-09 ST-9 - JSON:API attribute contract: SPA consumes cast-aware payloads from ResourceSerializer (#1181) -->
 <!-- Spec reviewed 2026-04-30 - Host extension typing: GenericAdminSurfaceHost constructor and AdminSurfaceServiceProvider::routes() accept EntityTypeManagerInterface only; concrete EntityTypeManager bindings forbidden in packages/admin* (mission #824 WP04 surface C, closes #836) -->
-<!-- Spec reviewed 2026-05-01 - Admin-surface session contract: AdminSurfaceAccount.emailVerified?: boolean is now part of packages/admin-surface/contract/types.ts (camelCase, matching the PHP host payload at AdminSurfaceSessionData::toArray() and the SPA runtime read sites in auth.global and VerificationBanner). Spec language no longer uses snake_case email_verified (mission #824 WP07 surface A, closes #839) -->
+<!-- Spec reviewed 2026-09-17 - Admin-surface session contract: AdminSurfaceAccount.emailVerified is required and nullable in packages/admin-surface/contract/types.ts, matching AdminSurfaceSessionData::toArray(), which always emits the key and uses null when no decision exists. The SPA exact-compatibility gate protects the mirror (#3074). -->
 <!-- Spec reviewed 2026-05-01 - Admin-surface catalog contract: AdminSurfaceCatalogEntry.description?: string is preserved in packages/admin-surface/contract/types.ts and locked in by CatalogBuilderTest regression assertions (description emitted when set, omitted when unset, matching the optional contract field) (mission #824 WP07 surface B, closes #840) -->
-<!-- Spec reviewed 2026-05-01 - Admin-surface authority: payload shape is defined exclusively in packages/admin-surface/contract/types.ts (see packages/admin-surface/contract/README.md). This spec describes SPA runtime behaviour and references contract type names but does not redefine them; cross-boundary tests at tests/Integration/AdminSurface/ enforce conformance (mission #824 WP07 surface E, closes #851) -->
+<!-- Spec reviewed 2026-09-17 - Admin-surface authority: payload shape is defined exclusively by the concern-separated modules under packages/admin-surface/contract/ and re-exported through contract/index.ts (see packages/admin-surface/contract/README.md). This spec describes SPA runtime behaviour and references contract type names but does not redefine them; PHP conformance and exact TypeScript mirror gates enforce the boundary (#3074; supersedes the single-file authority note from #851). -->
+
+<!-- Spec reviewed 2026-08-07 - #2293: dashboard catalog cards are link-based
+touch targets and therefore inherit the shell's generic flex link treatment.
+The dashboard owns their component layout explicitly: column direction and
+stretched children at every viewport. Browser coverage pins the computed
+cascade and title/description geometry. No host-to-SPA contract changes. -->
 
 ## SPA bet (DIR-007)
 
@@ -85,7 +200,7 @@ Changes to this commitment require a charter amendment (per `## Amendment Proces
 
 ## Authority
 
-The host-to-SPA payload shape is defined in **`packages/admin-surface/contract/types.ts`** (see [`packages/admin-surface/contract/README.md`](../../packages/admin-surface/contract/README.md)). This document is the subsystem spec for the admin SPA runtime — components, composables, routes, schema-driven forms, auth flow — and references contract type names (`AdminSurfaceSession`, `AdminSurfaceCatalogEntry`, etc.) rather than redefining them. When this spec and the contract package disagree, the contract package wins; raise an issue against this spec to bring it back into alignment.
+The host-to-SPA payload shape is defined by the concern-separated modules under **`packages/admin-surface/contract/`**, re-exported through `contract/index.ts` (see [`packages/admin-surface/contract/README.md`](../../packages/admin-surface/contract/README.md)). This document is the subsystem spec for the admin SPA runtime — components, composables, routes, schema-driven forms, auth flow — and references contract type names (`AdminSurfaceSession`, `AdminSurfaceCatalogEntry`, etc.) rather than redefining them. When this spec and the contract package disagree, the contract package wins; raise an issue against this spec to bring it back into alignment.
 
 Two cross-boundary tests under `tests/Integration/AdminSurface/` enforce structural conformance between the backend emit and the contract; the audit (#851) flagged the prior governance drift where snake_case variants in this spec contradicted the camelCase contract. Use camelCase everywhere (e.g. `emailVerified`, `requireVerifiedEmail`).
 
@@ -103,6 +218,52 @@ Resolution order:
 2. **`composer.json` → `extra.waaseyaa.admin_path`** — e.g. `packages/admin` in the framework monorepo, or `../waaseyaa/packages/admin` for a sibling checkout (Minoo).
 
 **CLI** (from the Waaseyaa app root): `vendor/bin/waaseyaa admin:dev` runs `npm run dev` in the resolved admin directory; `vendor/bin/waaseyaa admin:build` runs `npm run generate`. For `admin:dev`, set **`NUXT_BACKEND_URL`** to the PHP app’s base URL (e.g. `http://127.0.0.1:8081`). If unset, it defaults to `http://{APP_HOST}:{APP_PORT}` (`127.0.0.1` and `8080` when those env vars are empty).
+
+`admin:build` is a hermetic production-artifact operation rather than a dev
+process. It resolves an absolute Node executable and npm CLI module, runs that
+module through the same pinned Node binary, validates an exact
+`package-lock.json`, performs `npm ci --include=dev` offline with lifecycle scripts disabled,
+and runs generation with an empty explicit dotenv file from a disposable copy
+containing only declared Nuxt source inputs. Local `.env`, `.nuxtrc`, arbitrary
+scripts, dependency trees, and generated state are neither copied nor read by
+the child. The child receives a
+new closed environment: fixed CI/production/telemetry policy, a validated PATH,
+disposable home, temp, npm configuration and c12 cache paths, a dedicated
+project-local content-addressed npm cache under `storage/framework/admin-build/`, and only the
+documented non-secret `NUXT_*`/build-ID inputs. Linux and Windows have distinct
+closed OS allowlists. Project or ancestor `.nuxtrc`, project dotenv files,
+unknown or credential-bearing project npm settings, unresolved npm environment
+expansion, relative executables, and invalid OS paths refuse before launch.
+An empty dedicated cache fails closed by default. An operator may explicitly
+set `WAASEYAA_ADMIN_BUILD_ALLOW_PUBLIC_REGISTRY=1` to authorize one retry
+against exactly `https://registry.npmjs.org/`; the distribution builder does so
+for its supervised rebuild. That retry uses the same lock, dedicated cache, empty user/global/project credential
+configuration, and disabled lifecycle scripts. The authorization flag itself
+never enters the child environment, and no alternate registry is accepted.
+Successful credential-free retrieval seeds the dedicated cache, so subsequent
+builds can complete offline; lockfile integrity remains authoritative over
+cached bytes.
+
+Child stdout and stderr are captured to a fixed maximum and a 15-minute runtime
+bound before crossing the kernel's mandatory sink sanitizer; overflow or timeout
+drops the raw output and emits only a fixed code. npm error codes are classified
+inside that boundary before line-scoped sanitization, so a sensitive dependency
+name cannot suppress the closed `ENOTCACHED` retry decision. Buffering the complete bounded stream prevents a registered value
+split across child writes—or across stdout and stderr—from bypassing exact
+replacement. Registered values shorter than eight bytes are deliberately
+ineligible for exact replacement to avoid destructive false positives, so all
+synthetic build canaries exceed that floor.
+
+After generation, every generated top-level tree, source map, Nuxt cache,
+dependency build cache, and the final `admin-surface/dist` publishable tree is
+inventoried in stable path order and scanned as bytes. Internal generated
+aliases may point only within the Admin package; publishable-tree symlinks and external symlinks, unreadable or
+changing files, known provider/private-key forms, registered synthetic canaries,
+and credential-labelled high-entropy, 32+-character hexadecimal, and UUID-shaped material fail closed without putting the
+matched bytes into evidence. Supported sibling/Composer Admin package paths use
+a stable `admin-package/` logical evidence prefix. Published static directories
+and files are normalized to `0755` and `0644` so a separate serving account can
+read the verified output.
 
 ### WSL / Windows browser against a WSL-hosted dev server
 
@@ -122,7 +283,22 @@ Static assets (`_nuxt/*.js`, `_nuxt/*.css`, fonts, images) are served from the s
 
 **CI automation:** The `.github/workflows/admin-dist.yml` workflow runs `nuxt generate` when `packages/admin/` changes on `main`, commits the output to `packages/admin-surface/dist/`, and opens a PR. After merge, the next tag distributes the assets via the splitsh-lite pipeline to Packagist.
 
-**Freshness gate (blocking):** `bin/check-admin-dist-fresh` (D6) compares a line-ending-normalised content signature of the admin SPA source set (`packages/admin/app/**`, plus `package.json`, `package-lock.json`, `nuxt.config.ts`, `app.config.ts`) against the committed `packages/admin-surface/dist.signature`, written by `bin/build-admin-dist` whenever the bundle is rebuilt. It fails when the source advanced without a rebuild — including a dependabot bump to the admin lockfile — so a stale committed bundle can never be tagged into a release. The gate runs in `composer verify` **and** in the blocking `ci/verify-gates` CI job, so staleness fails the PR rather than depending on the out-of-band `admin-dist.yml` fix-up workflow to catch it after merge. Rebuild + re-sign with `bin/build-admin-dist` and commit `packages/admin-surface/dist/` together with `packages/admin-surface/dist.signature`.
+**Freshness and reproducibility gates (blocking):** `bin/check-admin-dist-fresh` (D6) compares a line-ending-normalised content signature of the admin SPA source set (`packages/admin/app/**`, dependency/configuration files, `.nvmrc`, and the complete distribution/hermetic-build tool roster) against the committed `packages/admin-surface/dist.signature`, written by `AdminDistAcceptance::accept()` — reachable only through `bin/build-admin-dist` — whenever the bundle is rebuilt. The gate itself has no write mode: the marker cannot be refreshed without an accepted, reproducible, marker-satisfying rebuild behind it. It fails when source or its build procedure advances without a rebuild, including a dependabot bump to the admin lockfile, so a stale committed bundle can never be tagged into a release. The build entrypoint derives Nuxt's build ID and stable positive metadata timestamp from a separate content-only signature; policy-only edits still stale the freshness marker but do not rewrite every prerendered HTML file. `bin/normalize-admin-dist` rewrites only the known wall-clock fields in Nuxt's build manifests and prerender payloads; an unexpected manifest count, identifier, timestamp type, HTML build identity, or payload shape fails the build. The checked-in normalization fixture proves that known volatile fields converge while real compiled-asset drift remains visible; the hermetic pipeline separately proves a stable inventory roster and scan verdict for identical declared inputs. Bit-identical whole-toolchain output is claimed only when two clean builds under the pinned Node 24/npm lock independently demonstrate it. The gate runs in `composer verify` **and** in the blocking `ci/verify-gates` CI job, so staleness fails the PR rather than depending on the out-of-band `admin-dist.yml` fix-up workflow to catch it after merge. Rebuild and re-sign with `bin/build-admin-dist`, then commit `packages/admin-surface/dist/` together with `packages/admin-surface/dist.signature`.
+
+**The one canonical rebuild + acceptance operation (#2524).** `bin/build-admin-dist` is the ONLY supported way to change a byte under `packages/admin-surface/dist`. Admin-source branches commit generated output, so every transplant across another Admin change conflicts in many hashed chunks; the repair is never to merge those chunks but to discard BOTH generated sides and rebuild the complete bundle from the combined source. The entrypoint performs that whole procedure as one operation:
+
+1. **Boundary guard** — `bin/admin-dist-acceptance guard` (`AdminDistWorkspaceGuard`) refuses an ambiguous starting state: an unmerged index entry under `packages/admin/` or `packages/admin-surface/dist*`, unresolved conflict markers in the Admin app source or the generated boundary, an **untracked** file under `packages/admin/app/` (it would compile into the bundle while no committed source reproduces it), a partially staged generated tree, and a `dist.signature` left without the `dist/` tree it describes. Tracked source that is merely *modified* is the expected input to a rebuild and is allowed.
+2. **Pinned toolchain** — the hermetic child refuses any runtime other than the `.nvmrc` pin (`AdminBuildToolchainPolicy`, validated before `npm ci`, so a mis-pinned toolchain fails inside the first build rather than after both). The runtime the manifest records is resolved through `bin/run-hermetic-admin-build --print-toolchain` → `HermeticBuildEnvironmentFactory::resolveToolchain()`, i.e. the same sanitized `PATH` and the same `NODE_BINARY` / `NPM_BINARY` overrides the build itself uses — never whatever `node` the parent shell happens to find first, which can differ when those overrides are unset. The acceptance step then independently refuses a `--node-runtime` whose major does not equal the pin.
+3. **Two independent builds** — each build runs in its own hermetic child and is copied into its own disposable snapshot directory (`mktemp -d`, removed by a `trap`). Acceptance refuses a single snapshot presented twice (`duplicate-build-snapshot`) and refuses a pair whose published trees are not byte-identical (`build-not-reproducible`, naming the differing paths). Reproducibility is proven per run, not assumed.
+4. **Wholesale replacement** — the committed tree is discarded whole and re-staged from the build output, never merged. Every path present before and absent after is recorded as an explicit removal inventory and then re-checked on disk (`obsolete-artifact-retained` if any survived), so obsolete hashed chunks are proven gone rather than assumed overwritten.
+5. **Source-contract markers** — `packages/admin-surface/dist.markers.json` declares the named strings a change asserts must be present in the *compiled* bundle (scopes: `bundle-js`, `stylesheet`, `published-path`). A marker must occur inside a single compiled file: matching is per file, never against a concatenation of the tree, so no marker can be satisfied by a string that exists only because two chunks were glued together in an unspecified iteration order. A marker that is missing, or whose declared value changed without the bundle following, fails acceptance before anything is published and fails committed-state verification afterwards. `AdminDistContentTest` keeps its own served-bundle assertions; `AdminDistCanonicalOperationTest` binds the two vocabularies by *deriving* the pinned list from the content test's own source, so a new served-bundle assertion is forced into the roster rather than quietly forking a second vocabulary.
+6. **Versioned acceptance manifest** — `packages/admin-surface/dist.manifest.json` (`manifestVersion: 1`) records the source signature, the build-id signature and derived Nuxt build id, the published tree digest with its file and byte counts, the marker roster digest and ids, and — in an `acceptance` section — the build count, the reproducibility verdict, the broader **intermediate** `packages/admin/.output` artifact count and digest, the previous published digest, the added/modified/removed path inventory, and the exact Node/npm runtime. The published tree and the intermediate output are never conflated: they carry separate digests and separate counts.
+
+**Manifest determinism.** `identityDigest` covers the whole document except itself and every top-level key named in `identityExcludes` — which is exactly `["acceptance"]`. The excluded section is evidence (build provenance, exact runtime patch versions, the transition inventory), not identity, so a different Node patch release or a different starting conflict side cannot move identity. Re-running the operation on identical input produces **zero diff**: the published tree is rebuilt to the same bytes and, because identity and tree are both unchanged, the committed manifest is left byte-for-byte alone rather than having its transition record blanked.
+
+**Consumer acceptance of a released bundle.** The manifest ships inside `waaseyaa/admin-surface` beside the tree it describes, so a downstream distribution (e.g. Sheg) that resolves a Framework **release** through Composer reads `vendor/waaseyaa/admin-surface/dist.manifest.json`, scans `vendor/waaseyaa/admin-surface/dist`, and requires the scan to reproduce `published.treeDigest`. The identity that travels with the release tag is therefore *content*, carried in the installed package — the consumer never copies a hash out of a candidate branch, and a candidate-branch digest can never be mistaken for a released one. `packages/admin-surface/contract/README.md` holds the consumer-facing procedure.
+
+**The acceptance gate.** `bin/admin-dist-acceptance verify` (composer `check-admin-dist-manifest`, `tools/preflight-gates.json`, and blocking `ci/verify-gates`) re-derives every manifest claim from the committed bytes with no Node toolchain: the published tree digest and counts, source-signature parity with `dist.signature`, the Nuxt build identity in `_nuxt/builds/latest.json` (whose absence is itself a failure, so a bundle that lost its build manifest cannot pass that half in silence), the marker roster digest, and each declared marker's presence in the served bundle. It is **additive to** `check-admin-dist-fresh`, which remains the authoritative D6 staleness gate and is not weakened, bypassed, or replaced: freshness answers "did source advance without a rebuild", acceptance answers "do the committed bytes match what the operation said it published".
 
 ### Dev fallback account (auto-login for local development)
 
@@ -157,7 +333,10 @@ The skeleton's `.env.example` sets `WAASEYAA_DEV_FALLBACK_ACCOUNT=true` by defau
 | @types/node    | ^25.6.2   | Node type definitions           |
 | @playwright/test | ^1.59.1 | E2E browser testing in CI and local `test:e2e` runs |
 
-No CSS framework. Styles are defined in `packages/admin/app/components/layout/AdminShell.vue` as global CSS using CSS custom properties (`--color-primary`, `--color-surface`, etc.).
+No CSS framework. The application-level stylesheet at
+`packages/admin/app/assets/admin.css` defines the global controls and CSS
+custom properties (`--color-primary`, `--color-surface`, etc.) for every route,
+including shell-free entity-editor and page-builder embeds.
 
 ## API Proxy
 
@@ -173,6 +352,99 @@ routeRules: {
 ```
 
 All `/api/*` requests and `/admin/_surface/*` requests proxy directly to the PHP backend defined by `NUXT_BACKEND_URL`. The admin runtime no longer bootstraps through a bare `/_surface/` alias. The default backend is `http://127.0.0.1:8080`, matching the repo's PHP dev server and CI workflows.
+
+### Optional page-builder surface (#2344)
+
+Applications may register one or more named page-builder surfaces. The PHP
+Admin Surface then exposes authenticated definitions, draft, command, and
+exact-revision preview routes below
+`/admin/_surface/page-builder/{surface}`. The transport converts the framework
+HTTP request into `PageBuilderSurfaceRequest`; the page-builder host itself has
+no direct Symfony request dependency. The configured surface permission is
+checked server-side for every operation. Unknown surfaces and malformed,
+oversized, extra, or missing command fields fail closed.
+
+The command route additionally accepts an optional
+`save_advisory_acknowledgements` body key: a list of at most 32 lowercase
+64-character hexadecimal receipts. The required-key set is unchanged, so a
+client that does not send receipts is unaffected. A malformed receipt is a `400`
+before any surface call. An edit held for review answers `428` with
+`code: SAVE_ADVISORY_ACKNOWLEDGEMENT_REQUIRED` and the same allowlisted
+`meta.save_advisories` projection the entity save path uses, so a client
+branches on one machine code regardless of which surface raised it. Receipts
+sent to a gateway that cannot carry them answer `501` with
+`code: SAVE_ADVISORY_UNSUPPORTED` and no token in the payload. See
+`docs/specs/save-advisories.md` §11.
+
+#### Layout save-advisory review in the editor (#2475)
+
+`PageBuilderSurfaceError` carries the closed `code` and `meta` allowlist, so the
+page-builder transport reads the advisory contract without widening to an index
+signature. `app/runtime/layoutSaveAdvisory.ts` is the only place the SPA reads
+those two machine codes; it is a *reader* and mints nothing.
+
+A held layout edit installs `advisoryReview` on `usePageBuilder`, holding the
+exact pending command together with the advisories that candidate produced. The
+workspace renders each advisory's `field` and `message` — never its token — and
+blocks further editing while the review is open, exactly as an optimistic-
+concurrency conflict does. It is **not** an embed lifecycle failure: nothing was
+written, so the pending edit stays dirty and no `failure` event is emitted.
+
+Confirming returns **exactly** the acknowledgement values received, on the same
+command, document fingerprint, entity revision, **and the same idempotency
+key**, via the client's optional `saveAdvisoryAcknowledgements` argument. The
+client omits the body key entirely when there are none, so an ordinary save
+sends the byte-identical body it always sent. The review is dropped before the
+retry, so a second `428` — the candidate moved underneath the author — installs
+the new advisory and its new receipts rather than replaying a superseded one.
+Tokens are never synthesized, rewritten, persisted, or carried to another
+candidate.
+
+A review chain is **one save attempt**. The idempotency key of the held attempt
+is retained on the review and reused for the acknowledged retry and for every
+further `428` in that chain; only the receipts change. This matches the server
+contract, where `LayoutDraftSaveAdvisoryTest` holds one key across the held
+attempt, a superseded-receipt refusal, and the successful retry. An advisory
+raised on a conflict replay retains *that* replay's key, not the original
+refused attempt's. A new key is minted only for a genuinely new save attempt —
+including the next attempt after the author declines.
+
+Declining clears the prompt and changes nothing else: no write, no draft
+replacement, and the edit stays dirty and unsaved. A rejected, superseded, or
+wrong receipt returns another `428` or an ordinary refusal; either way nothing
+is written. A malformed `meta.save_advisories` projection — one bad entry in the
+list, a token that is not lowercase 64-hex, more than 32 entries — is a refusal,
+not a partial review, so the editor can never present a review it cannot
+faithfully acknowledge.
+
+`501 SAVE_ADVISORY_UNSUPPORTED` sets `advisoryUnsupported` instead, rendered as
+a distinct configuration/capability notice with **no confirm affordance**. It is
+not an author-fixable validation error, and it is a real lifecycle failure
+(`{ kind: 'server', status: 501 }`).
+
+`AdminSpaLayoutAdvisoryContractTest` pins the two-language vocabulary — body
+keys, machine codes, the five projected advisory fields, the token shape, and
+the 32-receipt bound — against the real PHP host, so a rename on either side
+fails rather than silently breaking the editor.
+`e2e/page-builder-save-advisory.spec.ts` drives the five acceptance paths
+through the real editor in a browser. A page-builder surface is registered by
+the application rather than the framework, so there is no live surface in this
+repository to point at; the spec serves the command endpoint itself using the
+exact envelopes that contract test pins against the host.
+
+The Admin SPA client added by the subsequent work package consumes this same
+contract as Anokii. It must not use generic entity PATCH, a direct repository
+save, or a client-private command vocabulary for layout edits.
+
+An application may also declare `x-preview: { action: string }` on an
+ID-scoped editable entity schema. The detail page then exposes a draft-preview
+action and calls that exact host-declared Admin Surface action with the entity
+ID. A successful response must contain a same-origin absolute-path
+`preview_url`; the SPA rejects other URL shapes and renders the accepted URL in
+an application dialog. The host remains authoritative for bundle eligibility,
+access, revision selection, signature lifetime, non-indexing, and cache policy.
+Absence of `x-preview` means the client exposes no preview control. This is a
+capability extension, not a hard-coded content-type list.
 
 ### Cast-aware entity attributes (#1181)
 
@@ -227,6 +499,8 @@ All composables are in `packages/admin/app/composables/`. Nuxt auto-imports them
 
 Shared fetch wrapper for all `/api/*` calls. Ensures `baseURL: '/'` (bypasses Nuxt's `app.baseURL` prefix) and `credentials: 'include'` (sends session cookie).
 
+CSRF (#2177 F1 prerequisite, #3047/#3031): on non-safe methods (anything but `GET`/`HEAD`/`OPTIONS`), `apiFetch` and upload XHR read the configured CSRF cookie through the shared decoder `app/utils/csrfCookie.ts` (URL-decoding it; name from `runtimeConfig.public.csrfCookieName`, default `XSRF-TOKEN`) and send it as the `X-XSRF-TOKEN` header — but **only to same-origin destinations**; absolute or protocol-relative URLs pointing at another origin never receive the token. Safe methods and token-less sessions send no header, and a caller-supplied `X-XSRF-TOKEN` header is never overwritten. When the PHP host serves packaged Admin HTML — SPA fallback **and** direct `.html` assets such as `/admin/index.html`, `/admin/login/index.html`, and `/admin/200.html` — `AdminSurfaceServiceProvider` rewrites the embedded `csrfCookieName` from the runtime `SessionCookiePolicy` with literal-safe replacement (so `host_bound=true` yields `__Host-XSRF-TOKEN`, and names containing `$` are preserved, without requiring a separate frontend rebuild). The cookie is seeded by API responses carrying both an authenticated account and the `waaseyaa_uid` login-session marker (the boot `GET /api/user/me` in practice; bearer-only requests are excluded — see `docs/specs/security-defaults.md` "CSRF token cookie"). This is what lets routes declared with `RouteBuilder::requireCsrf()` (JSON content type included) accept SPA mutations.
+
 ```ts
 function useApi(): {
   apiFetch<T>(path: string, options?: Record<string, unknown>): Promise<T>
@@ -244,8 +518,8 @@ function useEntity(): {
   list(type: string, query?: { page?: { offset: number; limit: number }; sort?: string }):
     Promise<{ data: JsonApiResource[]; meta: Record<string, any>; links: Record<string, string> }>
   get(type: string, id: string): Promise<JsonApiResource>
-  create(type: string, attributes: Record<string, any>): Promise<JsonApiResource>
-  update(type: string, id: string, attributes: Record<string, any>): Promise<JsonApiResource>
+  create(type: string, attributes: Record<string, any>, saveAdvisoryAcknowledgements?: string[]): Promise<JsonApiResource>
+  update(type: string, id: string, attributes: Record<string, any>, saveAdvisoryAcknowledgements?: string[]): Promise<JsonApiResource>
   remove(type: string, id: string): Promise<void>
   search(type: string, labelField: string, query: string, limit?: number): Promise<JsonApiResource[]>
 }
@@ -288,6 +562,7 @@ Key types:
 interface SchemaProperty {
   type: string; description?: string; format?: string; readOnly?: boolean
   enum?: string[]; minimum?: number; maximum?: number; maxLength?: number
+  items?: SchemaProperty
   'x-widget'?: string; 'x-label'?: string; 'x-description'?: string
   'x-weight'?: number; 'x-required'?: boolean; 'x-enum-labels'?: Record<string, string>
   'x-target-type'?: string; 'x-access-restricted'?: boolean; 'x-cardinality'?: number
@@ -348,6 +623,19 @@ The root Nuxt plugin is the authoritative bootstrap for `$admin`. On non-public 
 5. Builds `AdminRuntime` from `SessionAuthAdapter`, `AdminSurfaceTransportAdapter`, the resolved account/tenant, a local admin runtime catalog contract derived from the surface bootstrap payload, and **`ui`** — normalized from optional session `ui` (`headerLinks`, `sidebarItems`) via `normalizeSurfaceUi()` in `packages/admin/app/runtime/normalizeSurfaceUi.ts` (defensive filtering; defaults to empty arrays when absent).
 6. Returns `{ provide: { admin: runtime } }`, or `{ provide: { admin: null } }` for public auth pages and unauthenticated redirects.
 
+**Session capability projection (PHP → SPA, #2177):** `AdminSurfaceSession.capabilities`
+is a server-authoritative `Record<string, boolean>` computed by
+`GenericAdminSurfaceHost::resolveSession()` from the resolved principal's
+`hasPermission()` over an explicit, bounded constructor allowlist
+(`$capabilityAllowlist`; empty by default, `{}` in JSON when unconfigured).
+Only allowlisted identifiers are ever serialized. The framework default
+(`AdminSurfaceServiceProvider::defaultCapabilityAllowlist()`) projects exactly
+`mcp.approval.view` and `mcp.approval.decide` when the MCP package is
+installed. Pages and navigation consume it through `useAdmin().can(permission)`,
+which is fail-closed: it returns `true` only when the value is exactly boolean
+`true`, and there is no role-based fallback. This gates UI affordances only —
+route-level `_permission` checks remain the enforcement boundary.
+
 **Session UI customization (PHP → SPA):** Hosts extend `GenericAdminSurfaceHost` and override `buildAdminUi(AccountInterface): ?AdminSurfaceUiPayload` to attach non-empty `AdminSurfaceUiPayload` to `AdminSurfaceSessionData`. JSON includes a top-level `ui` object only when the payload has at least one valid header link or sidebar item. Sidebar `group` values that look like i18n keys (`nav_*`) are passed through `t()` in `NavBuilder`; an empty/missing `group` uses `nav_group_custom` (“Shortcuts”). External targets use `external: true` or absolute URLs (`http(s):`, `//`, `mailto:`, `tel:`) and render as `<a target="_blank" rel="noopener noreferrer">`.
 
 The same payload accepts the closed optional `navigationMode`. Missing or `full`
@@ -357,11 +645,211 @@ logout controls, but omits those static sections. Unknown values normalize to
 `full`. This changes presentation only: route access and every controller policy
 remain unchanged.
 
+**Per-record history (#2419 / #2421).** `/admin/{entityType}/{id}/history` is a
+record's own addressable history surface, generated by
+`AdminDestinationPaths::history()`. It exists because neither of the nearby
+surfaces answers the question: the record editor answers "what does this record
+say now", and `pipeline.vue` answers for the whole entity type.
+
+Served by the `history` action on `GenericAdminSurfaceHost`, which returns the
+record's revisions with `revisionId`, `createdAt`, `author`, `log`, `isCurrent`,
+and `isLatest`.
+
+Three properties are load-bearing:
+
+- **Gated by the record's own view access**, fail-closed exactly as `get()` is.
+- **Metadata only, never field values.** A revision row carries the record's
+  field content, and echoing it here would let history bypass the field-access
+  rules the record's read path enforces.
+- **A refusal exposes no surface, not an empty one.** An empty timeline is
+  itself a disclosure — "this record exists and has never been touched" — so
+  the page distinguishes *refused* (`history-unavailable`) from *genuinely
+  empty* (`history-empty`). A non-revisionable entity type is refused with 404
+  rather than raising.
+- **The affordance is withheld, not offered and then refused (#2486).** That 404
+  is the right answer to a question that should not have been asked. The catalog
+  carries a per-type `revisions` capability, derived in `buildCatalog()` from
+  `EntityType::isRevisionable()` so it cannot drift from what the endpoint will
+  answer, and both the embedded editor and the per-record history page gate the
+  panel on it exactly as they already gate Delete. A type that keeps no
+  revisions renders no History and issues no request; the history page, which is
+  reachable by URL, says so instead. The capability is fail-closed and optional,
+  so a host that declares nothing reads as "no history" rather than advertising
+  a surface that does not exist.
+
+`isCurrent` (the published/default revision) and `isLatest` (the tip) are
+reported separately rather than collapsed: they differ whenever a forward draft
+is in flight, which is the case an editor most often opens history to
+understand. `author` distinguishes `null` (written without an acting context)
+from `0` (the anonymous account acted); collapsing the two would attribute an
+unattributed revision to a real account.
+
+**Revision recovery (#2464).** Metadata history stays content-free. Selecting a
+row invokes the distinct `revision` action, which first authorizes the record
+itself and only then loads the saved revision. Historical attributes are
+released only after `EntityAccessHandler` composes `view_revision` through
+`RevisionPolicyComposition` against that snapshot; current-entity view is not
+enough. Protected entity-read authority and context-aware policy evaluation use
+the same historical snapshot. A denied revision is concealed as a missing revision. The ordinary
+`ResourceSerializer` then projects the snapshot with the acting account, so
+dynamically forbidden and internal fields never enter the response. A
+record-view refusal occurs before revision storage is consulted and therefore
+exposes no revision-existence oracle.
+
+`restore-revision` requires both record view and update access, `view_revision`
+on the source snapshot, a positive observed latest revision id, and the opaque
+mutation token cached by the Admin transport's prior record GET. Changed-field
+edit authority is the same `RevisionRestoreChangedFields` set used by the AI
+restore tools: revision metadata and live-preserved keys are excluded, while
+workflow and every other written privilege-bearing field—including current-only
+keys removed by restore—are not. Storage preserves the live publication pointer,
+status, and credential hashes rather than copying their historical values. The explicit
+revision comparison produces the operator-readable stale-history 409; the token
+claim is the atomic storage fence that closes a race after that comparison. The
+host delegates to `EntityRepository::rollback()`: selected content is copied
+into a successor draft, later history remains intact, and workflow/publication
+pointers are not moved by the surface. The response contains the source and
+resulting revision ids plus a newly fenced entity. The rollback audit
+distinguishes the pre-operation revision, selected source revision, and
+resulting revision and never records field content.
+
+Exact preview is absent unless the application binds
+`AdminRevisionPreviewAuthorityInterface`. The host proves record/revision
+existence and `view_revision` access before calling it, and accepts only a
+grant naming the exact selected revision. Grant URLs must be root-relative or
+HTTPS and must not contain `\` or `..`. Applications own signing, expiry,
+audience, and the render route. Desktop/mobile controls resize the same
+exact-revision iframe and have no storage or publication semantics.
+
+`EntityRevisionRecovery` owns loading, selection, field comparison, restore
+conflict recovery, and preview. Both the addressable full history page and
+shell-free `EntityEditorWorkspace` render that component; consumers must not
+fork either path. Structured date/time values are compared as serialized
+canonical field values and remain editable only through the schema editor.
+
+**Route layout.** The record page moved from `pages/[entityType]/[id].vue` to
+`pages/[entityType]/[id]/index.vue` so `history.vue` can be its sibling. Nuxt
+would otherwise treat `[id].vue` as a parent layout for `[id]/history.vue`,
+nesting history *inside* the editor, which is not what the surface is. The
+editor's URL is unchanged.
+
+**Bundle-scoped destinations (#2418 / #2420).** `AdminSurfaceRoutePaths` is the
+single source for the `_surface` HTTP API; its companion
+`Waaseyaa\AdminSurface\AdminDestinationPaths` is the single source for the SPA's
+own **pages** — the destinations a consumer links to from outside the SPA:
+
+| Generator | Destination | SPA page |
+|---|---|---|
+| `list($type, $bundle = null)` | `/admin/{type}` · `?bundle={b}` | `pages/[entityType]/index.vue` |
+| `filteredList($type, $filters)` | `/admin/{type}` · declared `filter[field][operator/value]` query | `pages/[entityType]/index.vue` |
+| `create($type, $bundle = null)` | `/admin/{type}/create` · `?bundle={b}` | `pages/[entityType]/create.vue` |
+| `edit($type, $id)` | `/admin/{type}/{id}` | `pages/[entityType]/[id]/index.vue` |
+| `pipeline($type)` | `/admin/{type}/pipeline` | `pages/[entityType]/pipeline.vue` |
+| `history($type, $id)` | `/admin/{type}/{id}/history` | `pages/[entityType]/[id]/history.vue` |
+
+Encoding is the generator's job, and an empty entity type or record id is
+refused rather than producing a malformed path. Generating a destination is
+**not** an access decision — callers keep performing their own capability checks,
+exactly as they do today.
+
+The bundle query parameter is one contract spanning PHP and the SPA:
+`AdminDestinationPaths::QUERY_BUNDLE` and `app/runtime/bundleScope.ts`'s
+`BUNDLE_QUERY_PARAM` are pinned to each other by test, as is each destination's
+correspondence to the page file that serves it — moving a page breaks the build
+rather than every consumer's links.
+
+The same list page restores schema-declared filters from
+`filter[field][operator]` / `filter[field][value]` query controls.
+`filteredList()` owns their deterministic RFC3986 encoding so a downstream
+shell can link to, for example, the declared workflow-state Draft view without
+assembling private-looking bracket keys. It accepts one tuple per field, sorts
+fields before encoding, and refuses an empty field, operator, value, tuple, or
+filter set. The generator does not declare a filter or widen query authority:
+the list metadata, query policy, and per-entity access checks still decide what
+the destination may show.
+
+**Field names are one closed grammar.** A declared list field and a generated
+filter key must both match `\A[A-Za-z_][A-Za-z0-9_.]*\z`. `ListMetadata` and
+`AdminDestinationPaths` read that pattern from the same `SurfaceFieldName`
+constant, so a name one accepts the other cannot refuse. Dotted and underscored
+names are canonical; brackets, whitespace, control characters, leading digits,
+slashes, and backslashes are not. A bracket in a field name would otherwise
+forge a differently shaped query key, and a space would address a field no
+declaration can name.
+
+**A serialized operator is compared, never executed.** `filteredList()` emits
+only canonical `SurfaceFilterOperator` values, and the list restores a control
+only when the URL carries both members of the pair *and* the URL operator is
+exactly the operator that field declares:
+
+| URL pair | Result |
+|---|---|
+| operator matches the declaration, value present | value restored |
+| operator absent, or value absent | ignored; control keeps its default |
+| operator disagrees with the declaration | ignored |
+| operator names no `SurfaceFilterOperator` case | ignored |
+| field is not declared by the metadata | never consulted |
+
+The executed query always uses the metadata-declared operator, so a hand-edited
+link can preselect a declared view but can never widen, narrow, or redefine the
+comparison the list performs. This applies identically to the search control and
+to ordinary filters.
+
+**Degradation is the contract, not a nicety.** A bundle-scoped link can go stale
+or be hand-edited, so both pages fall back to the unscoped view rather than
+erroring:
+
+- `readBundleScope()` accepts only a non-empty string. A repeated parameter
+  arrives as an array and a blank one as an empty string; both mean "no usable
+  scope".
+- `SchemaForm` drops a bundle the base schema does not advertise in its
+  `x-bundle-key` enum **before** requesting it. Issuing a scoped schema request
+  the server will refuse would turn a stale link into an error page, which is
+  the opposite of the requirement. Schemas advertising no enum keep the prior
+  behaviour, there being nothing to check against.
+- `SchemaList` seeds the **visible** bundle control rather than a hidden filter,
+  so a scoped listing is apparent and the operator can widen it. A value outside
+  `bundleOptions`, or an entity type that is not bundle-shaped, lists unscoped.
+
+Per-record **History** is covered above (#2419 / #2421).
+
+**Consumer-supplied host registration (#2422).** An application replaces the
+default `GenericAdminSurfaceHost` by binding an
+`AdminSurfaceHostFactoryInterface` in its service provider's `register()`.
+`AdminSurfaceServiceProvider::routes()` resolves that factory and registers the
+canonical `admin_surface.*` routes against the host it returns — same paths,
+methods, authentication requirements, and action-route CSRF requirement,
+through the framework's own refusal-status promotion, registered **exactly
+once**. An install that binds no
+factory keeps the generic host, unchanged.
+
+`admin_surface.action` accepts an empty body or a JSON object. Syntactically
+malformed JSON is refused by the kernel's sanitized JSON refusal before the
+controller runs; a valid non-object JSON value is refused by the host as the
+compact Admin Surface envelope. Both are HTTP 400 and neither reaches the
+application action. Because the route is a cookie-authenticated JSON mutation
+boundary, it explicitly opts into CSRF validation; the Admin transport's
+same-origin mutation requests already send the configured `X-XSRF-TOKEN`
+header.
+
+It is a *factory*, not the host itself, because `routes()` runs after every
+provider has registered (`BuiltinRouteRegistrar`), so a host built there may
+depend on sibling bindings; a host constructed during `register()` cannot.
+Exactly one factory is supported.
+
+Applications must not register those paths themselves. `WaaseyaaRouter::addRoute()`
+refuses a duplicate route name, and the workaround that refusal used to force —
+shadowing all five paths under application-specific names at `->priority(100)`
+and privately reimplementing the refusal-status promotion — forks the refusal
+contract that #2161 established, leaving two implementations only one of which
+framework tests see. That duplicate-route refusal is deliberately retained: an
+accidental second registration still fails loudly at boot.
+
 **Host extension typing (mission #824 WP04 surface C).** `GenericAdminSurfaceHost` and `AdminSurfaceServiceProvider::routes()` accept `Waaseyaa\Entity\EntityTypeManagerInterface`, never the concrete `EntityTypeManager`. Subclasses extending the host receive the interface and must not narrow that parameter. The acceptance gate is `grep -rn 'EntityTypeManager[^I]' packages/admin*` returning no results — re-run it whenever you touch admin-surface code or its tests.
 
 This plugin is the source of truth for `$admin` injection and for composables that call `useAdmin()`.
 
-`runtime.catalog` preserves each `AdminSurfaceCatalogEntry` field and action declaration and carries the admin-facing metadata used by the SPA (`description`, `disabled`). The optional `reference` member is the authoritative entity-reference presentation/query contract: `labelField` names the display attribute, while nullable `search` (`field`, canonical `STARTS_WITH` operator) and `sort` (`field`, direction) members explicitly enable those operations. Missing or malformed metadata disables lookup; clients must never guess `title`, retry an unfiltered list, or fall back to an ID-derived catalogue. The generic host derives safe metadata from `EntityTypeInterface::getKeys()['label']`, omits malformed/internal/credential label keys, and leaves entity/field authorization to the existing server list boundary. Components that need action-aware UI state must derive it from the injected catalog rather than by issuing mount-time transport requests to discover whether an action exists. For contract builds, the admin package maintains a local TypeScript mirror of the admin-surface payload shape under `app/contracts/` so generated declarations do not import files from outside `packages/admin/app`.
+`runtime.catalog` preserves each `AdminSurfaceCatalogEntry` field and action declaration and carries the admin-facing metadata used by the SPA (`description`, `disabled`). The optional `reference` member is the authoritative entity-reference presentation/query contract: `labelField` names the display attribute, while nullable `search` (`field`, canonical `STARTS_WITH` operator) and `sort` (`field`, direction) members explicitly enable those operations. Missing or malformed metadata disables lookup; clients must never guess `title`, retry an unfiltered list, or fall back to an ID-derived catalogue. The generic host derives safe metadata from `EntityTypeInterface::getKeys()['label']`, omits malformed/internal/credential label keys, and leaves entity/field authorization to the existing server list boundary. Components that need action-aware UI state must derive it from the injected catalog rather than by issuing mount-time transport requests to discover whether an action exists. For contract builds, the admin package maintains local TypeScript mirrors under `app/contracts/` so generated declarations do not import files outside `packages/admin/app`; `npm run check:contract-compatibility` separately proves those mirrors exactly match the canonical core, UI, and page-builder wire types.
 
 #### Admin Runtime Availability Contract
 
@@ -445,8 +933,38 @@ The form rendering pipeline:
 
 1. `SchemaForm` calls `useSchema(entityType).fetch()` to get the JSON Schema
 2. `sortedProperties(true)` returns editable fields sorted by `x-weight`
-3. For each field, `SchemaField` resolves the widget component from `x-widget`
-4. Each widget receives `modelValue`, `label`, `description`, `required`, `disabled`, `schema`
+3. Optional `x-form-sections` presentation metadata groups those fields into
+   operator tasks without changing their schema, access, validation, or write
+   authority
+4. For each field, `SchemaField` resolves the widget component from `x-widget`
+5. Each widget receives `modelValue`, `label`, `description`, `required`, `disabled`, `schema`
+
+`SchemaForm` also handles candidate-bound save advisories (#2467). A 428
+`SAVE_ADVISORY_ACKNOWLEDGEMENT_REQUIRED` transport failure is rendered in a
+focusable `role=status` review panel. The explicit confirmation button retries
+the JSON-captured writable candidate with only the returned acknowledgement
+tokens. Any field or bundle edit, or an ordinary new submit, clears the pending
+review; the normal Save button never implies acknowledgement. The Admin surface
+projects only the allowlisted advisory `code` and `meta.save_advisories` onto
+the envelope; `TransportError.meta` is that same closed `AdminSurfaceErrorMeta`
+type, not an open `Record<string, unknown>`. A missing mutation-token HTTP 428
+stays a codeless precondition error so the two 428s are distinguishable without
+parsing prose.
+
+`x-form-sections` is an ordered list of `{id, label, description?, fields,
+collapsible?, collapsed?}` objects. IDs and labels are non-empty strings and
+`fields` contains schema property names. The client ignores malformed sections,
+duplicate assignments, and unavailable/read-only fields. Every remaining
+editable field is rendered once in an `Other details` section, so incomplete
+presentation metadata can never hide writable data. A collapsed section opens
+when one of its fields has a validation error. Section metadata is inert
+presentation: it cannot add fields, bypass field access, change submission
+payloads, inject templates, or execute callbacks.
+
+Task-oriented shells such as Anokii and the full Admin SPA receive exactly the
+same sections because both mount the shared `SchemaForm`. Applications own the
+operator-facing labels and assignments for their content bundles; they do not
+fork the Vue editor.
 
 ### List-View Column Policy (`packages/admin/app/components/schema/SchemaList.vue`)
 
@@ -478,7 +996,14 @@ policy and bundle filter remain unchanged.
 The declaring host passes the parsed `SurfaceQuery` and validated `ListMetadata`
 to `SurfaceQueryPolicy::validate()` before adding internal scope filters or
 delegating. Any undeclared filter field/operator or sort field/direction returns
-the same generic 400 response. Client visibility is never the enforcement layer.
+the same generic 400 response. A filter with no `options` member remains
+free-form; when `options` is present, including an empty list, the query value
+must match a declared option. HTTP values use the scalar spelling emitted by the
+client: strings unchanged, base-10 integers, finite JSON numbers, lowercase
+`true`/`false`, and literal `null`. Compound values and non-finite numbers have
+no valid option spelling and are refused. The generic response never reflects
+the rejected field or value. Search metadata and unrelated operators retain
+their existing behavior. Client visibility is never the enforcement layer.
 
 Declared control changes reset the page offset, issue one request, and synchronize
 the supported filter/sort/page query keys with the current URL. A monotonically
@@ -677,7 +1202,6 @@ Key categories:
 - Type management: `disable_type`, `enable_type`, `type_disabled`, `disable_type_title`, `disable_type_body`, `disable_type_warning`, `disable_anyway`
 - Navigation groups: `nav_group_people`, `nav_group_content`, `nav_group_taxonomy`, `nav_group_media`, `nav_group_structure`, `nav_group_workflows`, `nav_group_ai`, `nav_group_events`, `nav_group_community`, `nav_group_communities`, `nav_group_knowledge`, `nav_group_language`, `nav_group_ingestion`, `nav_group_contributor`, `nav_group_editorial`, `nav_group_elders`, `nav_group_engagement`, `nav_group_games`, `nav_group_groups`, `nav_group_messaging`, `nav_group_newsletter`, `nav_group_oidc`, `nav_group_user`, `nav_group_other`, `nav_group_custom`. Consumer apps register entity-type nav-group attributes whose values resolve to `nav_group_{value}` keys; missing translations leak the raw key in the sidebar, so any new group value introduced by a consumer must add a matching translation here.
 - Ingestion widget: `ingest_widget_title`, `ingest_widget_empty`, `ingest_status_pending_review`, `ingest_status_approved`, `ingest_status_rejected`, `ingest_status_failed`
-- NC sync: `nc_sync_widget_title`, `nc_sync_last_sync`, `nc_sync_created`, `nc_sync_skipped`, `nc_sync_failed`, `nc_sync_open_dashboard`, `nc_sync_view_teachings`, `nc_sync_view_events`, `na`
 - Entity type labels: `entity_type_user`, `entity_type_node`, `entity_type_node_type`, `entity_type_taxonomy_term`, etc.
 - Field labels: `field_title`, `field_machine_name`, `field_published`, `field_description`, `field_weight`, `field_email`, etc.
 - Parameterized: `create_entity`, `edit_entity` (with `{type}` token)
@@ -697,7 +1221,7 @@ packages/admin/app/
     default.vue                    # Wraps content in <LayoutAdminShell>
   components/
     layout/
-      AdminShell.vue               # Top bar + sidebar + content area + global styles
+      AdminShell.vue               # Top bar + sidebar + content area
       NavBuilder.vue               # Dynamic sidebar nav from /api/entity-types
     schema/
       SchemaForm.vue               # Entity create/edit form driven by JSON Schema
@@ -775,7 +1299,7 @@ And emit: `'update:modelValue'` with the new value.
 The dashboard page uses the `useAdmin()` catalog (from the AdminSurface bootstrap endpoint) to render entity type cards. It includes:
 
 1. **Onboarding detection**: On mount, probes for existing content by listing the first listable catalog type (prefers `node_type`). If no content exists, shows `OnboardingPrompt` with links to create a Note, create a custom type, or open the quickstart guide. Paths are computed from catalog capabilities.
-2. **IngestSummaryWidget**: Renders ingestion status counters (pending_review, approved, rejected, failed) from the `ingest_log` entity type. Hides silently on 404 (entity type not registered). Each counter links to the filtered ingest_log list. Also includes a North Cloud Search sync panel fetched from `/api/staff/nc-sync-status` with last-sync timestamp, created/skipped/failed counts, and links to the staff ingestion dashboard (`/staff/ingestion`), teachings, and events.
+2. **IngestSummaryWidget**: Renders ingestion status counters (pending_review, approved, rejected, failed) from the `ingest_log` entity type. The server-owned catalog is the activation boundary: when `ingest_log` is absent, the widget hides without making a list request. Each counter links to the filtered ingest_log list. The generic dashboard does not call application-specific staff endpoints or hardcode consumer routes.
 3. **Entity type card grid**: Renders a card for each catalog entry using `entityLabel(et.id, et.label)` for i18n-aware labels.
 
 Error handling uses `TransportError` from `~/contracts/transport` to distinguish 404s from other failures.
@@ -828,7 +1352,8 @@ File-based routing via Nuxt 3:
 | `/`                      | `pages/index.vue`                        | Dashboard            |
 | `/:entityType`           | `pages/[entityType]/index.vue`           | Entity list          |
 | `/:entityType/create`    | `pages/[entityType]/create.vue`          | Create form          |
-| `/:entityType/:id`       | `pages/[entityType]/[id].vue`            | Edit form            |
+| `/:entityType/:id`       | `pages/[entityType]/[id]/index.vue`      | Edit form            |
+| `/:entityType/:id/history` | `pages/[entityType]/[id]/history.vue`  | Per-record history   |
 
 ## Auth Phase 2 — Registration, Password Reset, Email Verification
 
@@ -903,6 +1428,12 @@ New keys exposed via `useRuntimeConfig().public`:
 
 ### useAuth Extensions
 
+The account payloads returned by password login and `/api/user/me` include the
+camelCase `emailVerified` boolean. `resendVerification(email?)` sends the
+required email field explicitly: the in-session banner may use the current
+account email, while `/verify-email` collects it so recovery still works after
+browser state and cookies have been cleared.
+
 `packages/admin/app/composables/useAuth.ts` extended with:
 
 ```ts
@@ -943,7 +1474,9 @@ That means `useAuth()` does not establish an independent session source of truth
 - Delete buttons include entity label in `aria-label`
 - Live region: `<div role="status" aria-live="polite">` announces pagination changes
 - Workflow discovery announces loading and a bound no-transition state through
-  polite status regions. Fetch/apply failures use assertive alert regions;
+  polite status regions. Fetch/apply failures use assertive alert regions,
+  including a refused mutation precondition, after which the controls re-read the
+  available transitions so the operator acts on current state;
   native transition buttons retain keyboard activation and explicit accessible
   names, and all controls are disabled behind a same-tick single-flight guard
   during submission.
@@ -1019,6 +1552,9 @@ Test files live in `packages/admin/tests/`:
 - `tests/unit/composables/useSchema.test.ts` — schema caching/error handling and missing-runtime invariant
 - `tests/components/layout/NavBuilder.test.ts` — deterministic navigation rendering for empty and action-aware catalogs using capability-minimal fixtures
 - `tests/pages/dashboard.test.ts` — onboarding prompt capability fallbacks (`node_type` create path, first create-capable fallback, root fallback when note is absent, first-listable probe when `node_type` is absent)
+- `tests/unit/composables/useMcpApprovals.test.ts` — bounded 25-row pages, verbatim opaque-cursor traversal (next/previous/refresh), 403-view vs generic load errors, decision body shape (blank reason omitted), 400/403/404/409/503 → typed refusal kinds
+- `tests/components/mcp/ApprovalDecisionDialog.test.ts` — alertdialog semantics, hostile server strings rendered as text, 500-Unicode-char reason boundary (astral-safe), single-line validation, remaining counter, double-submit guard, focus-in on open, Tab/Shift+Tab trap, Escape/overlay/cancel dismissal refused while submitting
+- `tests/pages/mcpApprovals.test.ts` — capability-aware rendering (`can('mcp.approval.view')` / `can('mcp.approval.decide')`), loading/empty/error/forbidden states (load errors `role="alert"`), labelled keyboard-focusable table region, pagination + refresh wiring, decision flow with honest 404/409 stale refetch, focus restoration to the triggering Approve/Deny control (Refresh fallback when the row is gone)
 
 Pattern: `mountSuspended()` from `@nuxt/test-utils/runtime` for component mounting. Props via `props: {}`, emits via `wrapper.emitted()`.
 
@@ -1032,7 +1568,7 @@ Admin surface for registering external OIDC clients (apps that authenticate via 
 
 - **Pages:** `packages/admin/app/pages/oidc/clients/index.vue` (list + create), `[id].vue` (detail + edit + revoke).
 - **Composable:** `packages/admin/app/composables/useOidcClients.ts` — CRUD wrapper over `/api/oidc/clients` JSON:API endpoints + consent-revocation actions.
-- **Backing API:** `packages/api/src/Controller/OidcClientController.php` + `packages/api/src/Http/Router/OidcClientApiRouter.php` (admin-only routes, AccessChecker-gated).
+- **Backing API:** `packages/api/src/Controller/OidcClientController.php` + `packages/api/src/Http/Router/OidcClientApiRouter.php` (admin-only routes, AccessChecker-gated). Existing-entity `PATCH`/`DELETE` on `/api/oidc-clients/{id}` require the strong aggregate `If-Match` also used by auto-generated `/api/oidc_client/{id}`; an authorized GET returns that token as `ETag` / `meta.mutation_token`.
 - **Permission:** `oidc.client.administer` (granted to admin role by default; configurable per Nation in distribution charters).
 - **Distinct from end-user surfaces:** the consent screen lives at `packages/oidc/src/Consent/ConsentScreenController.php` (server-rendered, NOT admin SPA).
 
@@ -1069,7 +1605,8 @@ Real-time SSE monitor for the Mercure broadcasting layer (gap-matrix C-L0-04, mi
 | `packages/admin/app/adapters/AdminSurfaceTransportAdapter.ts` | AdminSurface API transport |
 | `packages/admin/app/adapters/JsonApiTransportAdapter.ts` | JSON:API protocol transport |
 | `packages/admin/app/adapters/BootstrapAuthAdapter.ts` | Bootstrap auth during init |
-| `packages/admin/app/components/layout/AdminShell.vue` | Shell layout + global CSS |
+| `packages/admin/app/assets/admin.css` | Global admin tokens, controls, and shell-independent editor styles |
+| `packages/admin/app/components/layout/AdminShell.vue` | Shell layout and navigation frame |
 | `packages/admin/app/components/layout/NavBuilder.vue` | Dynamic sidebar navigation |
 | `packages/admin/app/components/schema/SchemaForm.vue` | Schema-driven entity form |
 | `packages/admin/app/components/schema/SchemaField.vue` | Widget resolver for a single field |
@@ -1102,6 +1639,10 @@ Real-time SSE monitor for the Mercure broadcasting layer (gap-matrix C-L0-04, mi
 | `packages/admin/app/middleware/auth.global.ts` | Global auth + ensureVerifiedEmail middleware |
 | `packages/admin/app/plugins/admin.ts` | Admin plugin with publicAuthPaths auth skip |
 | `packages/admin/app/runtime/adminSurfaceRoutes.ts` | Named `admin_surface.*` fetch URL builders (mirror PHP paths) |
+| `packages/admin/app/runtime/pageBuilderClient.ts` | Typed page-builder transport shared by the Admin SPA and downstream shells |
+| `packages/admin/app/composables/usePageBuilder.ts` | Revision-guarded page-builder state and command lifecycle |
+| `packages/admin/app/components/page-builder/PageBuilderWorkspace.vue` | Governed visual editor with block library, exact-revision preview, inspector, and outline |
+| `packages/admin/app/pages/page-builder/[surface]/[id].vue` | Generic registered-surface page-builder route |
 | `packages/admin-surface/src/AdminSurfaceRoutePaths.php` | Canonical `/admin/_surface/*` patterns and `generate()` for PHP |
 | `packages/admin/app/i18n/en.json` | English translation strings |
 | `packages/admin/app/i18n/fr.json` | French translation strings |
@@ -1114,21 +1655,147 @@ Real-time SSE monitor for the Mercure broadcasting layer (gap-matrix C-L0-04, mi
 
 **Mission:** `mcp-endpoint-admin-m5c-01KSEFTB` (#1415, audit C-L6-01).
 
-Read-only admin surface for the MCP endpoint. Three pages under `/mcp/`, accessible via the "MCP" nav group in `NavBuilder.vue`:
+Admin surface for the MCP endpoint. Four pages under `/mcp/`, accessible via the "MCP" nav group in `NavBuilder.vue`:
 
 | Page | Route | Description |
 |------|-------|-------------|
 | Tool registry | `/mcp/tools` | Paginated list of registered MCP tools with name, category, capability chips, summary |
 | Tool detail | `/mcp/tools/{name}` | Per-tool header card + collapsible input-schema viewer + recent invocations table |
 | Server config | `/mcp/server-config` | Transport/protocol banner, server capabilities, registered clients table |
+| MCP approvals | `/mcp/approvals` | #2177 F1 C1c operator queue for the write-tier human-approval gate: bounded 25-row pages of pending requests (server order, oldest first) with safe projections only (`safeArguments`, fingerprint, correlation id — never raw arguments), opaque-`nextCursor` pagination (Previous = client-side cursor stack, cursors never decoded), manual refresh, and approve/deny through `<McpApprovalDecisionDialog>` (optional ≤500-Unicode-char single-line reason with live remaining count, double-submit guard). Decision refusals map 400/403/404/409/503 to static non-secret messages; 404/409 refresh the queue honestly instead of pretending success. |
 
-**Composables:** `useMcpTools`, `useMcpTool`, `useMcpServerConfig` — all use `useApi().apiFetch`.
+**Capability gating (#2177 F1 C1c):** the approvals page and its NavBuilder link are gated by the server-authoritative session projection via `useAdmin().can('mcp.approval.view')`; decision actions additionally require `can('mcp.approval.decide')` (view-only operators see the queue with no decision buttons). Never inferred from roles; the PHP routes stay the enforcement boundary. There is deliberately no UI for `mcp.write_tier.approval.allow_self_approval` — that stays deployment config.
+
+**Composables:** `useMcpTools`, `useMcpTool`, `useMcpServerConfig`, `useMcpApprovals` — all use `useApi().apiFetch` (so decisions inherit the CSRF `X-XSRF-TOKEN` header behaviour pinned in `tests/composables/useApi.test.ts`).
 
 **Security:** `McpRegisteredClient` TypeScript type has no `token` field; only `tokenFingerprint` (16-char hex) is exposed. Enforced by compile-time type assertion in `useMcpServerConfig.test.ts`.
 
 **URL encoding:** `useMcpTool.fetchTool(name)` runs `encodeURIComponent(name)` once before the request so tool names containing dots (e.g. `bimaaji.search_specs`) are safe in path segments.
 
 **M5B interop:** `RecentInvocationsTable.vue` renders `traceUuid` cells as router-links to `/ai/observability/runs/{uuid}` when the M5B route exists; falls back to plain text UUID when it does not (no broken links).
+
+## Governed page builder
+
+The Admin SPA exposes registered page-builder surfaces at `/page-builder/{surface}/{id}`. The workspace combines Drupal-style governed structure with a direct visual editing interaction: the left library contains only backend-registered block definitions, the centre iframe renders a signed preview of the exact persisted revision, and the right inspector edits only schema-declared configuration. The outline remains a keyboard-accessible selection path when preview selection is unavailable.
+
+Desktop, Tablet, and Mobile change the iframe's real responsive viewport, not
+only the control's selected state or an ignored width declaration. The iframe
+therefore has no content-derived flex minimum: Tablet is bounded to 768px,
+Mobile to 390px, and both remain bounded by the available canvas width.
+
+Library insertion follows the editor's current context: when a block is
+selected in the exact preview or outline, a newly chosen block is inserted
+immediately after it in the same section and region. Without a selection the
+document's initial region remains the deterministic fallback. Section creation
+shows every backend-registered layout as an explicit choice and creates the
+declared regions for that layout. Internal block and layout identifiers are not
+shown as ordinary editor labels; registered block labels and readable layout
+names keep application namespaces out of the Communications Officer workflow.
+The block palette is disabled with an operator-visible explanation while no
+section and region can be resolved. If insertion first needs to save a dirty
+selected block and that save is refused, insertion performs no second command,
+preserves the selected block and pending configuration, and presents a distinct
+assertive explanation that the requested block was not added. That explanation
+clears when the pending configuration later saves successfully. If the
+insertion target disappears while that prerequisite save is in flight, the
+structural explanation replaces the refusal instead of allowing a second
+silent abort.
+
+The same workspace is also exposed without the Admin SPA navigation shell at
+`/page-builder-embed/{surface}/{id}`. This route is authenticated by the same
+global middleware, uses the exact `PageBuilderWorkspace` component, and exists
+for same-origin application shells such as Anokii. It is not a second editor
+and has no separate persistence or transport path. The ordinary
+`X-Frame-Options: SAMEORIGIN` response default remains in force, so a remote
+site cannot frame an authenticated editor.
+
+The schema-driven structured editor is likewise available without the Admin SPA
+navigation shell at `/entity-editor-embed/{entityType}/{id}`. The reserved
+`create` id opens create mode, and an optional `bundle` query selects a
+server-declared bundle through the ordinary two-stage schema flow. This route
+mounts the same `SchemaForm`, rich-text, date/time, file, slug, validation, and
+entity-autocomplete widgets as the default Admin SPA. Existing entities also
+receive the same workflow transitions, transition history, capability-gated
+delete action, and authoritative API enforcement. A same-origin parent receives
+only the bounded lifecycle and resource identity notifications described below;
+content values and policy decisions never move through `postMessage`.
+
+### Same-origin embed lifecycle protocol
+
+Both shell-free editor routes expose versioned lifecycle messages to a
+same-origin parent. Each logical lifecycle observation is delivered **once** on
+the versioned protocol. Ordinary events use
+`waaseyaa.admin.embed.lifecycle.v1`; the closed v1 vocabulary remains
+byte-for-byte limited to `ready`, `dirty`, `saved`, `deleted`, and `failure`.
+The v2 envelope `waaseyaa.admin.embed.lifecycle.v2` is used only for the
+additive `transitioned` event. An existing v1 host that already accepted origin,
+source, and the v1 vocabulary therefore receives exactly one versioned message
+per ordinary event and is not required to deduplicate a parallel v2 copy. A v2
+host consumes those same v1 ordinary events plus the v2 `transitioned` event.
+The surface is `entity-editor` or `page-builder`. Identity fields are limited to
+the applicable entity type, surface id, and entity id. A dirty event contains
+one boolean. A failure contains only a closed kind (`session-expired`,
+`permission-denied`, `conflict`, `validation`, `network`, or `server`) and an
+optional HTTP status. Content values, field names, validation details, policy
+reasons, response bodies, credentials, and tokens are forbidden.
+
+The entity editor emits a v2 `transitioned` event only after the workflow API
+accepts a transition and returns a structurally valid authoritative result. Its
+bounded `transition` member contains exactly the resulting workflow `state` and
+the boolean `publicChanged`. The state comes from the accepted transition
+result, not the clicked button or any client-side inference. The current
+framework API computes `publicChanged` by comparing the served projection before
+and after the transition: it is true only when either projection is public and
+its public status, workflow state, served revision, or published-revision
+pointer changed. The Admin client requires string `transition`, `from`, and
+`to` members; a present `public_changed` value must be boolean. An omitted
+`public_changed` member is compatible, not malformed: the committed transition
+is reported as success and `publicChanged` is true so hosts refresh public
+rendering the same way they did before the signal existed. A denied,
+conflicted, failed, or malformed required response emits no transitioned event.
+Hosts may use `publicChanged` to decide whether a public-content view needs
+refreshing; they must not interpret it as an access decision.
+
+The child posts only to `window.parent` with `window.location.origin`, and only
+when it is framed. A host must accept a lifecycle event only when both
+`event.origin === window.location.origin` and `event.source` is the exact iframe
+window it created. The protocol is observation-only: it adds no command channel,
+mutation, authentication, or access path. Canonical workspaces retain all save,
+delete, validation, workflow, revision, and conflict authority.
+
+`ready` means that the canonical workspace completed its initial authoritative
+reads. Entity-form edits and unsaved page-builder configuration emit dirty state;
+a successful persistence boundary returns dirty to false before `saved`. Initial
+or later authentication loss is `session-expired`; a 403 is
+`permission-denied`; an optimistic-concurrency refusal is `conflict`; a
+non-advisory HTTP 422 is `validation`; a request that received no HTTP response
+is `network`; other failures collapse to `server`. An advisory-acknowledgement
+HTTP 428 is not a lifecycle failure: the canonical form keeps dirty state and
+retries the same candidate after acknowledgement. The parent may use these
+states to render chrome, refresh identity-only lists, and confirm close. It must
+not infer access from readiness or inspect the iframe DOM.
+
+During the compatibility interval the entity editor also emits the historical
+`waaseyaa.entity-editor.saved` and `waaseyaa.entity-editor.deleted` identity-only
+messages as a **separate** channel. Those historical messages are not additional
+versioned-lifecycle deliveries; an existing host that already consumed both the
+v1 envelope and the legacy saved/deleted types continues to see that same pair
+and is not required to start deduplicating versioned messages. No new legacy
+message types may be added.
+
+Role-focused shells such as Anokii may supply navigation, branding, list views,
+and content-type shortcuts around this route. They must not reimplement the
+schema widgets, workflow transitions, validation, or mutations. This keeps
+high-volume structured authoring consistent with the default Waaseyaa SPA while
+allowing the application shell to remain simple and task-specific.
+
+The inspector reuses the Admin SPA's governed field widgets rather than maintaining page-builder-only controls. A block configuration property with `x-widget: richtext` renders `WidgetsRichText`; a property with `x-widget: entity_autocomplete` renders `WidgetsEntityAutocomplete`. Entity-autocomplete properties may declare an `x-target-filter` object whose exact field/value pairs are added as server-side equality filters. This lets a media block, for example, expose only `media` entities with `bundle: image` while preserving the common accessible combobox, validation, and entity-reference behaviour. Properties without a registered widget continue to use the schema-driven native boolean, numeric, select, text, or multiline fallback. Required state and stable control IDs come from the block configuration schema in every case.
+
+These widgets are a shared presentation seam: Waaseyaa's default Admin SPA and downstream shells such as Anokii embed the same page-builder workspace and backend contract. A downstream shell may brand and navigate the workspace, but it must not fork block semantics, validation, revision handling, media filtering, or mutation behaviour.
+
+Every explicit change is sent through `PageBuilderClient` with the observed entity revision, document fingerprint, and a cryptographically generated idempotency key. The server remains authoritative for access, validation, revision creation, and conflict handling. Neither the Admin SPA nor downstream shells can submit arbitrary renderer names, free-form executable markup, or bypass the common page-builder surface.
+
+Block configuration is also recovered server-side after a short idle delay. The browser does not store page content in local storage or IndexedDB; the same revision-guarded command creates a recoverable draft revision and reports whether the editor is saving, saved, or waiting to save. Revision history is exposed by the shared surface when the application supplies a history gateway. Editors can compare a historical layout with the current draft and restore it only by creating a new conflict-checked draft revision. Restore never deletes history, moves the published pointer, or bypasses the application's normal review and publication workflow.
 
 ## Implementation gotchas
 
@@ -1142,7 +1809,14 @@ Read-only admin surface for the MCP endpoint. Three pages under `/mcp/`, accessi
 - **Git worktrees can't run Nuxt dev server**: Worktrees share source via symlinks but not `node_modules/.vite/` or `.nuxt/`. Vite module resolution fails with MIME type errors. Run E2E tests against the main repo's dev server, not from worktrees.
 
 <!-- Spec reviewed 2026-05-25 - mcp-endpoint-admin-m5c-01KSEFTB: MCP admin surface — tool registry browser (/mcp/tools), per-tool detail (/mcp/tools/{name}), server config viewer (/mcp/server-config). Nav group "MCP" added to NavBuilder.vue. -->
+<!-- Spec reviewed 2026-08-03 - #2177 F1 C1c: MCP approvals operator page (/mcp/approvals) — useMcpApprovals composable, McpApprovalDecisionDialog, capability-gated NavBuilder link via useAdmin().can('mcp.approval.view'); dist content pinned by AdminDistContentTest::shipped_bundle_contains_the_mcp_approvals_page. -->
 <!-- Spec reviewed 2026-05-24 - workflow guards read-only matrix section on /workflows/{id} (M4A-5 Phase 1, #1470) -->
 <!-- Spec reviewed 2026-05-25 - inertia-demotion-nuxt-standardisation-01KSEFTS - WP03 - SPA bet section added per DIR-007 -->
 <!-- Spec reviewed 2026-05-25 - media version browser page /media/{uuid}/versions (DIR-005 versioned-blob-media-abstraction-01KSEFTJ WP04) -->
 <!-- Spec reviewed 2026-07-10 - CW-v1 WP-4 (#1920): workflow transition UI. New useWorkflowTransitions composable (apiFetch over GET /api/{type}/{id}/workflow/transitions + POST .../workflow/transition; a GET 404 is absorbed into an empty list per the R8 oracle contract — missing/unviewable renders no buttons, not an error). New components/workflow/TransitionControls.vue (<WorkflowTransitionControls>, nested-dir prefix) mounted in pages/[entityType]/[id].vue page-header-actions: one button per available transition, pending-disable, inline errors[0].detail on denial, emits `transitioned` (page re-fetches SchemaView via a refresh key + success message). SchemaList renders workflow_state as a status-pill badge (inside the schema column, or a synthetic trailing column when entities carry the attribute but the schema column set omits it). i18n keys workflow_transitioned / workflow_transition_error_generic / workflow_state_column_label in en+fr. -->
+<!-- Spec reviewed 2026-08-13 - #2344 shared client adapter: authenticated shell-free /page-builder-embed route mounts the exact PageBuilderWorkspace for same-origin Anokii integration while SAMEORIGIN framing protection remains active. -->
+<!-- Spec reviewed 2026-08-13 - shared structured editor: authenticated shell-free /entity-editor-embed route mounts the exact schema widgets and workflow controls for same-origin role-focused shells; create bundle selection remains server-schema-driven and parent notifications carry identity only. -->
+<!-- Spec reviewed 2026-08-20 - #2461 authoritative embedded transition presentation: v2 adds a success-only transitioned event carrying the API-confirmed destination state and server-derived public projection change flag; ordinary events remain one v1 delivery; omitted public_changed is compatible. -->
+
+
+ROUTE-METADATA-01 Admin Surface admission: one table declares core, optional page-builder and SPA routes from copied binding presence and preloaded path authority. Explicit nonshared core/page-builder/SPA request handlers preserve existing gates, transport/status rules, principal/body forwarding and cookie rewrite. Host construction, package probes and SPA file reads occur only during selected execution. Canonical unhealthy declared host dependencies refuse; bare compatibility retains its healthy optional-host gate and projects the same table with the same handlers. Custom host factory lifetime is per selected construction, with factory-owned reuse and legacy once-at-registration behavior retained. Deptrac classifies the three handlers in existing Delivery and composition; generated dependency view is refreshed. Source admission does not complete FETDER/CLI/Bimaaji or installed strict export qualification.

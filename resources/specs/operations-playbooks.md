@@ -1,5 +1,13 @@
 # Operations Playbooks
 
+<!-- Spec reviewed 2026-08-09 - issue #2322 translation-peer tenancy repair: tenancy:repair-translation-peers provides a dry-run-first, JSON-reportable, explicit repair for historical empty community_id translation peers. Applying repairs requires a backup and quiesced serving writes; no boot or release path performs this mutation automatically. -->
+<!-- Spec reviewed 2026-08-09 - #2316 Composer policy release determinism: CP-NEW reads the checked-out tracked VERSION as its constraint authority, falling back to the latest reachable release tag only for repositories without VERSION. Malformed tracked VERSION fails once rather than skipping or emitting per-manifest false violations. -->
+
+<!-- Spec reviewed 2026-08-09 - #2315 development-only selected package splits: an authorized manual workflow may update allowlisted split repository main branches from the exact current green framework main SHA with force-with-lease and provenance. It has no tag, version, release, or Packagist authority; docs/VERSIONING.md remains canonical. -->
+<!-- Spec reviewed 2026-08-27 - #2595 split-mirror contribution custody: tagged and selected-main split paths build a deterministic canonical issue and pull-request routing commit over the exact split SHA. Tagged splitting atomically pushes that commit to mirror main and the byte-exact split to the release tag; selected-main uses a force-with-lease. Reruns preserve the mirror-main SHA, and stale refs or tag conflicts fail closed. -->
+
+<!-- Spec reviewed 2026-08-04 - #2191: MCP operations now use the shipped tools/list method and protected admin read models; removed legacy aliases, read-cache metadata, and tools/introspect are documented as absent. -->
+
 <!-- Spec reviewed 2026-06-21 - issue #1707 `waaseyaa dev` port preflight (packages/frankenphp): before printing "Serving …" and exec'ing FrankenPHP, the `dev` command now connect-probes the resolved listen address (DevCommand.php). A connect probe — Windows SO_REUSEADDR-safe, unlike a test bind — detects an already-bound address (e.g. an orphaned prior dev server) and the command fails fast with one actionable line plus a port-release hint, instead of printing "Serving" then exiting silently and leaving the browser at ERR_CONNECTION_REFUSED. The probe is injectable; covered by DevCommandPortPreflightTest. No other dev/install behavior changed. -->
 <!-- Spec reviewed 2026-07-13 - CW-v1 option-1 PR-7 (#1920, design §8): Playbook H step 5 rewritten from
      "Do NOT bind in production" to the real production binding procedure — precondition (steps 1-4 unchanged),
@@ -10,6 +18,8 @@
      PR-4 write-side allowlist that structurally closed it. Failure mode 1 gains an option-1 amendment (discipline
      only engages once bound AND pointered); failure mode 2 gains the two-axis (translatable+revisionable)
      hard-throw case. Scope note and title updated to reflect that production binding is no longer deferred. -->
+<!-- Spec reviewed 2026-08-22 - issue #2494: ordinary Framework CI now runs a required real FrankenPHP worker-runtime lane (`ci/frankenphp-worker`) against `public/index.php`. The pin is `tools/frankenphp-runtime-pin.json` (v1.12.4, sha256-verified before chmod). The repo front controller arms `Waaseyaa\FrankenPhp\WorkerAcceptance` from process env + SAPI only and does not require `tests/`. Concurrent burst captures per-request `X-Waaseyaa-Worker-Pid` headers against the retained worker. Runtime storage is pinned under a disposable `WAASEYAA_STORAGE_PATH`. PHPUnit remaining static/unit contracts still own GraphQL schema-cache bleed, Twig environment replacement, and CommunityMiddleware restore; the hosted lane owns process identity, Caddy headers, sequential/concurrent worker PID retention, HTTP account isolation, SSE, error/maintenance recovery, classic php-server fallback, and shutdown. -->
+
 ## Purpose
 
 This document consolidates operational workflows introduced across v1.0-v1.2:
@@ -24,18 +34,16 @@ Use this as the default runbook for upgrades, baseline refreshes, and verificati
 
 ### MCP
 
-- `tools/call` payload meta remains stable with:
-  - `contract_version`
-  - `contract_stability`
-  - `tool`
-  - `tool_invoked`
-- `search_teachings` remains a supported legacy alias of `search_entities`.
-- `tools/introspect` provides deterministic diagnostics for:
-  - contract metadata,
-  - cache context and scope,
-  - visibility policy hints,
-  - permission boundaries,
-  - execution path and failure-mode hints.
+- `initialize`, `ping`, `tools/list`, and `tools/call` are the shipped MCP
+  methods. Resources and prompts are not advertised.
+- `tools/list` is the protocol-visible source for names, descriptions, schemas,
+  and standard tool annotations. Capability requirements are deliberately
+  available only through the protected admin read model.
+- Authenticated administrators inspect richer registry and server diagnostics
+  through `GET /api/mcp/tools`, `GET /api/mcp/tools/{name}`, and
+  `GET /api/mcp/server-config`. Those admin routes are not MCP methods.
+- Legacy `search_entities`, `search_teachings`, and `tools/introspect` belonged
+  to the removed `McpController` stack and are not served by `McpEndpoint`.
 
 ### Workflow and Visibility
 
@@ -61,7 +69,124 @@ Use this as the default runbook for upgrades, baseline refreshes, and verificati
 
 For full-stack local development, run `composer dev:php` in one terminal and `composer dev:admin` in another. Each process owns its own lifecycle; killing one does not orphan the other. CI and Docker compose files invoke the typed entries directly rather than the legacy shell pipeline.
 
+### First-party WSL development toolchain
+
+`FW-DEV-RUNTIME-01` adds one fail-closed front door for Framework, Sheg, and
+Anokii development on WSL2 Ubuntu 24.04 x86-64:
+
+```bash
+bin/dev-runtime bootstrap
+bin/dev-runtime doctor --json
+bin/dev-runtime exec -- composer test
+```
+
+The machine-readable authority is `tools/dev-runtime-manifest.json`. It pins
+the exact Node and Composer downloads by HTTPS URL and SHA-256 and references
+`tools/frankenphp-runtime-pin.json` rather than copying its release identity.
+The manifest bytes and referenced pin bytes jointly address a user cache under
+`$XDG_CACHE_HOME/waaseyaa/dev-runtime/` (or the ordinary user cache when XDG is
+unset). A changed pin therefore selects a new cache; it can never reuse bytes
+accepted under the earlier authority.
+
+`bootstrap` validates the system boundary first: WSL2, Ubuntu 24.04, x86-64,
+PHP 8.5, SQLite 3.40–3.x, required PHP extensions, `tar`, and `xz`. These remain
+system prerequisites. The command never invokes `sudo`, adds a package source,
+edits PHP configuration, or installs globally. Managed artifacts download into
+a same-filesystem staging directory, are checksum-verified before extraction or
+execution, and publish by atomic rename while a per-manifest advisory lock is
+held. A corrupt existing cache is preserved under a uniquely named quarantine
+path before rebuilding.
+
+`exec` verifies the installed artifact inventory, prepends only that cache's
+`bin` directory to the child environment, and launches the argument vector
+without a shell. The caller's environment and shell profile remain unchanged.
+`doctor --evidence=/absolute/path.json` emits the versioned identity shared with
+`bin/check-support-contract`: manifest digest, system axes, managed versions and
+artifact hashes, exact repository commit, mode, result, and bounded repair
+guidance. Ambient Node, Composer, or FrankenPHP may be wrong; managed child
+execution never selects them.
+
+This local profile does not widen S1 production support and does not replace
+the hosted Ubuntu support-contract or real FrankenPHP worker gates.
+
+First-party consumer repositories use the Framework-owned
+`bin/dev-runtime-consumer` launcher and `DevRuntimeConsumer` library under the
+local name `bin/dev-runtime`. Their `tools/dev-runtime-source.json` records one
+exact Framework commit and the SHA-256 of each canonical source file. The
+launcher verifies its own mirrored bytes, downloads and verifies the canonical
+source into a separate content-addressed user cache, and only then delegates.
+Consumers therefore invoke the same bootstrap and identity implementation
+without copying any managed-tool version, URL, or checksum. The delegated
+`--repository-root` binds the evidence commit and child working directory to
+the consumer checkout; it does not change the Framework source authority.
+
+Updating a consumer pin is a reviewed source-adoption operation: select an
+exact Framework commit containing `FW-DEV-RUNTIME-01`, recompute every listed
+source hash from that Git object, copy the two consumer files byte-for-byte,
+and run the consumer's clean-checkout contract test. Never point the source
+record at a branch or use a checksum from working-tree bytes.
+
 **The admin SPA's realtime SSE and worker usage.** The admin SPA holds a long-lived Server-Sent-Events connection to `/api/broadcast` for live updates (`packages/admin/app/composables/useRealtime.ts` → `packages/foundation/src/Http/Router/BroadcastRouter.php`). The `BroadcastRouter` loop is **bounded** (see `docs/specs/broadcasting.md`): it returns on client disconnect or after a per-connection time budget (`DEFAULT_MAX_DURATION_SEC`, 30s), so a worker is never pinned indefinitely and the client's `EventSource` reconnects automatically. A short keepalive cadence (2s) makes disconnect detection prompt so the worker is released soon after a tab navigates away. Even so, each *concurrently open* admin tab uses one worker for the duration of its stream, so the server still needs **>1 worker**. PHP's built-in server is single-worker by default, so `bin/waaseyaa serve` defaults `PHP_CLI_SERVER_WORKERS=4`.
+
+### Playbook: rebuilding the committed Admin SPA bundle
+
+`packages/admin-surface/dist` is generated output that is committed and shipped
+through Composer. There is exactly **one** supported way to change it:
+
+```bash
+bin/build-admin-dist
+```
+
+Run it whenever `check-admin-dist-fresh` or `check-admin-dist-manifest` is red,
+and whenever an Admin change must reach the served bundle. Commit
+`packages/admin-surface/dist/`, `dist.signature`, and `dist.manifest.json`
+together. Never hand-edit a hashed chunk, and never resolve a `dist/` merge
+conflict by picking a side.
+
+**Resolving a transplanted Admin change that conflicts in `dist/`.** Discard
+both generated sides, keep the combined source, and rebuild:
+
+```bash
+# Resolve the SOURCE conflicts normally. Pick ONE of these, or merge by hand —
+# running both in sequence silently leaves whichever ran last:
+#   git checkout --ours   packages/admin/     # keep this branch's source
+#   git checkout --theirs packages/admin/     # keep the incoming source
+# Then discard BOTH generated sides and rebuild:
+git rm -r --cached packages/admin-surface/dist >/dev/null
+bin/build-admin-dist                          # rebuilds the whole tree from combined source
+git add packages/admin-surface/dist packages/admin-surface/dist.signature \
+        packages/admin-surface/dist.manifest.json
+```
+
+The operation refuses to start while the boundary is still ambiguous — unmerged
+paths, unresolved conflict markers, an untracked file under `packages/admin/app`,
+or a partially staged `dist/` — so a half-resolved conflict cannot be baked into
+a published bundle. Two conflicting generated trees converge on the same bytes
+regardless of which side you started from.
+
+**Toolchain.** The pinned `.nvmrc` runtime (Node 24) is mandatory; any other
+major is refused. Point the build at a specific keg with `NODE_BINARY` /
+`NPM_BINARY` and a sanitized `PATH`, exactly as `admin-dist.yml` does:
+
+```bash
+NODE_BINARY="$(command -v node)"
+NPM_BINARY="$(realpath "$(command -v npm)")"
+PATH="$(dirname "$NODE_BINARY"):/usr/local/bin:/usr/bin:/bin"
+export NODE_BINARY NPM_BINARY PATH
+bin/build-admin-dist
+```
+
+**Adding a source-contract marker.** When a change must be provably present in
+the compiled bundle, add an entry to `packages/admin-surface/dist.markers.json`
+in the same PR (`bundle-js`, `stylesheet`, or `published-path` scope). A missing
+or changed marker fails both the rebuild and the committed-state gate.
+
+**What the manifest is for.** `dist.manifest.json` is the acceptance record that
+travels with the release. Downstream distributions verify the Admin bytes they
+installed against `published.treeDigest` from
+`vendor/waaseyaa/admin-surface/dist.manifest.json` — see
+`packages/admin-surface/contract/README.md`. Nothing inside its `acceptance`
+section is identity; do not pin on it.
 
 ### Two runtimes, two launchers
 
@@ -86,6 +211,13 @@ PHP_INI_SCAN_DIR="$PWD/config/frankenphp" frankenphp run --config config/franken
 PHP_INI_SCAN_DIR="$PWD/config/frankenphp" frankenphp php-server --root public
 ```
 
+The committed Caddy worker block sets `WAASEYAA_FRANKENPHP_WORKER=1` inside
+the worker process. The front controller enters its request loop only for that
+exact marker; it does not infer mode from `frankenphp_handle_request()` being
+defined, because classic FrankenPHP exposes the function and may return `false`
+instead of throwing when it is called outside worker mode. Classic mode always
+runs the synchronous handler and must return a non-empty response.
+
 Both **merge** the skeleton `config/frankenphp/php.ini` (SSE / error settings) on top of the runtime's own ini via `PHP_INI_SCAN_DIR`. Requirements and notes:
 
 - **`frankenphp` must be installed** (install: <https://frankenphp.dev>) and run directly — the framework does not install or wrap it. **Never add the FrankenPHP install directory to `PATH`**: the official Windows release is a full PHP SDK whose bundled `php.exe` (OpenSSL disabled) then shadows system PHP and breaks Composer's TLS. `composer dev` calls the binary by absolute path; for the native worker invocation, call `frankenphp` by absolute path too, or set `FRANKENPHP_BIN`.
@@ -95,6 +227,8 @@ Both **merge** the skeleton `config/frankenphp/php.ini` (SSE / error settings) o
 - **Required PHP extensions for any runtime:** `pdo_sqlite` and `sqlite3` (the SQLite default), plus `sodium`. These are declared in `composer.json` `require` (`ext-pdo_sqlite`, `ext-sqlite3`, `ext-sodium`) so `composer install` flags a runtime missing them.
 - **Classic `php-server` re-boots the kernel on every request, concurrently — boot-path bootstrap must be idempotent and race-safe.** Unlike worker mode (boot once, loop), classic `php-server` (the mode `composer run dev` uses) boots a fresh kernel per request and serves them across many worker threads. So *any* schema provisioning that runs during boot or route registration executes on every request and can run in several threads at once on a cold DB. Such bootstrap **must** create-if-not-exists (and tolerate a concurrent "already exists"), never a bare `CREATE TABLE` behind a non-atomic existence check — a TOCTOU race there 500s the request (this is exactly how the live `/api/broadcast` SSE path used to fail when `auth_tokens` was provisioned on the auth route-registration path; alpha.238). Better still, provision schema in `db:init`/`migrate` rather than on the request path (cleanup-backlog CL-11). The framework's boot-path bootstraps (`auth`, `audit`, `ai-vector`, `search`) all satisfy this.
 
+**Hosted worker-runtime acceptance (#2494).** Ordinary PR CI job `ci/frankenphp-worker` downloads the pinned Linux binary from `tools/frankenphp-runtime-pin.json`, verifies SHA-256 **before** `chmod` or execution, prints and asserts `frankenphp version`, then runs `scripts/acceptance-frankenphp-worker.sh` against the shipped `public/index.php` in genuine worker mode (`frankenphp run`, one worker). The repo front controller arms `Waaseyaa\FrankenPhp\WorkerAcceptance` from process environment + SAPI only; it does not `require` `tests/`. The concurrent burst captures headers per request and requires every `X-Waaseyaa-Worker-Pid` to match the retained worker. Broadcast/runtime files are pinned under `WAASEYAA_STORAGE_PATH` inside a disposable tree; cleanup fails if `git status` changed, `public/storage` exists, the runtime root remains, a FrankenPHP process remains, or ports 3055–3058 are still bound. The same job then reruns the harness with `--inject-leak` (test-only fixture) and requires exit 42 — a green leak proof is a failed lane. Missing FrankenPHP is an infrastructure failure, never a skip. Classic `frankenphp php-server` remains covered in the same harness. This job is not part of `bin/check-pr-preflight`.
+
 ### Verification Entry Point
 
 `composer verify` is the canonical repo-wide verification command. It chains every gate that protects merge: `cs-check`, `phpstan`, `check-composer-policy`, `check-package-layers`, `check-no-secrets`, `check-ingestion-defaults`, and `test` (the PHPUnit suite). Each gate is also exposed as its own composer script so contributors can run them in isolation during development:
@@ -103,7 +237,7 @@ Both **merge** the skeleton `config/frankenphp/php.ini` (SSE / error settings) o
 |------|---------|
 | `composer cs-check` | PHP-CS-Fixer dry-run — reports style violations |
 | `composer phpstan` | PHPStan max-level static analysis (1053 files, zero baseline tolerance) |
-| `composer check-composer-policy` | Composer manifest invariants — sort-packages, `@dev` forbidden in published manifests, `self.version` scoped to root metapackage, no wildcard internal versions, tight pre-release floor in non-root manifests |
+| `composer check-composer-policy` | Composer manifest invariants — sort-packages, `@dev` forbidden in published manifests, `self.version` scoped to root metapackage, no wildcard internal versions, tight pre-release floor in non-root manifests, and internal constraints aligned to tracked `VERSION` (legacy tag fallback only when that file is absent) |
 | `composer check-package-layers` | Seven-layer architecture enforcement at composer.json edges and PHP file imports; kernel-adjacent exemptions are in `KERNEL_EXEMPT_FILES` in the script itself |
 | `composer check-contract-suite-coverage` | Asserts `phpunit.xml.dist`'s `Unit` testsuite globs `packages/*/tests/Contract` (not a hand-enumerated subset) and that no abstract contract base class under those directories is named with the `*Test` suffix — see "Contract-suite coverage" below |
 | `composer check-no-secrets` | Repo-wide secret scan for committed credentials |
@@ -133,8 +267,38 @@ The glob is safe only because of one naming convention: `phpunit.xml.dist` sets 
 3. Verify command catalog and MCP routes are available:
    - `php bin/waaseyaa list --no-ansi`
 4. Run contract-focused tests:
-   - `./vendor/bin/phpunit --configuration phpunit.xml.dist packages/mcp/tests/Unit/McpControllerTest.php`
-5. Confirm no stable contract regressions in MCP meta fields.
+   - `./vendor/bin/phpunit --configuration phpunit.xml.dist packages/mcp/tests/Unit/McpEndpointTest.php packages/mcp/tests/Unit/McpRouteProviderTest.php`
+5. Confirm the negotiated protocol versions, routed method set, tool descriptors,
+   and public/write authentication boundaries remain intentional.
+
+### Playbook A.1: Pre-DB-03 Mutation-Authority Upgrade
+
+Use this only for an installation that may contain aggregates created before
+universal mutation authority. Keep the application quiesced for the sequence.
+
+1. Take and verify the deployment backup required by the governing upgrade plan.
+2. Install the target package cohort and run its supported migrations and
+   `waaseyaa install:init` phase as applicable.
+3. Before any ordinary HTTP, worker, scheduler, or fully booted CLI process,
+   run `php vendor/bin/waaseyaa entity:backfill-mutation-authorities --reason='<change reference>' --json`.
+4. Retain the exact invocation reason, exit status, and per-type count report as
+   the durable upgrade evidence. Verify that `reason_sha256` matches the retained
+   reason. The output must contain neither the raw reason nor any mutation token;
+   a nonzero exit leaves the application quiesced for investigation. A `null`
+   type count means the framework cannot prove whether a foreign repository
+   committed work; in that case the aggregate `created` total is also `null`
+   rather than a lower bound presented as exact. An integer is the exact
+   committed count, including after a post-commit audit-event delivery failure.
+   Per-row events are notifications, not a substitute for this retained evidence.
+5. Retry the same command with a retry-specific reason. A completed prior run
+   reports `created: 0`; a failed framework type either rolled back atomically or
+   reports the exact already-committed count, and the retry repairs only missing
+   authorities.
+6. Perform ordinary boot and application smoke checks, then leave maintenance
+   mode under Playbook I.
+
+Do not replace step 3 with a normal boot: normal hydration deliberately refuses
+legacy rows that lack authority and performs no repair.
 
 ### Playbook B: Semantic Baseline Refresh
 
@@ -159,11 +323,13 @@ The glob is safe only because of one naming convention: `phpunit.xml.dist` sets 
 ### Playbook D: MCP Tool Failure Triage
 
 1. Inspect tool contract and execution boundaries:
-   - call MCP `tools/introspect` with target tool name.
+   - call MCP `tools/list` and locate the exact target tool name;
+   - when authenticated as an administrator, inspect
+     `GET /api/mcp/tools/{name}` for the richer server-side read model.
 2. Validate:
-   - cache scope (`anonymous` vs `authenticated`),
-   - permission boundaries (view/update/workflow),
-   - visibility policy hints.
+   - advertised input/output schemas and annotations;
+   - token-scope intersection and account capability requirements;
+   - public-tier versus write-tier registry membership.
 3. Re-run failing tool via `tools/call` using same argument payload.
 4. Resolve by category:
    - `-32602`: invalid arguments or unknown tool/state/type.
@@ -860,6 +1026,52 @@ asserted via exit code, portable across every supported runtime.
 | `maintenance:off` | Clear the flag and restore service. Idempotent. | — |
 | `maintenance:status` | Report state. Exit 0 = serving, 1 = in maintenance (incl. fail-closed). | `--json` |
 | `sync-rules` | Sync framework rules from Waaseyaa to app | `--force` / `-f`, `--dry-run` |
+| `tenancy:repair-translation-peers` | Audit or repair historical empty-owner two-axis translation peers for one entity type | `entity_type`; `--dry-run`; `--json` |
+| `workflows:audit-serving-projection` | Report impossible workflow serving projections; optionally repair one confirmed finding | `--repair=<entity-id>`; `--confirm=<fingerprint>` |
+
+## Translation Peer Tenancy Repair
+
+Use this playbook only for a community-scoped, translatable entity type after upgrading the framework. The command adopts an empty-owner peer only when the same entity ID has one non-empty canonical default-language owner and, when UUID is keyed, both rows have the same UUID.
+
+1. Back up the application database using the platform's normal verified procedure.
+2. Audit without mutation: `php bin/waaseyaa tenancy:repair-translation-peers <entity_type> --dry-run --json`.
+3. Review `eligible`, `skipped`, and `dry_run`; investigate skipped rows instead of assigning ownership by guesswork.
+4. Enter maintenance mode and stop or drain workers and other writers.
+5. Apply: `php bin/waaseyaa tenancy:repair-translation-peers <entity_type> --json`.
+6. Repeat the dry run. A completed repair has `eligible: 0` for the deterministic candidates addressed by the command.
+7. Run schema verification, field-access activation preflight, and the application's local test suite before restoring service.
+
+The command never runs on boot and does not rewrite non-empty ownership. Keep service quiesced for the applying run so candidate validation and ownership updates observe a stable database.
+
+## Workflow Serving-Projection Recovery
+
+Use this playbook only after workflow bindings and published pointers have been
+deployed. The command is report-only unless both repair options are present.
+
+1. Create and verify a restorable database backup. Record its location and the
+   application version before continuing.
+2. Audit without mutation: `php bin/waaseyaa workflows:audit-serving-projection`.
+3. Investigate every `FAIL-CLOSED` line. Do not repair while a workflow,
+   published pointer, authoritative state, storage shape, or record read is
+   unresolved. A draft working revision over a live pointer is expected and is
+   deliberately absent from findings.
+4. Review one `FINDING` line. It contains selectors and projection metadata, not
+   content. Confirm the binding, working revision, published revision/state,
+   current projection, proposed projection, and `repairable: 1`.
+5. Quiesce application writers. Apply exactly that finding with
+   `php bin/waaseyaa workflows:audit-serving-projection --repair=<entity-id> --confirm=<fingerprint>`.
+   A stale fingerprint or aggregate race exits nonzero without a confirmed
+   correction; re-run the report rather than reusing the old fingerprint.
+6. Preserve the emitted `FINDING` and `REPAIRED` lines as before/after audit
+   evidence. Re-run report-only mode and require that the finding is absent.
+7. Restore normal service only after application smoke tests pass.
+
+Rollback/recovery: the repair uses the existing published revision as its only
+source and does not delete history. If the process is interrupted, reports a
+post-repair verification failure, or produces an unexpected projection, keep
+writers quiesced, preserve logs, and restore the verified database backup before
+another attempt. Do not reverse it with direct SQL or by copying the working
+copy; investigate the binding and pointer history first.
 
 ## Queue Operations Playbook
 

@@ -1,16 +1,32 @@
 # Bimaaji — Application Graph & Agent Mutation Layer
 
+<!-- Spec reviewed 2026-09-06 - #2660 Part B (implemented review candidate; ADR-026 Accepted): Codex moves to PerSkillFile delivery (.agents/skills/waaseyaa-<id>/SKILL.md plus concise root AGENTS.md), backed by a verified upstream citation on CodexClientTransformer. Claude and Codex now share the new AbstractPerSkillClientTransformer; every per-skill file and guidance index carries a source-hash provenance marker (ParsedSkill::$sourceSha256, SkillInventory::inventorySha256()) proving Claude/Codex per-skill parity. New ClientCapabilitySurface + ClientCapabilityDiagnostics give bimaaji:install a deterministic warning-severity diagnostic for an unsupported requested capability. Detail in docs/specs/bimaaji-install.md "Client capability model and skill inventory (#2660)" and docs/adr/026-client-guidance-and-skill-conventions.md. -->
+<!-- Spec reviewed 2026-09-02 - #2660 Part A repair round: ClientCapabilities::$requiresFrontmatterAtByteZero was never read by production code (ClaudeClientTransformer emitted frontmatter unconditionally), so the registry held only path and prefix authority; the transformer now derives the block from the flag, with the shipped bytes unchanged. ClientCapabilities also closes its shape at construction via ClientCapabilityException (no blank ids/paths; consolidated and per-skill field sets are disjoint), and SkillInventory::fromSkills() now sorts by id and rejects duplicate ids instead of promising a canonical inventory it did not deliver. Detail in docs/specs/bimaaji-install.md "Client capability model and skill inventory (#2660 Part A)". -->
+<!-- Spec reviewed 2026-09-02 - #2660 Part A: bimaaji:install's seven client transformers now read a typed Waaseyaa\Bimaaji\Install\ClientCapabilityRegistry instead of hardcoding per-client behaviour, and BimaajiInstallCommand enumerates the canonical skill set through a new SkillInventory instead of a raw list<ParsedSkill>. Behaviour-preserving (proven by a golden-snapshot regression test); the mapping still mirrors the currently shipped convention. Detail in docs/specs/bimaaji-install.md "Client capability model and skill inventory (#2660 Part A)"; the three open conventions the registry deliberately does not decide are in docs/adr/026-client-guidance-and-skill-conventions.md. -->
+<!-- Spec reviewed 2026-08-29 - #2656 containment review: the ownership manifest write bypassed the sandbox boundary, and the boundary resolved only the nearest existing ancestor, never the target path — so a symlinked .waaseyaa or a target-file symlink redirected writes and the pruner rewrite outside the project root. One boundary now covers every path; a manifest that cannot be persisted is a non-zero exit. Detail in docs/specs/bimaaji-install.md "Containment (NFR-002)". -->
+<!-- Spec reviewed 2026-08-29 - #2656 follow-up review: the Claude transformer emitted a flat .claude/skills/waaseyaa-<id>.md that Claude Code does not discover, and the Codex transformer wrote .codex/AGENTS.md which is not a discovery location at all; both corrected. Added retired-target pruning via InstalledManifest (recorded ownership, never inferred). Detail in docs/specs/bimaaji-install.md. -->
+<!-- Spec reviewed 2026-08-29 - #2656 packaged skill resources: Implementation Status listed M5 (bimaaji-install-command-01KS5W0S) as Deferred while packages/bimaaji/src/Install/ was fully implemented. Flipped it to Shipped and recorded the #2656 change of source-of-truth: the canonical Agent Skills moved from the monorepo root (skills/waaseyaa/) into packages/bimaaji/resources/skills/, default resolution begins at the installed package, and installation is marker-bounded. Detail lives in docs/specs/bimaaji-install.md. -->
+<!-- Spec reviewed 2026-08-04 - #2177 MCP enterprise hardening: Bimaaji's graph/spec provider bindings and introspection tools remain read-only discovery surfaces. Privileged graph and spec introspection is now explicitly curated and withheld from remotely reachable MCP registries unless an application grants the corresponding capability; the graph-generation contract itself is unchanged. -->
 <!-- Spec reviewed 2026-06-22 - WP15 (alpha245 security, audit): MutationValidator runs sovereignty guardrails before structural validation; BimaajiServiceProvider wires SovereigntyGuardrails into the live validator binding. Acceptance: MutationValidatorTest::it_gates_sovereignty_sensitive_operations_through_the_guardrails. -->
 <!-- Spec reviewed 2026-05-23 - M3 WP04 (bimaaji-mcp-bridge-01KS5VS8): added "MCP exposure" subsection enumerating the five bimaaji #[AsAgentTool] adapters surfaced over MCP through AgentToolRegistryBridge. Updated Implementation Status to flip M2 + M3 from "Deferred" to "Shipped". Bound SpecIndexProvider as a container singleton in BimaajiServiceProvider (WP02). -->
 <!-- Spec reviewed 2026-05-21 - M1 (bimaaji-wakeup-01KS5VEY) flipped Implementation Status from "scaffolding only" to "shipped". -->
 
 ## Implementation Status
 
+**Current route-wiring contract (ROUTE-METADATA-01, #3121):** CLI `graph:dump`
+and `route:list` consume the kernel's completed immutable route snapshot. The
+three route section providers obtain it lazily on each inspection; construction
+does not require an HTTP-only live router. Incomplete, legacy or invalidated
+kernel authority refuses strict export without a routeless fallback. Explicit
+bare collections remain compatible only when no kernel accessor exists. Release
+publication and installed downstream qualification are tracked in the change
+record; the older M1 checkpoints below are historical rather than current gaps.
+
 **Shipped (as of M1 `bimaaji-wakeup-01KS5VEY`):**
 
 - `BimaajiServiceProvider` is auto-discovered via `extra.waaseyaa.providers` in `packages/bimaaji/composer.json`.
 - `ApplicationGraphGenerator` is bound as a container singleton, wired with the six default `GraphSectionProvider` implementations (admin, entities, jsonapi, public_surface, routing, sovereignty).
-- Each default provider's constructor dependencies (`EntityTypeManagerInterface`, `RouteCollection`, `SovereigntyProfile`) resolve from the kernel-services bus. `RouteCollection` falls back to `WaaseyaaRouter::getRouteCollection()`; `SovereigntyProfile` falls back to `SovereigntyProfile::Local`.
+- Each default provider's constructor dependencies (`EntityTypeManagerInterface`, `RouteCollection`, `SovereigntyProfile`) resolve from the kernel-services bus. Route inspection first reads the canonical kernel snapshot; bare explicit `RouteCollection` falls back to `WaaseyaaRouter::getRouteCollection()` only when the kernel accessor is absent; `SovereigntyProfile` falls back to `SovereigntyProfile::Local`.
 - `BimaajiServiceProvider` implements `HasNativeCommandsInterface` (empty stub; the `graph:dump` command lands in WP02 of M1).
 - Unit test coverage at `packages/bimaaji/tests/Unit/BimaajiServiceProviderTest.php` (7 tests, 38 assertions: binding identity, tagged collection, six-section output, lazy resolution, capability interface, RouteCollection fallback).
 
@@ -33,9 +49,15 @@
 - `SpecIndexProvider` is now container-bound singleton in `BimaajiServiceProvider`.
 - M3 supersedes the 2026-05-20 PHP-only deferral that closed [#1463](https://github.com/waaseyaa/framework/issues/1463).
 
-**Deferred (post-M3):**
+**Shipped (M5 `bimaaji-install-command-01KS5W0S`, 2026-05-23):**
 
-- Per-client guidelines/skills install command (M5 `bimaaji-install-command-01KS5W0S`).
+- `bin/waaseyaa bimaaji:install` — per-client guidelines/skills install command. Seven `ClientTransformerInterface` implementations under `packages/bimaaji/src/Install/Client/`; contract, flags, and trust guarantees in [docs/specs/bimaaji-install.md](bimaaji-install.md).
+- The canonical Agent Skills ship as resources of this package (`packages/bimaaji/resources/skills/<id>/SKILL.md`) since #2656. They used to live at the framework monorepo root, a path no consumer has, so the command only worked in the repository that did not need it. Default resolution now begins at the installed package; `bimaaji.skills_directory` overrides it.
+- Installation is marker-bounded: a re-run refreshes only the text between the `<!-- waaseyaa:bimaaji:install BEGIN -->` / `END` markers and preserves hand-authored content outside them.
+- Installation is also ownership-tracked. `Waaseyaa\Bimaaji\Install\InstalledManifest` records every generated path per client in `.waaseyaa/bimaaji-install.json`, and a later run prunes targets the current skill set no longer produces. Ownership is recorded, never inferred from a filename. See [docs/specs/bimaaji-install.md](bimaaji-install.md) "Ownership and pruning retired targets".
+- Every path `bimaaji:install` touches — reads, writes, deletes, neutralisations, and the ownership manifest — passes one containment boundary that rejects absolute paths and `..`, requires the nearest existing ancestor to resolve inside the project root, and rejects a target that is a link or that resolves outside it. See [docs/specs/bimaaji-install.md](bimaaji-install.md) "Containment (NFR-002)".
+- Per-client target paths were re-verified against first-party vendor documentation on 2026-08-29. `claude` now writes the documented `.claude/skills/<skill-name>/SKILL.md` directory layout and `codex` the repository-root `AGENTS.md`; both previously wrote paths their client does not read. See [docs/specs/bimaaji-install.md](bimaaji-install.md) "Convention drift".
+- `Waaseyaa\Bimaaji\Install\ClientCapabilityRegistry` and `Waaseyaa\Bimaaji\Install\SkillInventory` (#2660 Part A, 2026-09-02) replace the per-transformer hardcoded target paths and the Claude-only `DIRECTORY_PREFIX` constant with one data-driven client capability model and one typed skill enumeration, without changing any generated output. Every capability field is executable: `ClaudeClientTransformer` derives its per-skill YAML frontmatter from `requiresFrontmatterAtByteZero`, `ClientCapabilities` closes its shape at construction, and `SkillInventory` sorts by id and rejects duplicates. See [docs/specs/bimaaji-install.md](bimaaji-install.md) "Client capability model and skill inventory (#2660 Part A)" and [docs/adr/026-client-guidance-and-skill-conventions.md](../adr/026-client-guidance-and-skill-conventions.md), whose accepted Part B decision resolves the three conventions Part A left open.
 
 ## Purpose
 
@@ -182,3 +204,25 @@ session middleware + role/policy stack) owns capability grants.
 
 For full transport, authentication, and per-request bridge construction
 details — see `docs/specs/mcp-endpoint.md` § "Bimaaji MCP bridge".
+
+## Read-only agent guidance verification
+
+`bin/waaseyaa ai:verify` checks recorded Bimaaji agent guidance using the canonical installer transformers and managed-region rules. It reports schema-1 whole-file evidence separately from current managed-region freshness, preserves human outer edits, and refuses missing, malformed, unsupported or escaping evidence. `--client` selects recorded clients; an uninstalled or unknown selection cannot succeed by checking nothing. See [Bimaaji install and verification](bimaaji-install.md) and [FW-AI-VERIFY-01](../change-records/FW-AI-VERIFY-01.md). Upgrade, update/apply, removal and Composer-hook orchestration remain separate work under #2664.
+
+
+## ROUTE-METADATA-01 canonical inspection
+
+Bimaaji route sections now receive lazy collection accessors by default, reading
+the completed kernel RouteSnapshot and projecting it with RouteMetadataCompiler
+on every provide(). Explicit collection constructor callers remain compatible.
+Incomplete, legacy, failed or malformed kernel authority refuses without a
+fallback. Final route custody is checked after all graph sections, even in soft
+section mode; independent section failures retain prior behavior. JSON:API
+identity reads _entity_type defaults before legacy parameter options. Graph JSON
+uses writeRaw and preserves literal console markup. The kernel and bare-context
+contract is defined in route-metadata.md. Installed FETDER proof remains pending.
+
+The command rechecks route authority after JSON serialization and before writing.
+Third-party JsonSerializable values may run code or catch mutation refusal;
+failed final custody returns exit1 with no graph bytes in either strict or ordinary
+mode. Serialization failures also return a command error without partial JSON.

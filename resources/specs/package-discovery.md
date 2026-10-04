@@ -1,5 +1,22 @@
+<!-- Spec reviewed 2026-09-02 - #2786 phase 2A: manifest-discovered field types may declare a transport-neutral FieldValueKind for wire adapters; discovery remains exact id-to-class and does not activate unrelated extension surfaces. -->
 # Package Discovery
 
+<!-- Spec reviewed 2026-09-02 - #2828: "Optional package contributions" gains a
+second adopter, `OidcServiceProvider` (gated on `waaseyaa/oidc`, sentinel
+`SigningKeyRepository`), and its packaged-form proof. No contract change --
+`RequiresOptionalPackagesInterface`, `OptionalPackageRequirement`, and
+`OptionalPackageGate` are unchanged from #2826. -->
+
+<!-- Spec reviewed 2026-08-15 - S1-FW-CFG-04 application-master rekey composition: installed providers may contribute active rekey owners through the new ProvidesApplicationMasterRekeyContributionsInterface capability; on full runtime boot the kernel collects contributions after every provider registers and before any provider boots, requires the kernel's exact database authority, unique adapter IDs, and exactly one active owner per purpose, then freezes the purpose registry deterministically. Custody runtime and coordinator semantics live in infrastructure.md. -->
+
+<!-- Spec reviewed 2026-08-09 - #2314 external extension policies: an installed package explicitly participating through extra.waaseyaa receives policy-only discovery for its production namespaces, preserving exact fail-closed inventory parity without activating unrelated external attribute surfaces. -->
+
+<!-- Spec reviewed 2026-08-08 - Anokii boundary remediation: the provider registry carries the kernel's canonical community context to composed providers, while the field package declares and activates its own migration inventory. Composer installation remains the activation boundary; no cross-layer provider ownership is introduced. -->
+
+<!-- Spec reviewed 2026-08-05 - #2196 AI-catalog composition: installed providers may separately contribute bounded public AI artifacts through ProvidesAiCatalogEntriesInterface; the kernel sorts and injects them into AcceptsAiCatalogEntryProvidersInterface receivers before boot. The separate contract prevents experimental ARD/AI Catalog fields from contaminating RFC 9727 endpoint semantics. -->
+
+<!-- Spec reviewed 2026-08-04 - #2195 API-catalog composition: installed providers may contribute bounded public API-catalog entries through ProvidesApiCatalogEntriesInterface; the kernel sorts contributors and injects them into AcceptsApiCatalogEntryProvidersInterface receivers before boot, preserving Layer-0 ownership and Composer installation as the activation boundary. -->
+<!-- Spec reviewed 2026-08-04 - #2187 retirement: waaseyaa/northcloud is removed from Composer discovery, CLI ownership, package-layer inventories, and the split-package release matrix. -->
 <!-- Spec reviewed 2026-07-21 - #2091 modularity: Composer installation is the activation boundary; optional routes, admin navigation, entity/catalogue definitions, and conditional agent tools are absent until their owning or required package is installed. -->
 <!-- Spec reviewed 2026-07-14 - #2020 security: attribute discovery unions Composer's classmap with every eligible PSR-4 namespace, so optimization cannot change enforcement or catalogues. Installed packages declare their access-policy inventory in extra.waaseyaa.policies; a missing declared class or manifest entry is a hard boot failure. -->
 <!-- Spec reviewed 2026-05-01 - extra.waaseyaa is the authoritative registration path for providers, commands, and routes. waaseyaa/cli, waaseyaa/api, waaseyaa/graphql, waaseyaa/mcp, waaseyaa/telescope all declare their service providers via extra.waaseyaa.providers; root composer.json reserves extra.waaseyaa.providers as an extension point for app-level providers. ConsoleKernel must not introduce new string-literal command lists; commands belong in the owning package's HasCommandsInterface implementation (mission #824 WP08 surface A, closes #854) -->
@@ -11,11 +28,11 @@ Specification for how Waaseyaa packages are discovered, registered, booted, and 
 Waaseyaa uses a two-phase discovery system:
 
 1. **Coarse-grained**: Composer `extra.waaseyaa` in each package's `composer.json` declares providers, commands, routes, migrations, and permissions.
-2. **Fine-grained**: PHP 8 attributes on classes (`#[AsFieldType]`, `#[Listener]`, `#[AsMiddleware]`, `PolicyAttribute`) are scanned at compile time from the union of Composer's autoload classmap and all eligible PSR-4 directories. PSR-4 is never conditional on the classmap being empty: an ordinary non-optimized install has a valid partial classmap.
+2. **Fine-grained**: PHP 8 attributes on classes (`#[FieldType]`, `#[Listener]`, `#[AsMiddleware]`, `PolicyAttribute`) are scanned at compile time from the union of Composer's autoload classmap and all eligible PSR-4 directories. `FieldType` is the Layer-1 plugin attribute (`Waaseyaa\Field\Attribute\FieldType`); the old Foundation `AsFieldType` marker is deprecated and ignored. PSR-4 is never conditional on the classmap being empty: an ordinary non-optimized install has a valid partial classmap.
 
 Both are unified by `PackageManifestCompiler` into a single cached artifact at `storage/framework/packages.php`.
 
-The cache fingerprint includes `composer.json`, `installed.json`, `autoload_classmap.php`, and `autoload_psr4.php`. Changing autoload optimization therefore invalidates and recompiles the artifact; a cached policy set is also checked against the independent `extra.waaseyaa.policies` inventory before it can boot.
+The cache fingerprint includes `composer.json`, `installed.json`, `autoload_classmap.php`, `autoload_psr4.php`, and — #2778 — the current on-disk `composer.json` of every installed **path** package (an installed package whose `installed.json` entry marks `dist.type === 'path'` or `source.type === 'path'`; `install-path` presence alone is not the signal, since Composer 2.x stamps it on every installed package regardless of origin). Changing autoload optimization therefore invalidates and recompiles the artifact, and so does a path package editing its own `extra.waaseyaa` declarations even when root/`installed.json`/autoload stay byte-identical; a cached policy set is also checked against the independent `extra.waaseyaa.policies` inventory before it can boot. See "ManifestBootstrapper" in `docs/specs/infrastructure.md` for the fingerprint's full authority and invalidation rule.
 
 ## ServiceProvider Lifecycle
 
@@ -210,9 +227,49 @@ Beyond `register()` / `boot()`, a provider opts into kernel-invoked hooks by imp
 | `HasHttpDomainRoutersInterface` | `httpDomainRouters(HttpKernel): iterable` | Domain router chain |
 | `HasRenderCacheListenersInterface` | `registerRenderCacheListeners(...)` | Render cache listeners |
 | `AcceptsMigrationProvidersInterface` | `withMigrationProviders(list)` | Migration registry |
+| `AcceptsAgentToolProvidersInterface` | `withAgentToolProviders(list)` | Agent-tool registry provider |
+| `AcceptsAiCatalogEntryProvidersInterface` | `withAiCatalogEntryProviders(list)` | experimental AI-catalog registry provider |
+| `ProvidesAiCatalogEntriesInterface` | `aiCatalogEntries(): iterable` | intentionally public AI artifacts |
+| `AcceptsApiCatalogEntryProvidersInterface` | `withApiCatalogEntryProviders(list)` | API-catalog registry provider |
+| `ProvidesApiCatalogEntriesInterface` | `apiCatalogEntries(): iterable` | RFC 9727 public API catalog |
 | `ProvidesRolesInterface` | `roles(): iterable` (yields `Waaseyaa\User\Role`) | `RoleRepository` |
+| `ProvidesPermissionsInterface` | `permissions(): array` (`id => {title, description}`) | kernel-owned `PermissionHandler` catalogue, bound as `PermissionHandlerInterface` (#2788) |
+| `ProvidesApplicationMasterRekeyContributionsInterface` | `applicationMasterRekeyContributions(): iterable` (yields `ApplicationMasterRekeyContribution`) | `ApplicationMasterRekeyComposition` frozen active-owner graph |
 
-`ProvidesRolesInterface::roles()` returns an untyped `iterable` rather than a typed return, exactly as `HasNativeCommandsInterface::nativeCommands()` yields Layer-6 `CommandDefinition`s without importing them. Keeping the return untyped lets the Foundation (Layer 0) interface yield `Waaseyaa\User\Role` (Layer 1) without Foundation importing the User package; the concrete element type is resolved by the Layer-1 collector (`RoleRepository::fromProviders()`) at runtime. The full kernel-call-site table lives in `docs/specs/infrastructure.md`.
+`ProvidesRolesInterface::roles()` returns an untyped `iterable` rather than a typed return, exactly as `HasNativeCommandsInterface::nativeCommands()` yields Layer-6 `CommandDefinition`s without importing them. Keeping the return untyped lets the Foundation (Layer 0) interface yield `Waaseyaa\User\Role` (Layer 1) without Foundation importing the User package; the concrete element type is resolved by the Layer-1 collector (`RoleRepository::fromProviders()`) at runtime. `ProvidesPermissionsInterface::permissions()` returns a plain array for the same reason: Foundation cannot import the Access package, so the Layer-1 collector (`PermissionHandler::fromProviders()`) validates the shape. It composes one catalogue from these contributions plus every package's and the root application's `extra.waaseyaa.permissions` (the manifest key documented above), and the kernel refuses to boot when a `ProvidesRolesInterface` role grants a permission that catalogue does not declare — a provider that contributes roles therefore declares their permissions through this capability or the Composer manifest. The full kernel-call-site table lives in `docs/specs/infrastructure.md`.
+
+Catalogue composition runs after every provider's `register()` and before any
+provider's `boot()` hook. Contributions must therefore be deterministic and
+side-effect free. Framework packages with dynamic permission grammars expose
+pure definition helpers; an application contributes the concrete definitions
+from its canonical registered subject inventory and derives role grants through
+the same helpers. Duplicate ids remain invalid even when their definitions are
+byte-identical, preserving one accountable catalogue owner.
+
+Agent-tool contribution uses the same cross-layer pattern. Application providers implement the Layer-5 `Waaseyaa\AI\Tools\ProvidesAgentToolsInterface`; the kernel detects that contract by string FQCN, sorts contributors by provider class, and hands them to the Foundation-owned `AcceptsAgentToolProvidersInterface` receiver before provider boot. `AiToolsServiceProvider` invokes each contributor once when the canonical registry singleton is first constructed. This keeps Foundation free of a compile-time Layer-5 dependency and keeps application tools independent of route registration.
+
+API-catalog contribution stays entirely within Foundation-owned contracts. Installed providers implement `ProvidesApiCatalogEntriesInterface`; the kernel sorts contributors by provider class and hands them to each `AcceptsApiCatalogEntryProvidersInterface` receiver before provider boot. The API package validates, normalizes, and publishes the resulting public entries. Uninstalled packages cannot contribute, and providers must omit authenticated, administrative, write, or otherwise non-public surfaces.
+
+AI-catalog contribution uses a parallel Foundation-owned contract because an
+AI artifact identifier, media type, capabilities, and representative queries
+are not RFC 9727 API endpoint relations. Installed providers implement
+`ProvidesAiCatalogEntriesInterface`; the kernel injects them into
+`AcceptsAiCatalogEntryProvidersInterface` receivers in the same deterministic
+phase. Providers supply only deployment-neutral public artifact metadata. The
+API package applies application-owned representative queries and publishes the
+default-off experimental document. Installation can add a candidate artifact,
+but application configuration remains the publication boundary.
+
+Application-master rekey contribution follows the same pre-boot composition
+pattern. Installed providers implement
+`ProvidesApplicationMasterRekeyContributionsInterface`; on a full runtime boot
+(never under restricted discovery), after every provider registers and before
+any provider boots, `ApplicationMasterRekeyComposition::fromProviders()`
+collects each contribution, requires adapters bound to the kernel's exact
+database authority, unique adapter IDs, and exactly one active owner per
+purpose, then freezes the purpose registry deterministically. Installs with no
+contributors expose no registry. Composition conflict semantics and the
+secret-custody runtime live in `docs/specs/infrastructure.md`.
 
 ## PackageManifest
 
@@ -275,10 +332,12 @@ final class PackageManifestCompiler
 
 The compiler uses a classmap-first approach with PSR-4 fallback:
 
-1. **Classmap (preferred):** Read `vendor/composer/autoload_classmap.php` and filter to `Waaseyaa\` entries. This is populated by `composer dump-autoload --optimize` and is the fastest, most reliable path.
-2. **PSR-4 fallback:** If the classmap has no `Waaseyaa\` entries (default `composer install` only includes Composer internals and polyfill stubs), fall back to reading `vendor/composer/autoload_psr4.php`. For each `Waaseyaa\` namespace (excluding `Tests\` namespaces), recursively scan directories for `.php` files and derive class names from namespace prefix + relative path.
+1. **Classmap:** Read `vendor/composer/autoload_classmap.php` and filter to eligible entries. An optimized Composer install makes this the fastest path.
+2. **PSR-4 union:** Always read `vendor/composer/autoload_psr4.php` and union eligible production namespaces with the classmap candidates. A routine non-optimized classmap is partial and must not suppress source discovery.
 
-The fallback logs a warning via the injected `LoggerInterface` (not `error_log()`) recommending `composer dump-autoload --optimize`. The PSR-4 path is protected by try-catch for corrupt map files.
+The PSR-4 path is protected by try-catch for corrupt map files.
+
+**External extension policies and field types (#2314, #2786):** An installed package explicitly participates by carrying an array-shaped `extra.waaseyaa` block. Its production PSR-4 namespaces may live outside both `Waaseyaa\` and the root application's namespaces. The compiler scans those extension namespaces through the classmap and PSR-4 union for `PolicyAttribute` and `Waaseyaa\Field\Attribute\FieldType` only. Field types are recorded as exact `id => class` pairs; duplicate ids fail manifest compilation naming both classes, and the boot-scoped field manager revalidates that the class's live attribute still declares the cached id. A discovered field type may declare a transport-neutral `FieldValueKind` for upper-layer adapters; omission is allowed for non-wire consumers but GraphQL refuses it rather than guessing. This narrow path does not activate the extension's entity types, middleware, formatters, agent tools, agent definitions, or schedule entries; each of those surfaces requires its own documented extension contract.
 
 **Single-scan memoization (WP7 audit remediation):** `scanClasses()` is memoized per `PackageManifestCompiler` instance (`private ?array $scannedClasses`). Without memoization, `compile()` ran the full classmap/PSR-4 scan and per-class `ReflectionClass` construction TWICE — once directly for the attribute-scan loop, once indirectly via `scanScheduleEntryClasses()` for the schedule-entries pass, since `filterDiscoveryClasses()` already admits `ScheduleEntriesInterface` implementors into the same discovery-class set the attribute loop iterates. `scanScheduleEntryClasses()` remains a separate logical pass over that shared set (a deliberate decision, not an oversight) — with `scanClasses()` memoized, it is a cheap in-memory `foreach`/`class_implements()` filter, not a second reflective scan. Compiler instances are created fresh per boot (one instance per request/CLI invocation), so the memo has no cross-request staleness window: it lives exactly as long as the one compile it serves.
 
@@ -286,11 +345,11 @@ The fallback logs a warning via the injected `LoggerInterface` (not `error_log()
 
 **Attribute scanning details:**
 
-The compiler scans `Waaseyaa\` classes (from either classmap or PSR-4 fallback). For each concrete (non-abstract, non-interface, non-trait) class:
+The compiler scans `Waaseyaa\` and root-application classes from the classmap/PSR-4 union. For each concrete (non-abstract, non-interface, non-trait) class:
 
 | Attribute | What it discovers | How |
 |-----------|------------------|-----|
-| `AsFieldType` | Field type plugins | `$instance->id` => class name |
+| `Waaseyaa\Field\Attribute\FieldType` | Field type plugins | Exact `$instance->id` => class name; duplicate ids fail compilation |
 | `Listener` | Event listeners | Reads `__invoke()` parameter type to determine event class; `$instance->priority` for ordering |
 | `AsMiddleware` | Middleware | `$instance->pipeline` (http/event/job) + `$instance->priority` |
 | `ContentEntityType` | Content entity types | Compiled to `attributeEntityTypes`, hydrated through `EntityType::fromClass()` when auto-registration is enabled |
@@ -366,7 +425,7 @@ optimize:manifest -> optimize:config
 All discovery attributes live in `packages/foundation/src/Attribute/` and `packages/foundation/src/Event/Attribute/`:
 
 ```php
-// packages/foundation/src/Attribute/AsFieldType.php
+// packages/foundation/src/Attribute/AsFieldType.php (deprecated; ignored)
 #[\Attribute(\Attribute::TARGET_CLASS)]
 final class AsFieldType
 {
@@ -424,13 +483,13 @@ class WaaseyaaPlugin
 }
 ```
 
-`AttributeDiscovery` scans directories for classes with a given attribute (configurable per plugin type), extracts `PluginDefinition` objects, and caches them via `DefaultPluginManager`.
+`AttributeDiscovery` scans directories for classes with a given attribute (configurable per plugin type), extracts `PluginDefinition` objects, and caches them via `DefaultPluginManager`. Field types wrap it with `FieldTypeDiscovery`: built-ins are directory-discovered, while downstream classes arrive from the compiled manifest as exact `id => class` pairs.
 
 ```php
 // Discovery setup
 $discovery = new AttributeDiscovery(
     directories: ['/path/to/packages/field/src/Plugin'],
-    attributeClass: AsFieldType::class,
+    attributeClass: \Waaseyaa\Field\Attribute\FieldType::class,
 );
 $manager = new DefaultPluginManager($discovery, cache: $cacheBackend);
 $definitions = $manager->getDefinitions();
@@ -560,6 +619,70 @@ abstract class PluginBase implements PluginInspectionInterface
 
 Plugin classes extend `PluginBase` and receive their ID, definition, and configuration at construction time via `ContainerFactory`.
 
+## Provider capability composition
+
+Package discovery determines which service providers are installed; capability
+composition determines whether that exact provider graph is safe to boot. After
+all discovered providers register and before any provider boots,
+`CapabilityRegistry` collects `ProvidesCapabilitiesInterface` declarations and
+validates every `RequiresCapabilitiesInterface` requirement on ordinary runtime
+boot. Restricted definition discovery (`restrictedDiscoveryOnly` /
+`bootForSchemaSync` for `install:init`, `schema:sync`, and `migrate*`) skips
+that live validation (#3064) so production installation can reach schema
+preparation and CFG-02 genesis without resolving authority-dependent capability
+publication. Ordinary production boot still validates and still refuses when no
+active generation exists.
+
+A declaration contains a stable capability ID, positive version, and authority
+fingerprint. A requirement contains the accepted version range. Missing or
+incompatible requirements fail with `RequiredCapabilityUnavailableException`.
+Two providers may repeat a declaration only when version and authority
+fingerprint are identical; divergent authorities fail composition. Capability
+validation never selects an authority by registration order and never reaches a
+network service, source forge, or CI provider.
+
+The first governed capability is `configuration.authority.v1`. Configuration
+consumers declare an exact version requirement, while the configuration
+authority provider publishes the declaration that binds the active database,
+generation, and selector provenance. This makes missing or split configuration
+authority a deterministic pre-boot refusal.
+
+### Optional package contributions
+
+A required capability fails composition when absent. An **optional package
+requirement** is the complementary contract for providers whose contribution
+depends on a package their own manifest lists only under `suggest` or
+`require-dev` (#2826). The provider implements
+`RequiresOptionalPackagesInterface` and yields one `OptionalPackageRequirement`
+per optional package: the Composer package name, a sentinel class, interface,
+or enum FQCN that the optional package autoloads, and the purpose of the
+contribution. The requirement is evaluated statically through
+`OptionalPackageGate`, from the provider class name alone, so that:
+
+- `PackageManifestCompiler` omits the provider from `console_command_providers`
+  while any requirement is unsatisfied, even though the provider itself stays
+  discovered and registered;
+- the console runtime (`ConsoleApplicationFactory`) registers none of the
+  provider's commands while any requirement is unsatisfied, so `list`, `help`,
+  and invocation agree with discovery;
+- the provider's own `register()` and `consoleCommands()` consult the same gate
+  and contribute nothing while unsatisfied.
+
+Composer autoload presence is the only install signal; no binding, stub, or
+consumer-side filter stands in for the absent package, and a command that
+would fail at first use is never advertised. The first adopter is
+`Waaseyaa\CLI\Provider\AiServiceProvider`, which gates the `ai:*` operator
+commands on `waaseyaa/ai-agent` with `AgentRunRepository` as the sentinel.
+`Waaseyaa\CLI\Provider\OidcServiceProvider` (#2828) adopts the same contract
+for the seven `oidc:*` operator commands, gated on `waaseyaa/oidc` with
+`SigningKeyRepository` as the sentinel.
+`packages/cli/tests/Unit/Provider/OptionalPackageImportDeclarationTest.php`
+enforces that a cli provider importing a namespace outside cli's runtime
+`require` closure declares that package through this contract, and
+`tests/PackagedForm/check-cli-ai-commands-optional` /
+`tests/PackagedForm/check-cli-oidc-commands-optional` prove the absent and
+present consumers from installed bytes.
+
 ## File Reference
 
 ### packages/foundation/src/ServiceProvider/
@@ -568,6 +691,14 @@ Plugin classes extend `PluginBase` and receive their ID, definition, and configu
 ServiceProviderInterface.php    -- register/boot/provides/isDeferred contract
 ServiceProvider.php             -- abstract base with singleton/bind/tag + getBindings/getTags
 ProviderDiscovery.php           -- reads extra.waaseyaa.providers from installed.json
+Capability/CapabilityDeclaration.php -- provided capability id/version/fingerprint
+Capability/CapabilityRequirement.php -- accepted version range
+Capability/CapabilityRegistry.php -- validates the complete provider graph pre-boot
+Capability/ProvidesCapabilitiesInterface.php -- declaration capability
+Capability/RequiresCapabilitiesInterface.php -- requirement capability
+Capability/RequiresOptionalPackagesInterface.php -- optional (suggest-only) package contribution gate
+Capability/OptionalPackageRequirement.php -- package name, autoload sentinel, purpose
+Capability/OptionalPackageGate.php -- static verdict shared by discovery and the console runtime
 ```
 
 ### packages/foundation/src/Discovery/
@@ -611,3 +742,71 @@ Factory/
     PluginFactoryInterface.php   -- createInstance(pluginId, configuration)
     ContainerFactory.php         -- instantiates via new $class($pluginId, $definition, $configuration)
 ```
+# Runtime capability composition
+
+The compiled provider list is also the deterministic runtime order for typed
+capability contribution. `ProviderCapabilitySource::implementing()` filters
+that live list without re-instantiating providers. Package-specific registries
+must define collision semantics explicitly; the auth extension registry uses
+exclusive named slots and refuses a second owner with both provider classes in
+the diagnostic.
+
+## Route participation bootstrap contract (ROUTE-METADATA-01)
+
+`ContributesRouteMetadataInterface` is a separate Foundation capability; it does
+not add a required method to `ServiceProviderInterface`. Its pure declaration
+path takes precedence over a retained legacy `routes()` override.
+
+The standalone route participation compiler classifies inherited base no-op,
+pure capability and actual legacy overrides. Bootstrap admission compares the
+ordered roster, effective method owner, transitive parent/trait/interface source
+digests, trait aliases and compiler/contract identity. Records contain symbolic
+names and content hashes, never absolute source locations. Missing, malformed
+or stale records refuse admission. Reflection and source reads belong only to
+bootstrap; a metadata consumer cannot refresh the token.
+
+`PackageManifest` persists the raw inventory under `route_participation`.
+Older caches omit that optional field and remain readable, with an unavailable
+route inventory. Source compilation may record an unavailable inventory when
+ordinary discovery encounters a missing or unclassifiable provider; existing
+HTTP compatibility and missing-provider diagnostics remain in effect.
+Malformed route-only cache shape is normalized to an unavailable marker; it
+does not trigger generic corrupt-cache recovery or overwrite cached evidence.
+
+Kernel bootstrap admits the raw inventory before provider registration, then
+compares its ordered roster to the providers actually registered. The token is
+accessible only after complete runtime boot. Inspection never recompiles a stale
+record. A restricted or previously failed kernel cannot become runtime route
+authority, including after an ordinary boot retry; create a new runtime kernel.
+The token is participation evidence, not a completed route snapshot. Finalized
+input projection and complete kernel route-source admission are implemented;
+consumer adoption remains pending.
+See [route-metadata.md](route-metadata.md) and the execution ledger.
+
+## Route input handoff during provider boot
+
+The kernel supplies one `RouteExposureInputs` instance through the provider registry's optional trailing argument. `ProviderRegistryKernelServices` returns that exact instance for its class identifier. Bare registry callers may omit it. The API provider publishes the effective map from its existing exposure policy during ordinary boot. After all providers and finalizers complete, the kernel freezes the publication against the finalized entity roster; missing, duplicate or stale publication refuses canonical route inputs. An admitted roster without the API provider produces an all-false exposure map.
+
+Route participation compilation admits the known neutral metadata protocol classes and projector during bootstrap source validation. Projection and subsequent inspection do not discover or autoload classes. This handoff neither invokes route contributors nor changes legacy route registration. Package presence alone does not establish active API participation.
+
+The admitted protocol roster includes `FoundationRouteDefinitions`, whose source digest participates in compiler identity. After input freezing the kernel admits this complete builtin/terminal authority and the exact registered provider/context roster to its lazy composition epoch. Bootstrap does not invoke contributors. Legacy classifications refuse complete snapshot inspection without any hook call; declarative providers are collected once only when the snapshot is requested.
+
+Explicit handler service admission enumerates existing kernel/provider binding keys without resolving them. Numeric-string service IDs remain supported: PHP stores these as integer array keys, so the provider interface documents `array-key` and the execution adapter restores string IDs. Kernel keys precede provider keys; the first provider wins duplicates. Provider factories preserve their declared lifetime and a selected failure never falls through to another provider. The existing generic container's compatibility lookup is separate from this explicit execution path.
+
+
+HTTP consumes the admitted participation token through a kernel-local execution
+projection. Fully declarative cohorts reuse the kernel snapshot; mixed cohorts
+use one path per provider and continue to refuse canonical inspection. HTTP
+binding admission checks explicit registered keys without constructing handlers;
+terminal dispatch owns resolution. No manifest refresh or legacy fallback is
+used for unknown or poisoned admission. See [route-metadata.md](route-metadata.md).
+
+
+## ROUTE-METADATA-01 canonical inspection
+
+ProviderRegistry passes an optional lazy RouteSnapshot accessor into the kernel
+services bus. AbstractKernel supplies its guarded getRouteSnapshot() accessor;
+restricted/failed/preboot/legacy states therefore propagate existing refusals.
+The reserved bus entry precedes provider overrides, reads custody every time and
+never caches away lifecycle checks. Existing construction callers may omit it.
+This handoff does not collect declarations during provider registration.

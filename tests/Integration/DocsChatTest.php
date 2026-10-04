@@ -17,7 +17,6 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Waaseyaa\Database\DBALDatabase;
 
 final class DocsChatTest extends TestCase
 {
@@ -28,7 +27,7 @@ final class DocsChatTest extends TestCase
         $corpus = SpecCorpus::default();
         $urls = new SiteUrl('https://waaseyaa.org');
 
-        $db = DBALDatabase::createSqlite(':memory:');
+        $db = \App\Tests\Support\SearchDatabase::create();
         new ChatSchema($db)->ensure();
 
         $index = new SpecIndex($corpus, $db);

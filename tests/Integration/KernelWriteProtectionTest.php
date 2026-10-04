@@ -161,6 +161,15 @@ final class KernelWriteProtectionTest extends TestCase
         // PHPUnit parses to recover this child process's result.
         putenv('LOG_LEVEL=error');
 
+        // Apply the same migration and configuration activation sequence used
+        // by deployment before a full kernel boot reads active configuration.
+        $initialize = new \Symfony\Component\Process\Process(
+            [PHP_BINARY, 'vendor/bin/waaseyaa', 'install:init'],
+            $projectRoot,
+            ['APP_ENV' => 'local', 'WAASEYAA_DB' => self::$databasePath, 'LOG_LEVEL' => 'error'],
+        );
+        $initialize->mustRun();
+
         $kernel = new ConsoleKernel($projectRoot);
         $kernel->bootForCli();
         self::$kernel = $kernel;

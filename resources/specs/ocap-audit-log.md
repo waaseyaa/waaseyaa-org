@@ -1,7 +1,66 @@
 # OCAP Audit Log Substrate
 
+<!-- Spec reviewed 2026-09-01 - #2757: the exact `user.verification`
+CredentialVerification capability now includes `status` with `mail` and
+`email_verified`, allowing one least-privilege snapshot to decide active and
+verified authentication eligibility without reading password material. -->
+
+<!-- Spec reviewed 2026-09-01 - #2757 review correction (PR #2773): the two
+audited identity queries no longer share one ladder, and the entry below is
+scoped accordingly. `AuditedUserIdentityLookup::findActiveByMail()` — the
+recovery-only boundary — now reserves exactly ONE audited query read per call:
+`mail CASE_INSENSITIVE_EQUALS ? AND status = 1` over range(0, 2), returning an
+identity only when exactly one active row matches. It performs no exact-equality
+probe first, so an upgraded database holding active case-variant duplicates
+fails closed instead of resolving recovery to whichever row matched the
+submitted spelling exactly. `findActiveByLogin()` is unchanged and retains its
+exact username → exact legacy mail → bounded canonical fallback precedence.
+Both still consume the same `user.identity-lookup` CredentialVerification
+capability over `['name', 'mail', 'status']`; no issuer, reason, or actor
+semantics change. -->
+
+<!-- Spec reviewed 2026-09-01 - #2757 recovery correction: the audited User identity boundary exposes a mail-only recovery query distinct from the login namespace, preventing email-shaped usernames from shadowing address ownership. -->
+<!-- Spec reviewed 2026-09-01 - #2757: audited User identity LOGIN lookup keeps exact username and legacy-email precedence, then uses bounded CASE_INSENSITIVE_EQUALS email fallback; email uniqueness uses the same canonical equality. Ambiguous historical case variants fail closed instead of selecting an arbitrary credential identity. (Mail recovery no longer shares this precedence — see the #2773 correction above.) -->
+<!-- Spec reviewed 2026-08-29 - #2700: the existing `user.session-identity` / SessionBootstrap capability now grants `session_generation` alongside name, mail, and roles. Session issuance and middleware validation consume that exact audited value; generic reads remain forbidden. -->
+<!-- Spec reviewed 2026-08-27 - #2544: the `user.credentials` capability issuer now grants `['status', 'pass', 'legacy_pass']`. `legacy_pass` is read under the SAME CredentialVerification reason as `pass` because it is a password equivalent until the first successful login upgrades it away - it must not be reachable through any weaker reason. No new issuer, reason, or actor semantics. -->
+
+
+<!-- Spec reviewed 2026-08-24 - #1856: EntityLifecycleAuditListener keys PRE_SAVE isNew() on the entity object (WeakMap) and consumes that entry at the start of POST_SAVE, including when the writer throws. Mixed saveMany create/update batches keep per-entity is_new provenance. Event order and transactions are unchanged; canonical pairing contract lives in docs/specs/entity-system.md. (Superseded in part by #2728: PRE_DELETE is no longer buffered. POST_DELETE — the event the audit listeners consume — is unchanged and still fires only after a successful commit, so audit semantics are preserved.) -->
+<!-- Spec reviewed 2026-08-20 - #2464: successful copy-forward rollback audit
+attributes now retain source_revision_id separately from from_revision_id and
+to_revision_id. The record remains metadata-only and best-effort; actor,
+subject, allowed outcome, and operation semantics are unchanged. -->
+
+<!-- Spec reviewed 2026-08-13 - AuditQuery adds an optional exact
+`subjectUri` filter (appended for positional-constructor compatibility). The
+API adapter carries the same field so authorized domain surfaces can project
+resource-scoped history without broad audit access. Exact matching is covered
+against prefix-neighbour subjects. -->
+
+<!-- Spec reviewed 2026-08-08 - #2304: AuditServiceProvider binds an authenticated-self-only profile reader that issues exact `name` and `mail` authority, binds actor plus tenant/community claims, records the privileged read, and revokes the execution boundary afterward. Anonymous or mismatched actors fail before authority reservation. -->
+
 <!-- Spec reviewed 2026-07-17 - #2064 WP1 adds the StrictPrivilegedReadLedgerInterface reservation/finalization contract and metadata-only descriptor/receipt/outcome values. It is separate from and does not alter the existing best-effort AuditWriterInterface; no implementation is wired in WP1. Canonical contract: entity-field-read-boundary.md. -->
 <!-- Spec reviewed 2026-07-17 - #2064 WP2 adds durable strict privileged-read persistence as immutable reservation/finalization events, atomic single-finalization, explicit interrupted reservations, exact multi-field/bootstrap and dormant query readers, and complete classifications for every flat audit table column. This remains separate from best-effort AuditWriterInterface telemetry. -->
+
+### Strict privileged-read durability under SQLite contention
+
+`DatabaseStrictPrivilegedReadLedger` makes every single reservation, batch
+reservation, and batch finalization durable inside an explicit database
+transaction. A transient SQLite `BUSY` or `LOCKED` failure may be retried at
+most twice, with bounded 10 ms then 20 ms backoff, only when no transaction was
+opened or the failed transaction was successfully rolled back. Receipt
+identities are allocated before the attempt loop and remain stable across a
+retry. Logic/contract failures are never retried or wrapped; non-contention
+storage failures and any failure whose rollback cannot be proven surface as
+`PrivilegedReadLedgerException` immediately. This preserves fail-closed audit
+authority without treating an ambiguous commit as safe to replay. Finalization
+appends all pending terminal events before reading receipt history, acquiring
+writer ownership before a new deferred SQLite snapshot can form (#3183). Every
+receipt must then have exactly the ordered reserved/finalized pair; invalid
+receipts roll back the whole batch. A typed unique-event collision retains the
+existing LogicException without querying an aborted transaction. Nested caller
+work is preserved. Existing caller transactions or retained cursor snapshots
+can still refuse; this ordering never restarts or discards caller-owned state.
 
 **Package:** `waaseyaa/audit` (L1 — Core Data)
 **Mission:** `ocap-audit-log-substrate-01KSEFTF`
@@ -183,7 +242,9 @@ re-derived** next run (the high-water mark comes from the last *checkpoint*, not
 from row state). It runs on a schedule (`AuditCheckpointScheduleEntries`, default
 `*/15 * * * *`) and on demand via `bin/waaseyaa audit:checkpoint`. Each sealed
 checkpoint is exported through a pluggable **`CheckpointSink`** — the
-**load-bearing anchor**. The default `FileCheckpointSink` appends NDJSON locally
+**load-bearing anchor**. The exported record includes the detached checkpoint
+signature so an external sink retains the authentication material alongside the
+hash-chain fields. The default `FileCheckpointSink` appends NDJSON locally
 (+ optional stdout), but this is only as trustworthy as the host: **real
 tamper-evidence requires configuring an off-box / WORM / external append-only
 sink** (a host able to edit `audit_event` can also edit a local file). Optional
@@ -193,6 +254,10 @@ HMAC over `checkpoint_hash` is mandatory in kernel-wired operation. Its raw
 `hmac-sha256.hkdf-v1:<64 lowercase hex>`. When a derived key is configured, the
 verifier requires and constant-time verifies that envelope on **every** checkpoint,
 including genesis; empty/bare legacy values never count as authenticated history.
+Before the first keyed segment is sealed, the builder authenticates only the
+deterministic, empty pristine genesis anchor by compare-and-swap. It refuses a
+genesis signature produced by another or malformed key rather than creating a
+mixed chain. Existing non-genesis history is never migrated implicitly.
 Existing chains are upgraded only by the explicit, transactional
 `audit:migrate-checkpoint-signatures --confirm` command after the operator has
 established trust in a backup. It refuses malformed, mixed, or hash-chain-broken
@@ -207,8 +272,8 @@ each row's `prev_hash` links to the previous row's `row_hash` (first row → pri
 `segment_hash`), each row's content recomputes to its stored `row_hash`
 (`AuditEventCanonicalizer`), the last `row_hash` equals the checkpoint's
 `segment_hash`, and the checkpoint's `checkpoint_hash` recomputes. It STOPS at the
-first break with a machine-readable `failureKind` ∈ {`genesis`, `checkpoint_signature`, `checkpoint_chain`,
-`row_count`, `chain_link`, `row_content`, `segment_hash`, `checkpoint_hash`}. Rows
+first break with a machine-readable `failureKind` ∈ {`genesis`, `checkpoint_signature`, `prune_authorization`,
+`checkpoint_chain`, `row_count`, `chain_link`, `row_content`, `segment_hash`, `checkpoint_hash`}. Rows
 `id ≤ genesis.segment_end_id` (predates chaining) and rows past the last checkpoint
 (unsealed/pending) are not failures. `bin/waaseyaa audit:verify [--json]` exits 0
 when intact and non-zero on tamper, and emits an `audit.verify` self-audit event
@@ -217,13 +282,19 @@ forged checkpoints — what the append-only decorator cannot *prevent* against a
 party with raw DB access.
 
 **Prune reconciliation — checkpoint-aware `audit:prune` (WP4):** retention pruning
-must not look like tampering. `audit_checkpoint` gains a `pruned` flag. `audit:prune`
+must not look like tampering. `audit_checkpoint` has a `pruned` flag and a
+detached `prune_authorization`. `audit:prune`
 deletes in two disjoint populations: **sealed** rows (covered by a non-genesis
 checkpoint) are pruned only at WHOLE checkpoint-segment boundaries — it computes a
 `horizon` = the highest `segment_end_id` whose entire segment is older than the
-cutoff, deletes `audit_event WHERE id <= horizon`, and marks those checkpoints
-`pruned=1` (`--kind` does NOT apply to sealed rows; whole-segment deletion is
-required for chain integrity); **unsealed-tail** rows (`id > MAX(segment_end_id)`)
+cutoff, marks those checkpoints `pruned=1`, attaches a domain-separated HMAC
+over each checkpoint hash when keyed custody is configured, and deletes
+`audit_event WHERE id <= horizon` in the same transaction (`--kind` does NOT
+apply to sealed rows; whole-segment deletion is
+required for chain integrity). Before it records intent or authorizes deletion,
+the command verifies the complete current sealed chain and refuses to bless a
+pre-existing forged or broken pruned state. **Unsealed-tail** rows
+(`id > MAX(segment_end_id)`)
 keep the legacy `created_at`(+`--kind`) deletion (no chain yet). The
 `audit.retention_pruned` self-audit records `sealed_pruned_through_id`,
 `pruned_checkpoint_hash`, and `unsealed_deleted_count`. Its `deleted_count`
@@ -236,13 +307,17 @@ real deletion when `--kind` is set (audit A7, F10). The confirmation prompt
 (refusal without `--confirm`) reports that same real total. The superseded
 kind-filtered number is kept separately under `kind_filtered_match_count` for
 anyone inspecting the self-audit trail. `audit:verify` treats a
-`pruned=1` checkpoint as a valid anchor: it still verifies the checkpoint's chain
-link **and recomputes its `checkpoint_hash`** (a forged pruned checkpoint is still
-caught), but skips the row-level checks (the rows are legitimately gone) and
+`pruned=1` checkpoint as a valid anchor only after it verifies the checkpoint's
+chain link, recomputes its `checkpoint_hash`, and, in keyed mode, validates the
+detached prune authorization. The authorization is bound to that exact
+checkpoint hash and cannot be replayed from another checkpoint or replaced by
+the ordinary checkpoint signature. The original checkpoint signature is never
+rewritten. The verifier then skips the row-level checks (the rows are
+legitimately gone) and
 advances the chain from the retained `segment_hash`, so the surviving chain still
 validates across the prune boundary. A row deleted from a sealed segment **without**
-the `pruned` flag still fails verification (`row_count`/`chain_link`) — that is what
-distinguishes a sanctioned prune from a malicious gap.
+the `pruned` flag still fails verification (`row_count`/`chain_link`), while a
+forged `pruned` flag in keyed mode fails `prune_authorization`.
 
 **v1 complete.** Remaining hardening is tracked separately: the external-sink
 cross-check at verify time.
@@ -315,6 +390,8 @@ crashing primary requests (NFR-001).
 | `BroadcastAuditListener` | `BroadcastEvents::PUBLISH` | `broadcast.publish` |
 | `PublishPointerAuditListener` | `RevisionPointerMovedEvent::class` (typed FQCN subscription — audit requires entity-storage, L1→L1) | `revision.publish`, `revision.revert` |
 | `RollbackAuditListener` | `BeforeRevisionPointerMoveEvent::class` (arms on `operation === 'rollback'`) + `EntityEvents::REVISION_REVERTED->value` (consumes the armed slot) | `revision.rollback` |
+
+`entity.write` distinguishes create from update via `isNew()` captured at `PRE_SAVE`. That flag is keyed on the entity object (`WeakMap`) and consumed at the start of `POST_SAVE` (before the writer runs, including when the writer throws). `saveMany()` still dispatches `pre1, pre2, …, post1, post2, …`, so a listener-wide boolean would attribute every row from the last PRE event (#1856). Canonical pairing contract: `docs/specs/entity-system.md`.
 
 ### Per-listener actor source
 
@@ -444,6 +521,55 @@ Response shape:
 Ordering is always `created_at DESC`.
 
 ---
+
+
+## Strict reserve/finalize ledger (`strict_audit_ledger`, #2177 F4)
+
+A second, deliberately **non**-best-effort write path, alongside `AuditWriterInterface`.
+
+`AuditWriterInterface` is contractually best-effort — `record()` MUST swallow every exception and MUST NOT throw (FR-005 / NFR-001). That is correct for an observability log, and unusable for a surface that must refuse to act when it cannot be audited. `Waaseyaa\Foundation\Audit\StrictAuditLedgerInterface` is its opposite number: `reserve()` and `finalize()` **throw** `StrictAuditLedgerException` when a record cannot be made durable, so the caller can decline to proceed.
+
+It is the sibling of `StrictPrivilegedReadLedgerInterface` (privileged reads) and follows the same reserve → act → finalize shape and the same append-only storage discipline. `strict_audit_ledger` is registered in `AppendOnlyAuditDatabase::APPEND_ONLY_TABLES`, so a reservation can be appended but never updated or deleted through the audit database — evidence of a mutation cannot be rewritten after the fact.
+
+**Why the port lives in `waaseyaa/foundation`, not here.** Its first consumer is the MCP write tier, and `waaseyaa/mcp` must not require `waaseyaa/audit` at runtime (see `McpDispatchEvent`, contract clause 18). Foundation is the one package both the consumer and this implementation already depend on. The contracts and value objects are in `Waaseyaa\Foundation\Audit`; the database implementation is `Waaseyaa\Audit\Writer\DatabaseStrictAuditLedger`.
+
+| Column | Meaning |
+|---|---|
+| `receipt_id` | joins a `reserved` row to its `finalized` row |
+| `correlation_id` | joins every record for one request, including `audit_event` rows |
+| `event_type` | `reserved` \| `finalized` \| `recorded` (single-shot terminal stage) |
+| `surface` | e.g. `mcp.write` — one ledger can serve several entry points |
+| `operation` | what was attempted (for MCP, the tool name) |
+| `stage` / `outcome` | `AuditStage` value and its derived outcome |
+| `actor_uid` | three-state actor: `null` (no principal) / `0` (anonymous) / N |
+| `descriptor` | redacted `safe_arguments` + safe metadata |
+
+`UNIQUE(receipt_id, event_type)` makes a double-finalize impossible at the storage layer, independent of the application-level guard.
+
+**The guarantee is pre-durability, not atomicity.** See `docs/specs/mcp-endpoint.md` for the full statement, the four reasons atomic coupling is not reachable, and the dangling-reservation query for the crash window.
+
+## Operation approval event log (`mcp_approval_event`, #2177 F1)
+
+Durable human approvals for destructive MCP write-tier calls, stored as append-only events by `Waaseyaa\Audit\Writer\DatabaseOperationApprovalStore` (the implementation of `Waaseyaa\Foundation\Audit\Approval\OperationApprovalStoreInterface` — the port lives in foundation for the same no-runtime-audit-dependency reason as the strict ledger above; see `docs/specs/infrastructure.md` §"Operation approval port"). `mcp_approval_event` is registered in `AppendOnlyAuditDatabase::APPEND_ONLY_TABLES`, so an approval can be appended but never forged by update, revoked after use, or made reusable by delete. Schema: `Waaseyaa\Audit\Storage\ApprovalEventSchema` (additive, idempotent; ensured **lazily** by `AuditServiceProvider`'s `OperationApprovalStoreInterface` binding on first resolution — slice B — so a deployment that never uses the write tier pays nothing at boot). The binding reads the expiry window from `mcp.write_tier.approval.ttl_seconds` (strict positive integer, integer-shaped strings accepted, default 900; malformed values throw `ConfigException` naming the key and value type only). The consumer is the `McpEndpoint` write-tier approval gate — see `docs/specs/mcp-endpoint.md` §"Human-approval gate". The admin decision **routes** landed in slice C1b (`GET /api/mcp/approvals`, `POST /api/mcp/approvals/{id}/decision` — see `docs/specs/mcp-endpoint.md` §"Admin decision surface"); a successful `decide()` through them additionally projects a best-effort `mcp.approval_decision` audit event (`McpApprovalDecisionAuditListener`, safe join fields only — request id, decision, optional normalized reason, correlation id, operator uid as actor — never raw arguments; a projection failure is logged and swallowed, never unwinding the already-durable `decided` row). The admin-SPA UI is **not yet present**.
+
+One row per event; status is always derived, never stored:
+
+| Column | Meaning |
+|---|---|
+| `request_id` | opaque `apr_` + 32 hex (16 random bytes); joins a request's events |
+| `event_type` | `requested` \| `decided` \| `consumed` |
+| `request_key` | deterministic tuple identity (SHA-256 over a length-unambiguous component encoding); reuse lookup for retried identical calls |
+| `principal_key` / `surface` / `operation` / `arguments_fingerprint` | the exact `ApprovalTuple`, repeated on every event so each row is self-describing |
+| `correlation_id` | original request's correlation on `requested`/`decided`; the consuming retry's correlation on `consumed` |
+| `safe_arguments` | the tool's redacted arguments (`requested` only) — never raw params; the raw arguments exist only as the fingerprint |
+| `expires_at` | fixed expiry stamped at open time (`requested` only); UTC `Y-m-d H:i:s.u` |
+| `decision` / `operator_uid` | `approved` \| `denied` and the server-derived deciding operator (`decided` only) |
+| `decision_reason` | optional operator-supplied human reason (`decided` only) — durable incident evidence; normalized via `ApprovalRequest::normalizeDecisionReason()` (trimmed, blank → null, ≤ 500 Unicode characters, single-line: any ASCII control character rejected before the append). The decided row carries only the decision, operator uid and reason — never request payload or raw arguments |
+| `receipt_id` | the strict-ledger receipt of the consuming execution (`consumed` only), joining the approval to its `strict_audit_ledger` evidence |
+
+`UNIQUE(request_id, event_type)` makes both a second decision and a second consumption impossible at the storage layer, independent of the application-level guards. `consume()` runs transactionally (state check + `consumed` append commit together) and re-checks expiry at the consume boundary with the single inclusive instant comparison (`ApprovalRequest::isExpiredAt()`), so there is no sub-second window in which an expired approval still consumes; a concurrent-consumer loss surfaces as `false`, never as a duplicate execution. Duplicate pending rows under a create race are accepted and harmless — later retries converge on the oldest pending request, and each approval still consumes once. Rows are covered by `AuditReadModelDefinitionRegistry` (`id` Public, every other column Internal).
+
+**Pending queue (`listPending()`, C1a).** The operator-facing read side: one bounded `ApprovalRequestPage` of live `Pending` requests in stable ascending requested order (append order of `requested` rows), omitting expired, approved, denied and consumed requests. Limit is 1..100 (default 50); an out-of-range limit or a malformed/tampered cursor throws `\InvalidArgumentException` before any query runs. The cursor is opaque and versioned (`apv1`-tagged, base64url, canonical-form-only): it encodes exactly the immutable row id of the last scanned `requested` event — an append-only position, so it reveals no mutable state and can grant nothing. The scan is one bounded chunk query per page in the common case, never an unbounded `SELECT`: a single `LIMIT`-bounded query over `requested` rows strictly after the cursor position excludes decided/consumed requests via `NOT EXISTS` on the `(request_id, event_type)` unique index and definitely-expired requests via the sortable fixed-width UTC `expires_at` text (which agrees exactly with the inclusive `ApprovalRequest::isExpiredAt()` boundary; the in-PHP derivation keeps the final say per hydrated row). If in-PHP filtering ever leaves a page short with rows still ahead, the store continues from the advanced scan position with further bounded chunks. Traversal is live, not a snapshot: walking `nextCursor` to null visits every continuously-pending request exactly once (skipped non-pending rows can never become pending again — decisions are once-only and expiry is fixed at open time), requests opened between pages appear on a later page, and requests decided or expired between pages stop appearing. Pages carry `safeArguments` only — raw arguments never leave the fingerprint.
 
 ## Retention
 

@@ -1,8 +1,153 @@
 # Infrastructure
+
+SQLite artifact runtime catalogue v5 conservatively promotes indexing history
+for imported vectors after preserving serving generation tokens and tombstones.
+Its preparation report records actual transformed candidate counts and digests.
+FW-AIV-UNINDEXED-AVAILABILITY-01 and sqlite-artifact-installation.md define this
+bounded exception to byte-exact generation preservation; legacy profiles without
+the history column retain their existing behavior.
+
+## Semantic search routing
+
+Foundation `SearchRouter` consumes the provider-bound canonical embedding storage
+and provider. `/api/search` requires nonblank `q`, a registered `type`, and an
+integer `limit` (clamped by the controller). Invalid input returns 400; unavailable
+services return 501; unexpected resolution or storage failures return a sanitized
+503. Provider embedding failure retains the declared keyword fallback. Exact
+identity, score ordering, optional graph metadata and JSON schemas are defined in
+[the semantic search contract](semantic-search-contract.md). Acceptance uses the
+real router and migrated SQLite storage in `VectorSearchIntegrationTest`.
+
+<!-- Spec reviewed 2026-09-08 - #3025: CacheConfiguration::getConfiguredBins()
+is the canonical, deterministically-ordered enumeration of every bin a
+configuration registers (class-mapped or factory-registered), covered in the
+"CacheFactory and CacheConfiguration" section below. AbstractKernel::
+buildCacheFactory(RuntimeEpochInterface) is the one boot-scoped composition
+authority: it preserves an explicitly provider-bound canonical CacheFactory and
+its own CacheConfiguration, or creates the framework's render, discovery, and
+mcp_read defaults when no provider supplies one. HttpKernel::finalizeBoot() and
+the CLI handler-container's CacheFactoryInterface/CacheConfiguration bindings
+both consume that memoized factory, so `cache:clear`
+(packages/cli/src/Handler/CacheClearHandler.php) enumerates and clears exactly
+the bins HTTP-serving boot registers -- never a shadow or separately maintained
+list. Before this, CacheFactoryInterface had no kernel
+binding at all in ConsoleKernel's boot path, so cache:clear could not be
+constructed by the real CLI. Canonical command behavior: docs/specs/cli-kernel.md
+does not cover this handler; see the class docblock and CacheClearHandlerTest. -->
+<!-- Spec reviewed 2026-09-07 - #2664 / FW-PROJECT-INITIALIZER-01: ConsoleKernel
+recognizes project:init at the same pre-boot composition seam as the existing
+site lifecycle commands. The parent command itself remains boot-free; it runs
+site:init and, outside dry-run, install:init as separate child CLI processes so
+schema installation retains its existing command authority. No general kernel
+boot-order or provider-discovery contract changes. Canonical command behavior:
+docs/specs/cli-kernel.md. -->
+<!-- Spec reviewed 2026-09-06 - #2740 / FW-2740: a persistent Worker that exhausts its first-match handler roster now raises typed UnhandledQueueMessage instead of treating the fallthrough as successful void handling. The failure uses the existing bounded retry/backoff and failed-job path (Job::$tries or WorkerOptions::$maxTries); the failed record names the message class without payload data. Failed-row persistence still precedes reject, so a repository outage preserves the reserved delivery for lease recovery, and scoped authority closes before queue side effects. Successful void handlers, deliberate duplicate-occurrence ACKs, Worker first-match behavior, SyncQueue all-match behavior, and MessageBusQueue dispatch remain unchanged. Acceptance uses the shipped queue migration and real QueueServiceProvider + DbalQueue + DbalTransport + DatabaseFailedJobRepository composition. Stable record: docs/change-records/FW-2740.md. -->
+<!-- Spec reviewed 2026-09-05 - #2822: the supported application job extension point is abstract `Waaseyaa\Queue\Job` (`handle()`), classified public. There is no `JobInterface`. Queue README key classes name only loadable types. Job middleware remains foundation `JobMiddlewareInterface`. HandlerInterface/TransportInterface/FailedJobRepositoryInterface stay internal backend types. Acceptance: QueueJobContractSurfaceTest. -->
+<!-- Spec reviewed 2026-09-04 - #2835: HttpKernel resolves the provider-bound
+`Waaseyaa\Workflows\Read\ActiveWorkflows` through the same HttpKernelServiceResolver
+idiom as FieldSchemaAuthority (#2786 entry below) and passes it into
+WorkflowDefinitionsApiRouter, which now takes it as an optional constructor
+argument instead of always constructing WorkflowDefinitionsController with no
+provider. `waaseyaa/workflows` is not part of `core`, so this resolves to null
+on a `core`-only install and the router falls back to its own well-formed
+empty-result default — no boot-order, route, or kernel-owned service contract
+change. Full endpoint contract: content-workflow.md "Integration". -->
+<!-- Spec reviewed 2026-09-02 - #2826: foundation gains the optional-package
+contribution contract (ServiceProvider/Capability/RequiresOptionalPackagesInterface,
+OptionalPackageRequirement, OptionalPackageGate). PackageManifestCompiler now
+omits a console-command provider from `console_command_providers` while any of
+its declared optional packages is absent (Composer-autoload sentinel), so
+discovery metadata agrees with the console runtime, which applies the same gate
+before enumerating commands. The enduring contract text lives in
+package-discovery.md, "Optional package contributions"; the first adopter is
+cli's AiServiceProvider (cli-kernel.md). No kernel boot order, provider
+registration, or capability-registry validation semantics changed. -->
+
+<!-- Spec reviewed 2026-09-01 - #2786: HttpKernel resolves the provider-bound
+FieldSchemaAuthority through its existing HttpKernelServiceResolver and passes
+it into SchemaRouter/SchemaPresenter. This is composition wiring only: no new
+route, configuration, lifecycle, or kernel-owned service contract is added;
+the optional fallback preserves bare/unit construction. -->
+<!-- Spec reviewed 2026-09-01 - #2761: SqlSchemaHandler::assertRuntimeSchema()
+(the no-DDL contract every getRepository() resolution runs) now also
+validates declared entity-type foreign keys, not only base columns and
+unique keys — a table that exists but is missing a `_foreignKeys`-declared
+constraint fails closed with `[S1-DB106]` rather than silently skipping it.
+ForeignKeySchemaInterface gained a read-only `foreignKeyExists()` companion
+to the existing `addForeignKey()`. This closed the taxonomy vocabulary
+foreign key's gap in the #2478 contract: TaxonomyServiceProvider::boot() and
+VocabularyAccessPolicy::access() both used to call
+VocabularyReferenceConstraint::ensure() (schema DDL) unconditionally —
+production request traffic, not just boot. Coordinated schema sync
+(`db:init`/`schema:sync`) remains the single authoritative path via the
+entity type's existing declared `_foreignKeys`; local/development boot keeps
+the convenience materialization, gated by RuntimePolicy the same way
+AttachmentServiceProvider gates its own. -->
+<!-- Spec reviewed 2026-09-01 - #2757: HttpKernel resolves the neutral
+authentication-eligibility contract and injects it into SessionMiddleware.
+Standalone stacks with no auth policy retain historical behavior only when the
+verified-email setting is absent/false; configured enforcement without its
+canonical binding fails boot. Full request semantics live in
+middleware-pipeline.md. -->
+<!-- Spec reviewed 2026-08-29 - #2700: HttpKernel requires the audited
+user-internal-field reader when constructing SessionMiddleware. Authenticated
+sessions now carry an account session generation; middleware compares it with
+the stored internal generation and fails closed for stale, missing, malformed,
+or unreadable generations. No kernel bootstrap or public configuration shape
+changes. -->
+<!-- Spec reviewed 2026-08-27 - Framework #2624: RuntimePolicy publishes the
+single normalized development-environment classifier for Foundation-dependent
+packages and the resolved debug decision is injected into post-bootstrap
+consumers. Explicit malformed environment config is production-like rather
+than falling through to process state. SqliteTopology retains the documented
+low-layer exception, with parity tests and a baseline-backed custody gate. -->
+<!-- Spec reviewed 2026-08-27 - Framework #2621: `RuntimePolicy` is the shared
+typed resolver for kernel, auth, operator diagnostics, and production-like
+migration output redaction. `waaseyaa about` and migration provider wiring
+receive that resolved bootstrap policy instead of independently reading PHP
+superglobals. This remains bootstrap configuration, not governed/syncable
+config. -->
+<!-- Spec reviewed 2026-08-25 - protected-inline-media-20260825 (#2564):
+BuiltinRouteRegistrar adds GET /media/{id}/view with the same allowAll transport
+posture and MediaDownloadRouter entity-view enforcement as /download. The view
+route is inline only for content-sniffed application/pdf, receives the kernel's
+canonical SAMEORIGIN plus nosniff response policy without replacing a host CSP,
+ignores ranges, and preserves the existing indistinguishable 404 and confined
+public:// source contract. -->
+<!-- Spec reviewed 2026-08-24 - #2537: JsonApiRouter PATCH/DELETE If-Match parse
+and 428/400 JSON:API envelopes go through Waaseyaa\Api\Http\EntityMutationPrecondition.
+EntityMutationToken::fromHttpIfMatch() remains the policy authority; Request::getETags()
+is not used. Canonical envelope contract: docs/specs/api-layer.md. -->
+<!-- Spec reviewed 2026-09-05 - #2636: ApplicationSecret adds
+PURPOSE_MCP_CONTENT_RESOURCE_LIST_CURSOR (waaseyaa.mcp.content-resource-list-cursor.v1),
+owned by waaseyaa/mcp for AEAD-sealed resources/list pagination. Purpose is
+registered via McpServiceProvider application-master rekey contributions;
+expiry is enforced in sealed claims, not by ApplicationSecret itself. -->
+<!-- Spec reviewed 2026-08-22 - #2500: ApplicationSecret adds PURPOSE_AUTH_TOKEN_HMAC (waaseyaa.auth.token-hmac.v1), owned by waaseyaa/auth. Auth reset/verify/invite HMACs derive from that purpose unless a valid explicit AUTH_TOKEN_SECRET overrides; raw master bytes are never the HMAC key. Kernel custody, HKDF salt, and non-disclosure rules are unchanged. -->
+
+<!-- Spec reviewed 2026-08-16 - #2113: HttpKernel resolves the boot-scoped InternalFieldVisibilityPolicy and threads the same instance into JSON:API, translation, and search routers. Every ResourceSerializer created by those infrastructure adapters therefore consumes application `entity.internal_fields_by_type` metadata consistently; routing and controller dispatch semantics are unchanged. -->
+
+
+<!-- Spec reviewed 2026-08-16 - #2150: the outer ResponseCacheControlMiddleware owns final HTTP cache reconciliation. SessionMiddleware disables PHP's cache limiter before session startup and marks stateful requests; after every cookie writer unwinds, any session-bound or Set-Cookie response becomes private, no-store with the complete Cache-Control field replaced. Cookie-free stateless public SSR caching is unchanged. -->
+
+<!-- Spec reviewed 2026-08-16 - S1-FW-DB-03: scheduler overlap protection uses renewable database leases with generation/nonce/expiry read-back, monotonic safety margins, and fail-closed ambiguity handling. Fenced effects reject stale owners and distinguish exact replay from conflicting equal-fence work. Protected cron slots persist deterministic occurrences; queued occurrences commit enqueue intent with the occurrence identity and workers acquire a separate renewable execution lease before effects. The queue envelope/worker occurrence interfaces carry that identity without weakening ordinary queue retry semantics. EntityTypeManagerFactory also wires the aggregate mutation authority described in entity-system.md. Canonical contract: s1-concurrency-fencing.md. -->
+
+<!-- Spec reviewed 2026-08-11 - #2336 S1 upgrade compatibility: Foundation exposes a pure, read-only preflight decision surface. It does not boot the kernel, read configuration or schema state, run migrations, enter maintenance, or perform rollback/restore. Callers must supply the exact versioned observation described by docs/specs/s1-upgrade-compatibility.md; unknown or mixed state is refused, and a ready result authorizes only a separately governed apply phase. Existing configuration and migration mechanisms remain uncertified evidence sources until their independent findings close. -->
+
+<!-- Spec reviewed 2026-08-09 - issue #2322: HealthSchemaServiceProvider registers tenancy:repair-translation-peers as an explicit, dry-run-capable repair surface. It uses the live entity type metadata and database connection but never runs during boot; operators must quiesce writes before applying repairs. -->
+<!-- Spec reviewed 2026-08-09 - issue #2320: EntityTypeManagerFactory resolves CommunityScope once per entity type and injects that same instance into both SqlStorageDriver and RevisionableStorageDriver. Community-scoped base rows are therefore the kernel-owned visibility and mutation anchor for default and translation revision history, without duplicating community_id into revision tables. -->
+
+<!-- Spec reviewed 2026-08-08 - Anokii boundary remediation: application configuration may establish the kernel's canonical community context before providers register. The same context is exposed through kernel services and consumed by policies, storage, and HTTP handling; restricted `db:init` remains isolated from application boot. Package migration paths resolve consistently from source and installed layouts. -->
+
+<!-- Spec reviewed 2026-08-05 - #2196: Foundation adds a second layer-safe discovery seam for AI artifacts: immutable AiCatalogEntry values plus ProvidesAiCatalogEntriesInterface and AcceptsAiCatalogEntryProvidersInterface. AbstractKernel deterministically injects installed contributors before boot. This is deliberately separate from RFC 9727 because AI Catalog artifact identity/type/query semantics are not API Linkset semantics. Foundation imports no API or MCP class. HttpKernel treats /.well-known/ai-catalog.json as anonymous-stateless even while its owning feature remains default-off. -->
+
+<!-- Spec reviewed 2026-08-04 - #2195: Foundation adds the layer-safe RFC 9727 contribution seam: immutable same-origin ApiCatalogEntry/ApiCatalogTarget values, ProvidesApiCatalogEntriesInterface contributors, and AcceptsApiCatalogEntryProvidersInterface receiver. AbstractKernel collects contributors, sorts them by provider class, and injects them before provider boot. Foundation imports no API, MCP, Wayfinding, or new Symfony type for this seam. HttpKernel treats /.well-known/api-catalog as anonymous-stateless by default. -->
+<!-- Spec reviewed 2026-08-04 - #2191: the cache_mcp_read contract and its legacy discovery/search/traversal tools were removed with the unrouted McpController stack; the live endpoint has no equivalent cache contract. -->
 <!-- Spec reviewed 2026-07-30 - #2154 (follow-up to #2146): a session.stateless_paths entry of exactly "/" now means the ROOT PATH only, not a prefix of every path. Prefix-matching it made every anonymous GET stateless including /admin/login (a GET that must mint a CSRF token, withheld when no session exists), so an app could not express a cookie-free homepage without silently breaking its own authentication. Named prefixes are unchanged. See middleware-pipeline.md "Stateless path gate". -->
 
 <!-- Spec reviewed 2026-07-30 - #2146 stateless session paths: SessionMiddleware gains an opt-in session.stateless_paths gate (anonymous GET/HEAD on configured prefixes skip session_start; session-cookie-carrying requests resume; other methods unchanged; default [] is exact behavior parity). Access-control semantics unchanged: skipped sessions resolve to AnonymousUser under deny-unless-granted. Full contract in middleware-pipeline.md "SessionMiddleware". -->
-<!-- Spec reviewed 2026-07-25 - #2122 maintenance-mode pre-boot gate: `HttpKernel::handle()` now runs `maintenanceGate()` BEFORE `boot()`. When the canonical flag file (`storage/maintenance.flag`, resolved by `MaintenanceSettings::fromEnvironment()`) reads active — via the fail-closed `MaintenanceState::read()` — the kernel returns a branded `503` + `Retry-After` from `MaintenanceModeMiddleware::maintenanceResponse()` without opening or querying the database, so maintenance survives a DB mid-swap (the SFN live-SQLite-swap incident). The gate request is built with `HttpRequest::create(server: $_SERVER)` (NOT `createFromGlobals()`), so `php://input` is never consumed and POST bodies survive for non-maintenance requests. Loopback (`REMOTE_ADDR`) and a configurable health path are exempt; the localhost exemption is disabled with `WAASEYAA_MAINTENANCE_TRUST_LOCALHOST=false` for same-host reverse-proxy topologies. `MaintenanceModeMiddleware` deliberately carries NO `#[AsMiddleware]` attribute, so `PackageManifestCompiler` never discovers it into the post-boot pipeline — single invocation path. No existing infrastructure contract surface changed; the gate is a new pre-boot short-circuit. Substantive operator surface: docs/specs/operations-playbooks.md "Playbook I" + docs/specs/middleware-pipeline.md "Pre-boot maintenance gate". Acceptance: HttpKernelMaintenanceGateTest, MaintenanceModeMiddlewareTest, MaintenanceStateTest. -->
+<!-- Spec reviewed 2026-08-08 - Maintenance deployment boundary: HTTP requests continue to enforce the maintenance flag before application boot. The console kernel now also dispatches exactly `maintenance:on`, `maintenance:off`, and `maintenance:status` before framework or application boot, using only environment-derived `MaintenanceSettings` and flag-backed `MaintenanceState`. These commands must not open a database, run migrations or entity-schema reconciliation, boot providers, or activate field access. The maintenance boundary can therefore be entered, inspected, and exited while a database is missing, stale, or transitioning. Other CLI commands retain normal boot. Acceptance: ConsoleKernelTest, HttpKernelMaintenanceGateTest, MaintenanceModeMiddlewareTest, MaintenanceStateTest. -->
+<!-- Spec reviewed 2026-07-25 - #2122 maintenance-mode pre-boot gate: `HttpKernel::handle()` now runs `maintenanceGate()` BEFORE `boot()`. When the canonical flag file (`storage/maintenance.flag`, resolved by `MaintenanceSettings::fromEnvironment()`) reads active — via the fail-closed `MaintenanceState::read()` — the kernel returns a branded `503` + `Retry-After` from `MaintenanceModeMiddleware::maintenanceResponse()` without opening or querying the database, so maintenance survives a DB mid-swap (the SFN live-SQLite-swap incident). The gate request is built with `HttpRequest::create(server: $_SERVER`) (NOT `createFromGlobals()`), so `php://input` is never consumed and POST bodies survive for non-maintenance requests. Loopback (`REMOTE_ADDR`) and a configurable health path are exempt; the localhost exemption is disabled with `WAASEYAA_MAINTENANCE_TRUST_LOCALHOST=false` for same-host reverse-proxy topologies. `MaintenanceModeMiddleware` deliberately carries NO `#[AsMiddleware]` attribute, so `PackageManifestCompiler` never discovers it into the post-boot pipeline — single invocation path. No existing infrastructure contract surface changed; the gate is a new pre-boot short-circuit. Substantive operator surface: docs/specs/operations-playbooks.md "Playbook I" + docs/specs/middleware-pipeline.md "Pre-boot maintenance gate". Acceptance: HttpKernelMaintenanceGateTest, MaintenanceModeMiddlewareTest, MaintenanceStateTest. -->
 <!-- Spec reviewed 2026-07-25 - #2124 ServiceProvider merge resolution root: `ServiceProvider::mergeChildProvider()` previously copied only binding definitions, leaving each provider with its own private `$resolved` singleton cache. Because a child binding closure captures the child's `$this`, `$this->resolve('A')` inside one binding forked a second instance of a `singleton`-declared service away from the one external consumers resolved against the merge root — silent split-brain at the DI seam. Merged children now delegate `resolve()` to the single merge root (transitively for nested grandchildren) via a private `$mergeRoot` link, so every resolution — including those inside the child's own binding closures — resolves against and caches in one place; a shared binding is exactly one instance across the composed stack. Pre-merge-resolved entries are adopted into the root; a genuine conflict (same abstract already resolved to a different instance) or a self-merge throws rather than forking silently. Standalone, never-merged providers are byte-for-byte unchanged (the delegation branch is inert while `$mergeRoot` is null). Audit: zero production callers — latent hardening. Acceptance: MergeChildProviderResolutionTest, KernelServicesInterfaceTest. -->
 <!-- Spec reviewed 2026-07-19 - Sheguiandah gap batch: media upload and entity-gated download resolve the canonical top-level files_dir when legacy files_root is absent. Explicit files_root retains precedence for backward compatibility; otherwise the existing storage/files fallback remains. The media download's source_uri authority is canonical in entity-field-read-boundary.md. -->
 <!-- Spec reviewed 2026-07-18 - #2064 WP4 persistent-worker optimization retains only bounded immutable entity-layout blueprints and bounded JSON:API structural route templates. Every layout blueprint is rebound to current registry generations; every route template is cloned into a fresh router. Their complete isolation dimensions and cache exclusions are canonical in entity-field-read-boundary.md and api-layer.md; no request/security/runtime objects are retained. -->
@@ -11,7 +156,7 @@
 
 <!-- Spec reviewed 2026-07-14 - R21 WP7 (#2010/#2000): request-reachable mutable process statics are blocked unless tools/access-hardening-baseline.php carries a reviewed, non-empty lifetime/isolation rationale. Safe alternatives are instance state, per-request execution context, or a structural cache keyed by every isolation dimension; unsafe fixture coverage runs in composer verify and blocking CI. -->
 <!-- Spec reviewed 2026-07-15 - issue #2049 (generic media authoring): `/api/media/upload` now accepts authenticated GET + POST under the existing `access media` permission. GET exposes only safe `max_bytes`/`allowed_mime_types` capabilities; POST requires a canonical media bundle and checks the actor's server-side media create access for that bundle before file validation or persistence. The response keeps the existing public URI/URL contract, storage failures are generic and clean up moved bytes, and no storage path or access-policy reason is returned. `MediaServiceProvider` threads the kernel's existing `EntityAccessHandler` into `MediaRouter`; no parallel authorization system or media-version/CAS activation was introduced. Acceptance: MediaRouterTest, MediaServiceProviderTest, BuiltinRouteRegistrarTest. -->
-<!-- Spec reviewed 2026-07-14 - R21 WP6 (#2010): BuiltinRouteRegistrar adds GET /media/{id}/download with explicit allowAll transport posture so anonymous callers may reach media whose entity policy grants view. MediaDownloadRouter remains the enforcement point: it loads the media entity, requires an Allowed view decision, resolves only a contained public:// source_uri beneath files_root, and collapses missing/denied/invalid paths to 404 before streaming with nosniff. Queue failed-job retry now uses FailedJobRepositoryInterface::claimForRetry() as a conditional UPDATE on the existing retried_at column; API and CLI claim before dispatch, release on dispatch failure, and forget only after success, so concurrent same-id retries have one dispatch winner without a schema migration. -->
+<!-- Spec reviewed 2026-08-06 - R21 WP6 (#2010), UUID follow-up (#2274): BuiltinRouteRegistrar adds GET /media/{id}/download with explicit allowAll transport posture so anonymous callers may reach media whose entity policy grants view. MediaDownloadRouter remains the enforcement point: it resolves a numeric storage ID directly or a JSON:API UUID through a bounded query, requires an Allowed view decision, resolves only a contained public:// source_uri beneath files_root, and collapses missing/denied/invalid paths to 404 before streaming with nosniff. Queue failed-job retry now uses FailedJobRepositoryInterface::claimForRetry() as a conditional UPDATE on the existing retried_at column; API and CLI claim before dispatch, release on dispatch failure, and forget only after success, so concurrent same-id retries have one dispatch winner without a schema migration. -->
 
 <!-- Spec reviewed 2026-07-13 - CW-v1 WP-5 WP1 (#1920): deleted the retired read-only workflow
      dry-run/guards routes from the "Routes now registered by `ApiServiceProvider::routes()`" table
@@ -19,6 +164,12 @@
      and the now-deleted `WorkflowGuardsApiRouter` from the dispatch-contract example list. No other
      infrastructure contract surface affected. -->
 
+<!-- Spec reviewed 2026-08-27 - #2553: `JsonApiRouter::handle()` now threads `$ctx->query` into
+     the WRITE path too (`store()` and `update()`), not only `index()`/`show()`. It carries the
+     `?representation=` toggle, which selects the projection of the mutation RESPONSE ECHO and
+     never what is written; without it a client keeping the mutation response as its next edit
+     state was safe on the first round trip and destructive on the second. Full contract in
+     docs/specs/api-layer.md "Mutation echoes (#2553)". -->
 <!-- Spec reviewed 2026-07-13 - CW-v1 option-1 PR-3 (#1920): `JsonApiRouter::handle()` now
      threads the request's query string into single-resource `show()` calls (previously only
      `index()` received it) — needed for the new `?workingCopy=1` toggle, full contract in
@@ -28,6 +179,7 @@
 <!-- Spec reviewed 2026-07-01 - C-22 WP4 (delete the legacy save engine): EntityTypeManagerFactory no longer builds a storage factory at all — SqlEntityStorage/EntityStorageFactory are deleted. bootEntityTypeManager() now wires only the repository factory (EntityRepository, the sole persistence engine); the kernel passes `null` where a storage-factory closure used to be, so EntityTypeManager::getStorage() is a dormant "bring your own EntityStorageInterface" extension seam post-boot rather than a wired path. SqlStorageDriver (constructed inside the repository-factory closure) gains an optional FieldDefinitionRegistryInterface param to preserve the K2 FieldStorage::Data write/read symmetry fix (issue #1308) that used to live in SqlEntityStorage. See docs/specs/entity-system.md "The legacy save engine is gone (C-22)" for the consumer-facing contract. -->
 <!-- Spec reviewed 2026-06-30 - C-22 (remove-legacy-save-engine prerequisite): EntityTypeManagerFactory's repository-factory closure now also captures `$accessHandlerResolver` (the same lazy `fn() => $this->accessHandler ?? null` closure the storage-factory closure has captured since WP16/#1714) and threads it into `EntityRepository`'s optional `accessHandlerResolver` constructor param. This is what lets `EntityRepository::getQuery()` be fail-closed identically to `SqlEntityStorage::getQuery()` — both engines resolve the SAME lazily-populated `EntityAccessHandler` at query time, not at storage/repository construction time (still before `discoverAccessPolicies()` runs, for a repository built/cached mid-boot). No other boot-order or wiring change. See docs/specs/entity-system.md "Two save engines" / "Access-checked query parity (C-22)" for the consumer-facing contract. Acceptance: RepositoryStorageQueryParityTest + the kernel-booting integration suite. -->
 <!-- Spec reviewed 2026-06-29 - database-legacy WP6 (#1816, full close of the M1+M2 identifier-quoting hardening): DBALSelect::condition()/orderBy()/isNull()/isNotNull() now AUTO-QUOTE their $field via the platform quoteIdentifier (a reserved-word/metacharacter column is rendered inert), matching DBALUpdate/DBALDelete. Two new SelectInterface seams emit raw expressions verbatim with positional `?` params bound in order: whereRaw(string, array) and orderByRaw(string, string) — developer-supplied-only contract, same as join-ON. The entity read engine no longer pre-quotes: SqlEntityQuery::resolveField() and SqlStorageDriver::resolveField() return a ResolvedField value object (packages/entity-storage/src/ResolvedField.php; sql()/isExpression()/isJsonExtract()); bare/qualified columns route through the auto-quoting condition()/orderBy() path, json_extract(_data,...) expressions route through whereRaw()/orderByRaw(). K3 CAST(... AS TEXT) JSON casting (mission #1257 WP05) preserved inside the whereRaw path. Migrated the one production raw-expression caller, Queue\DbalTransport COALESCE(reserved_at,0) → whereRaw. Supersedes the 2026-06-27 "deferred to #1816" note below. See "Query Builder → Identifier quoting". Acceptance: IdentifierQuotingTest (condition/orderBy/isNull/isNotNull quote inert; whereRaw/orderByRaw verbatim + bound params, incl. array-param IN expansion) + entity-storage query suites green via the raw seams. -->
+<!-- Spec reviewed 2026-09-05 - StreamHttpClient m4 fail-closed body completeness (#2708): reaching maxResponseBytes is a typed HttpRequestException, not a successful truncated HttpResponse. Declared Content-Length above the ceiling is rejected before the body is read; a complete body exactly at the ceiling still succeeds; chunked/unknown-length bodies are read until EOF or overflow; EOF before Content-Length or a mid-body timeout is incomplete. HEAD/1xx/204/304 have no body; length-delimited reads stop at Content-Length. PHP removes chunk framing, so missing chunk terminators are not independently detected. New diagnostic messages name only the failure class (exceeded / incomplete) and do not embed response bytes, Authorization, or the URL. Value objects unchanged; TLS verify, no redirect following, CRLF header guard, and bounded connect/read preserved. Acceptance: StreamHttpClientTransportTest below/exact/above limit, chunked, absent Content-Length, Content-Length mismatch, mid-body timeout, and complete non-2xx. Supersedes the 2026-06-27 m4 description of stream_get_contents returning a prefix as success. -->
 <!-- Spec reviewed 2026-06-27 - http-client hardening (StreamHttpClient credential-leak + worker-safety): the outbound stream client now (M1) sets follow_location=0 + max_redirects=0 so PHP no longer auto-follows redirects and re-sends the caller's Authorization header to the redirect target (a credential-leak / SSRF pivot affecting the oauth-provider bearer + SendGrid key consumers) — the client returns the 3xx for the caller to handle, so credentials are NEVER auto-re-sent cross-host (chosen approach: disable, not strip); and restricts URLs to http/https (rejects file://, php://, etc.). Companions: m1 pins ssl.verify_peer/verify_peer_name=true (+ allow_self_signed=false) rather than relying on php.ini; m3 bounds the connect phase via default_socket_timeout (set+restored around the call) so a stalled TLS handshake can't hang a worker; m4 caps the response body (stream_get_contents with a 16 MiB ceiling, constructor-configurable) so a runaway endpoint can't OOM the worker; n1 rejects CR/LF in request header names/values before serialization (also hardens mail's header path); m5 captures error_get_last() into the thrown HttpRequestException message + chained \ErrorException previous. Value objects' public API unchanged; m2 (0-status-on-unparseable) left as-is. Acceptance: StreamHttpClientTransportTest (white-box context pins + a real php -S harness proving a cross-host redirect target is never contacted — proven to fail when redirect-following is re-enabled — plus body-cap, CRLF, scheme, and transport-error-context cases). -->
 <!-- Spec reviewed 2026-06-27 - scheduler m15 + m2 (ownership-checked lock release): the scheduler overlap lock is now ownership-scoped to stop a split-brain double-run (production-audit m15). LockInterface::acquire() returns a random OWNER TOKEN (bin2hex(random_bytes(16))) or null when held; release() now takes (name, token). DatabaseLock persists the token in a new waaseyaa_schedule_locks.locked_by column (additive idempotent migration 2026_06_27_000001, guarded by SchemaBuilder::hasColumn) and scopes release to `task_name = ? AND locked_by = ?`, so a stale node whose lease expired mid-run (and was reclaimed by another node) deletes nothing instead of tearing down the new owner's live lock. InMemoryLock mirrors the ownership model. Acquire stays atomic (PK on task_name + INSERT-catch-duplicate). m2: the lock TTL is now a per-ScheduledTask property ($task->lockTtl, default 300s) threaded through ScheduleRunner instead of a hardcoded 300, so long tasks set a TTL above their runtime and avoid the mid-run expiry that opens the window. Value/clock injection (m3/m4) deferred. Acceptance: DatabaseLockTest (reclaim steal: A's stale release does NOT delete B's reclaimed lock; owner release deletes its own row — proven to fail on the un-scoped release) + InMemoryLockTest parity. -->
 <!-- Spec reviewed 2026-06-27 - database-legacy M1+M2 (identifier-quoting hardening): the query builder now quotes builder-owned identifiers via the platform quoteIdentifier (cross-driver) on the paths where callers pass bare identifiers — DBALSelect::fields()/addField() columns + AS alias, join()/leftJoin() $table + $alias, and the WHERE-field of DBALUpdate/DBALDelete (both the simple Connection::update/delete criteria and applyConditions()). condition()/orderBy() $field is now DOCUMENTED as a developer-supplied raw SQL fragment (column / pre-quoted identifier / expression such as SqlEntityQuery's json_extract(...)) emitted verbatim, never user input — the same contract as the join-ON clause; it is intentionally NOT auto-quoted so the entity query engine keeps working. Value binding unchanged. Full close (auto-quote condition()/orderBy() + whereRaw()/orderByRaw() seams + SqlEntityQuery::resolveField bare-identifier refactor) deferred to #1816. See "Query Builder → Identifier quoting". Acceptance: IdentifierQuotingTest (reserved-word + metacharacter inert through each quoted path; condition()/orderBy() raw-fragment passthrough preserved). -->
@@ -81,7 +233,7 @@
 <!-- Spec reviewed 2026-04-25 - packages/testing stub entities: constructor/metadata alignment for EntityTypeManager parity tests only; no kernel/bootstrap contract change -->
 <!-- Spec reviewed 2026-04-24 - packages/http-client StreamHttpClient; packages/inertia InertiaServiceProvider (PHPStan-only); packages/queue timestamped migrations + CreateQueueTables DDL (waaseyaa_queue_jobs / waaseyaa_failed_jobs) -->
 <!-- Spec reviewed 2026-04-24 - Layer 0 env variable contract subsection (APP_ENV, APP_DEBUG, WAASEYAA_DB, WAASEYAA_CONFIG_DIR, .env/EnvLoader) + assert/IO review note after boot guard -->
-<!-- Spec reviewed 2026-04-22 - PackageManifest: removed persisted commands/routes (ADR docs/adr/0001); legacy extra.waaseyaa.commands|routes log warning only; fromArray strips legacy cache keys; mergeRootWaaseyaa merges providers+permissions only; attributeEntityTypes; ProviderRegistry entity_auto_register; ServiceProvider::mergeChildProvider; BuiltinRouteRegistrar: MCP route owned by mcp package only, sortRoutesByPriority after provider routes; MigrationLoader InstalledVersions; queue/notification/scheduler extra.waaseyaa.migrations -->
+<!-- Spec reviewed 2026-08-29 - PackageManifest root applications contribute providers, permissions, and migrations under their Composer package identity (#2695). -->
 <!-- Spec reviewed 2026-04-30 - layer-graph file-level scan + named-file kernel exemption surface (mission #824 WP02 surface C) -->
 <!-- Spec reviewed 2026-04-22 - require-dev layer audit script + CI integration (warn-only), plus composer layer graph docs -->
 <!-- Spec reviewed 2026-04-21 - Composer layer graph (bin/check-package-layers), HTTP JSON-first error surface, database-legacy ADR 007 cross-link -->
@@ -112,7 +264,6 @@
 <!-- Spec reviewed 2026-04-20 - ServiceProvider now preserves entity-type registrant provenance and ProviderRegistry rethrows entity-type collision exceptions after logging so duplicate canonical registrations fail boot deterministically (#1313) -->
 <!-- Spec reviewed 2026-04-30 - ServiceProvider extension-hook enumeration: 10 interface methods, 6 abstract-base capability-split candidates, 1 capability interface (LanguagePathStripperInterface); lockstep enforced by ServiceProviderContractTest (mission #824 WP03 surface C) -->
 <!-- Spec reviewed 2026-04-30b - ServiceProvider capability split: graphqlMutationOverrides lifted from abstract base into HasGraphqlMutationOverridesInterface; GraphQlServiceProvider guards the call with instanceof; tier 2 down to 5 candidates, tier 3 up to 2 (mission #824 WP03 surface D) -->
-<!-- Spec reviewed 2026-04-30c - ServiceProvider capability split: commands lifted from abstract base into HasCommandsInterface; ConsoleKernel guards the call with instanceof; NorthCloudServiceProvider implements the new interface; tier 2 down to 4 candidates, tier 3 up to 3 (mission #824 WP03 surface E) -->
 <!-- Spec reviewed 2026-05-08 - HasCommandsInterface deleted by mission native-cli-kernel-01KR2NR7 WP23 hard-cut; ConsoleKernel now wires exclusively via HasNativeCommandsInterface (Waaseyaa\Foundation\ServiceProvider\Capability\HasNativeCommandsInterface) backed by CliKernel; row removed from capability table below -->
 <!-- Spec reviewed 2026-04-30d - ServiceProvider capability split: registerRenderCacheListeners lifted from abstract base into HasRenderCacheListenersInterface; HttpKernel finalizeBoot guards with instanceof; SsrServiceProvider implements the new interface; tier 2 down to 3 candidates, tier 3 up to 4 (mission #824 WP03 surface F) -->
 <!-- Spec reviewed 2026-04-30e - ServiceProvider capability split: configureHttpKernel lifted from abstract base into ConfiguresHttpKernelInterface (verb-led name because it mutates the kernel rather than contributing values); HttpKernel finalizeBoot guards with instanceof; GenealogyServiceProvider and SsrServiceProvider implement the new interface; tier 2 down to 2 candidates, tier 3 up to 5 (mission #824 WP03 surface G) -->
@@ -123,7 +274,7 @@ Specification for the foundational infrastructure layer of Waaseyaa CMS: domain 
 
 ## Public Surface
 
-Authoritative dispositions are in `docs/public-surface-map.php`, verified by `PublicSurfaceVerificationTest`.
+Authoritative dispositions are in each element's owning package-local `packages/<pkg>/public-surface.php` declaration; `PublicSurfaceVerificationTest` verifies the composed declaration plane.
 
 **Public API** (stable, semver-protected):
 
@@ -135,7 +286,7 @@ Authoritative dispositions are in `docs/public-surface-map.php`, verified by `Pu
 | plugin | `PluginInspectionInterface`, `PluginManagerInterface`, `PluginBase` |
 | typed-data | `DataDefinitionInterface`, `CoercionException`, `EntityCastCoercion` |
 | i18n | `LanguageManagerInterface`, `TranslatorInterface` |
-| queue | `QueueInterface` |
+| queue | `QueueInterface`, `Job` |
 | testing | `CreatesApplication`, `InteractsWithApi`, `InteractsWithAuth`, `InteractsWithEvents`, `RefreshDatabase`, `EntityFactory`, `EntityTypeFixtureValues` |
 
 **`@internal`** (implementation details, may change without notice):
@@ -145,13 +296,59 @@ Authoritative dispositions are in `docs/public-surface-map.php`, verified by `Pu
 | foundation | `AbstractKernel` | Entry-point orchestrator, not a consumer contract |
 | foundation | `TenantResolverInterface` | Multi-tenancy seam not yet stabilized |
 | plugin | `PluginDiscoveryInterface`, `KnowledgeToolingExtensionInterface`, `PluginFactoryInterface` | Discovery/factory internals |
-| queue | `HandlerInterface`, `TransportInterface`, `FailedJobRepositoryInterface`, `Job` | Queue backend internals |
+| queue | `HandlerInterface`, `TransportInterface`, `FailedJobRepositoryInterface` | Queue backend internals |
 | scheduler | `LockInterface`, `ScheduleInterface` | Scheduler internals |
 | state | `StateInterface` | State machine internals |
 | mail | `MailerInterface`, `TransportInterface` | `@internal` foundation seam (#798 closed — single `Mailer` + transport stack) |
 | http-client | `HttpClientInterface` | Minimal wrapper, not yet stable |
+
+FW-AIV-EXECUTION-01 adds internal `SymfonyHttpClient` under the existing HTTP
+infrastructure owner. Maintained Symfony HttpClient handles HTTP networking;
+the adapter preserves Waaseyaa `HttpResponse` and non-2xx response semantics.
+It enforces positive finite total and idle transfer deadlines, verified TLS,
+no redirects or automatic retries, and a bounded streamed response canceled
+on completion or failure. The Native fallback works without ext-curl; Symfony
+selects an available transport. Injected Symfony clients must honor those
+options. Existing `StreamHttpClient` consumers are unchanged in this slice.
+ai-vector owns only credential consumption, payload and JSON/vector policy.
+Its save operation uses 2s; CLI/query use Ollama 15s or OpenAI 20s. These are
+network deadlines, not a database, credential-resolution or whole-request SLA.
+See the execution change record for equivalence tests and reconciliation.
 | ingestion | `PayloadValidatorInterface`, `MessageEnvelopeValidator` | Ingestion validation internals |
 | testing | `WaaseyaaTestCase`, `AbstractGraphQlSchemaContractTestCase` | Test base classes, not consumer API |
+
+## Console boot modes and the installation phase
+
+`ConsoleKernel::handle()` selects a boot mode per command. Most commands take
+ordinary `bootForCli()`. A small, explicit installation set — `schema:sync`,
+`migrate`, `migrate:rollback`, `migrate:status`, `site:init`, and
+`install:init` — takes `bootForSchemaSync()`, which sets
+`restrictedDiscoveryOnly` and therefore skips
+`bootProviders()`, `discoverAccessPolicies()`, the field-read runtime, schedule
+entries, and `finalizeBoot()`. Restricted definition discovery also skips
+`CapabilityRegistry` validation (#3064): live capability publication for
+`configuration.authority.v1` calls `requireActiveGenerationId()`, and
+`install:init` is the lifecycle that creates that generation. Ordinary
+production boot still validates capabilities and still refuses when no
+generation is active. `APP_ENV=local` is not production installation authority.
+
+That restriction is what makes an installation phase possible at all (#2428).
+Access-policy discovery resolves configuration, so a command that had to create
+the first configuration generation could not run under ordinary boot: it would
+require the very state it exists to produce. Commands added to this list must be
+genuinely pre-runtime; anything needing policies, schedules, or the field-read
+runtime does not belong in it.
+
+The mutation-authority backfill is the sole post-migration data-repair command
+and instead takes `bootForMutationAuthorityBackfill()`. It has the same
+restricted composition because a pre-DB-03 aggregate can make ordinary provider
+boot unreachable. This mode alone constructs repositories for community-scoped
+types without an active `CommunityScope`, allowing the repository-owned raw
+identity scan to cover every declared community; the suspension is captured
+only for this exact command and ordinary construction remains fail-closed. The
+command is operator-invoked, audited, idempotent, and zero-write unless its exact
+name is dispatched.
+
 
 ## Packages
 
@@ -162,7 +359,7 @@ Authoritative dispositions are in `docs/public-surface-map.php`, verified by `Pu
 | `packages/database-legacy/` | `Waaseyaa\Database\` | 0 (Foundation) | DatabaseInterface, DBALDatabase (Doctrine DBAL), query builder (select/insert/update/delete), schema, transactions. Composer name keeps the `-legacy` suffix for historical reasons; see [ADR 007](../adr/007-database-legacy-package-naming.md). |
 | `packages/plugin/` | `Waaseyaa\Plugin\` | 0 (Foundation) | PluginManager, attribute-based plugin discovery, plugin factory |
 | `packages/mail/` | `Waaseyaa\Mail\` | 0 (Foundation) | `MailerInterface` + `Envelope`; pluggable `TransportInterface` (array, local file, SendGrid API when configured) |
-| `packages/http-client/` | `Waaseyaa\HttpClient\` | 0 (Foundation) | Minimal HTTP client for JSON APIs and webhooks, zero external dependencies |
+| `packages/http-client/` | `Waaseyaa\HttpClient\` | 0 (Foundation) | HTTP client for JSON APIs and webhooks; stream and maintained Symfony implementations |
 
 Infrastructure-layer split packages that ship as Packagist libraries are expected to carry the normal release metadata shape in `composer.json`: `minimum-stability: stable` and branch aliases for `dev-main` plus the active maintenance branch. That invariant matters for local path-repository workflows because canonical path repos must still satisfy `^0.1` constraints when apps override published packages during development.
 
@@ -172,7 +369,7 @@ The monorepo enforces the seven-layer rule from `CLAUDE.md` on **runtime** Compo
 
 PHPStan analyses the roster-wide `packages` root while excluding non-source test support, migrations/scripts/config, the Nuxt-only admin tree, and Deployer's recipe DSL. It does not enumerate individual `packages/*/src` paths, so a new PHP package enters static analysis automatically; `bin/check-phpstan-paths` asserts that single-root shape.
 
-The PHP layer graph covers the **62 PHP packages** under `packages/` plus the three metapackages (`cms`, `core`, `full`, all skipped). `packages/admin/` is a Nuxt SPA (no `composer.json`, zero PHP source) and is not part of the PHP layer hierarchy; its PHP host extension is `waaseyaa/admin-surface`, which is what L6 actually means here.
+The PHP layer graph covers the **73 PHP packages** under `packages/` plus the three metapackages (`cms`, `core`, `full`, all skipped). `packages/admin/` is a Nuxt SPA (no `composer.json`, zero PHP source) and is not part of the PHP layer hierarchy; its PHP host extension is `waaseyaa/admin-surface`, which is what L6 actually means here.
 
 The same script also scans every package's `src/**/*.php` for `use Waaseyaa\X\…` imports and fails on any import whose target package sits **above** the importing package's layer. This catches cross-layer leaks that don't show up in `composer.json` (e.g. a Foundation listener referencing an L1 entity event class without declaring an upward `require`). Diagnostics are emitted as `FAIL [PL005]` and name the offending file, the importing package's layer, and the imported package's layer.
 
@@ -181,6 +378,29 @@ A second scan — **rule PL008** — covers the complementary blind spot: higher
 The package layer and namespace resolver indices are a single enforcement boundary. Startup rule **PL009** requires exact parity between the layer short names and namespace-map targets, including AI subnamespaces, before any source scan runs. This prevents an unmapped namespace (the historical `attachment` gap) from being silently skipped by PL005/PL008. Historical same-layer cycles are separately explicit in `tools/package-layers-cycle-baseline.txt`: **PL006** warns only for the five reviewed pairs in that file and fails on every new mutual runtime-require pair.
 
 **PL008 sub-pattern (b) — inline fully-qualified name tokens, and the tokenizer rewrite (WP7 audit remediation + same-WP adversarial-review fix round):** the original PL008 was a raw-text regex that required a leading quote character, so it only caught QUOTED string-literal FQCNs with raw double-backslash separators (e.g. `'Waaseyaa\\Node\\Foo'`). WP7 first added an inline-`::class` regex for the shape found in `packages/foundation/src/Http/ControllerDispatcher.php`'s `!\class_exists(\Waaseyaa\SSR\SsrPageHandler::class)` optional-dependency probe (invisible to PL005 — no `use` statement — and to the quote-anchored regex). Adversarial review of that regex then found three confirmed evasions and a false positive: static access `\Waaseyaa\Node\Foo::make()` passed (only the literal `::class` suffix was matched, despite static access being WORSE coupling — it autoloads at runtime); `'\Waaseyaa\Node\Foo'` (leading backslash inside the quotes) and single-backslash `'Waaseyaa\Node\Foo'` (valid PHP in single-quoted strings) both passed; and a trailing same-line comment mentioning an FQCN FAILED the gate on legitimate code (only whole-comment lines were stripped). `$scanStringLiteralFqcns` is now **tokenizer-based** (`token_get_all`, purely lexical): `T_COMMENT`/`T_DOC_COMMENT` tokens are dropped whole (exact comment stripping — trailing same-line comments and docblock `@see` references can never fire); sub-pattern (a) scans `T_CONSTANT_ENCAPSED_STRING`/`T_ENCAPSED_AND_WHITESPACE` token text (quoted strings, interpolated parts, heredoc/nowdoc bodies) with a separator-tolerant regex (one OR two raw backslashes, up to two leading); sub-pattern (b) flags any `T_NAME_FULLY_QUALIFIED` token starting `\Waaseyaa\` — covering `::class`, `::method()`, `::CONST`, `::$prop`, `new \Waaseyaa\…\Foo()`, `instanceof`, fully-qualified type hints, and leading-backslash `use \Waaseyaa\…;` imports (also invisible to PL005's regex), with multi-line `name … ::class` splits caught for free since the match is on the name token itself. `T_NAME_QUALIFIED` (relative qualified names) is deliberately not flagged — those resolve against the current namespace and any enabling `use` import is PL005's job. Both sub-patterns share the PL008 rule ID, finding/baseline/emit path, and per-file baseline (`tools/package-layers-string-literal-baseline.txt` — note its header: baselining is per-FILE, so re-audit the whole file for unrelated upward references before adding an entry). `ControllerDispatcher.php` was fixed by using its already-declared `SSR_PAGE_HANDLER` string constant at the callsite and baselined. The broadened scan surfaced two pre-existing offenders repo-wide — `foundation/src/ServiceProvider/ServiceProvider.php` and `ServiceProviderInterface.php`, whose `routes()` hook uses inline fully-qualified type hints (`\Waaseyaa\Routing\WaaseyaaRouter` L4, `\Waaseyaa\Entity\EntityTypeManager` L1) as the deliberate provider extension seam — both baselined with rationale (type hints resolve lazily and cannot be string constants; changing the signature would break every provider override via parameter contravariance; follow-up noted in the baseline). Coverage: `tests/Architecture/CheckPackageLayersGateTest.php` (11 PL008 fixture cases: quoted literal, inline `::class`, static access, leading-backslash quoted, single-backslash quoted, `new` instantiation, baseline suppression, same-layer no-false-positive, trailing `//` and `/* */` comments not flagged, docblock `@see` not flagged; fixture runs pass `WAASEYAA_LAYER_STRING_LITERAL_BASELINE=/dev/null` for isolation from the real baseline) and `bin/check-package-layers-pl008-self-test` (wired into `composer verify`; now exercises both sub-patterns fire-on-violator + green-after-allowlist). Re-verification of the rewrite additionally hardened PL005: its `use`-import regex now tolerates an optional leading backslash (`use \Waaseyaa\...;` previously evaded the file-level scan in every layer; PL008(b) only covered Layer 0), pinned by a non-L0 fixture test. PL008's per-dep FAIL line lists all violating files (not just the first), and two accepted lexical-scan limits are documented in the scanner docblock and baseline header: lowercase FQCNs evade (Composer PSR-4 prefix matching is case-sensitive, so a lowercase string cannot trigger upward autoloading), and diagnostic messages that merely mention an FQCN are a known false-positive class (prefer rephrasing over baselining).
+
+### Boot-free console command seam
+
+`ConsoleKernel::handle()` dispatches a small set of commands before any
+framework boot, by constructing the command directly from a static factory on
+its owning provider. `maintenance:*` and `db:init` established the pattern,
+`site:init` and `site:doctor` joined it in #2644, and `site:apply` in #2789.
+
+A command qualifies only when it needs no container: `db:init` takes a project
+root and manages the database it is initializing, `site:doctor` takes a
+project root and reads only the filesystem, and `site:apply` takes a project
+root and executes a reviewed apply request an earlier process emitted —
+decoding transported bytes and entering the existing execution authority, with
+no compiler to compose. The seam exists because
+`AbstractKernel::boot()` calls `bootDatabase()` before every
+`restrictedDiscoveryOnly` guard, so *any* booting command materializes
+`storage/waaseyaa.sqlite` — which is wrong for a command whose job is to
+initialize that database, and wrong for a read-only diagnostic that would
+otherwise create the zero-table file it is reporting on.
+
+This is a narrow seam, not a general escape hatch: it is `use`-imported into
+`ConsoleKernel` under the standing `/src/Kernel/` layer exemption below, and each
+member's boot-free property is pinned by a test.
 
 ### Kernel exemption surface (named files)
 
@@ -236,8 +456,19 @@ Every `Waaseyaa\Foundation\ServiceProvider\ServiceProvider` exposes a fixed set 
 | `middleware(EntityTypeManager): list<HttpMiddlewareInterface>` | `Waaseyaa\Foundation\ServiceProvider\Capability\HasMiddlewareInterface` | `HttpKernel::buildMiddlewarePipeline()` |
 | `httpDomainRouters(HttpKernel): iterable<DomainRouterInterface>` | `Waaseyaa\Foundation\ServiceProvider\Capability\HasHttpDomainRoutersInterface` | `HttpKernel::buildDomainRouterChain()` |
 | `withMigrationProviders(list<object>): void` | `Waaseyaa\Foundation\ServiceProvider\Capability\AcceptsMigrationProvidersInterface` | `AbstractKernel::injectMigrationProviders()` |
+| `withAgentToolProviders(list<object>): void` | `Waaseyaa\Foundation\ServiceProvider\Capability\AcceptsAgentToolProvidersInterface` | `AbstractKernel::injectAgentToolProviders()` |
+| `applicationMasterRekeyContributions(): iterable<ApplicationMasterRekeyContribution>` | `Waaseyaa\Foundation\ServiceProvider\Capability\ProvidesApplicationMasterRekeyContributionsInterface` | `ApplicationMasterRekeyComposition::fromProviders()` during `AbstractKernel` boot |
 
 The `withMigrationProviders` hook lets the kernel hand the discovered migration providers (objects exposing application migrations, found via the Layer-3 `HasMigrationsInterface`) to the provider that owns the migration registry, before that provider's `boot()` resolves the registry. The capability interface lives in Foundation so the kernel guards the call site with a named interface (not a concrete FQCN) while the Layer-3 migration `ServiceProvider` opts in via a downward dependency; the interface param is `list<object>` and the implementation filters to migration providers.
+
+The `withAgentToolProviders` hook is the corresponding application-tool lifecycle. The kernel discovers providers implementing the Layer-5 `ProvidesAgentToolsInterface`, sorts them by provider class for deterministic registration, and supplies them to `AiToolsServiceProvider` before provider boot. The registry invokes each contributor exactly once when its singleton is first constructed. Contributors receive the registry directly and must not resolve it recursively or capture request-scoped state. Duplicate tool names remain hard failures.
+
+The application-master contribution hook runs only for a full runtime boot,
+after every provider has registered and before any provider boot hook executes.
+The kernel composes the complete set against its exact `DatabaseInterface`
+object, freezes purpose and adapter order deterministically, and exposes the
+result only after the whole boot succeeds. Restricted discovery, an install
+with no active consumers, and any failed or in-progress boot expose no registry.
 
 ### ServiceProvider kernel-services bus
 
@@ -255,20 +486,35 @@ public function get(string $abstract): ?object;
 |----------|-------------|
 | `Waaseyaa\Entity\EntityTypeManager` | The kernel’s entity-type manager |
 | `Waaseyaa\Entity\Field\FieldDefinitionRegistryInterface` | The exact canonical registry already owned by the kernel's concrete `EntityTypeManager`; `null` for a bare/unit-constructed manager with no registry (#2047) |
+| `Waaseyaa\Field\FieldTypeManagerInterface` / concrete `FieldTypeManager` | The exact boot-scoped manager owned by the canonical field registry: built-ins plus manifest-discovered downstream plugins. `null` for a bare manager with no concrete field registry (#2786). |
 | `Waaseyaa\Database\DatabaseInterface` | The kernel’s `DBALDatabase` |
 | `Symfony\Contracts\EventDispatcher\EventDispatcherInterface` | The kernel’s event dispatcher |
 | `Psr\EventDispatcher\EventDispatcherInterface` | The same event dispatcher instance (G-025 / #1940) |
 | `Waaseyaa\Foundation\Event\EventDispatcherInterface` | The same event dispatcher instance, guarded by `instanceof` since the property's declared type doesn't statically guarantee it (G-025 / #1940) |
 | `Waaseyaa\Foundation\Log\LoggerInterface` | The kernel’s logger |
+| `Waaseyaa\Foundation\Security\SecretResolverRegistry` | The one kernel-owned registry used to compose secret providers and exact provider/package/class/purpose/environment policy during provider registration; the kernel freezes it immediately after that registration pass |
 | `\PDO` | The native PDO connection beneath `DBALDatabase` |
 | `Waaseyaa\Access\Gate\GateInterface` | A shared `EntityAccessGate` wrapping the kernel's `EntityAccessHandler` (G-014 / #1940) — memoized per handler instance. Resolves `null` before `AbstractKernel::discoverAccessPolicies()` has run (the handler accessor is not yet available), matching the existing `EntityAccessHandler::class` case's degrade-to-null behaviour. |
+| `Waaseyaa\Foundation\Diagnostic\HealthCheckerInterface` | The kernel-owned `HealthChecker` from `AbstractKernel::healthChecker()` (#2820), read lazily through an accessor because it is composed from the boot diagnostic report. The same memoized instance backs the handler container's kernel binding, so `health:check` (reflection-wired) and `health:report` (bound by `HealthSchemaServiceProvider`) share one checker. `null` on construction sites without a kernel accessor; a sibling provider binding the abstract is shadowed. Before this row the checker existed only as a handler-container kernel binding, so a provider factory depending on it threw `No binding registered for …` — which `KernelHandlerContainer` reads as "unbound id" — and fell through to reflection auto-wiring in every consumer application. |
 | anything else | The first sibling provider whose `getBindings()` declares the abstract, or `null` |
 
 The provider list is read through a closure accessor so resolution sees the live registration state — necessary when a provider’s `register()` resolves a binding declared by a sibling registered earlier in the same pass.
 
 **Resolution order in `ServiceProvider::resolve()`.** Local bindings (`singleton`/`bind`) win first; only when the abstract is unbound locally does the provider delegate to `KernelServicesInterface::get()`; if that returns `null`, the provider throws `RuntimeException("No binding registered for {$abstract}.")`.
 
-**Hardcoded bus cases shadow sibling-provider bindings.** Inside `ProviderRegistryKernelServices::get()`, every abstract in the table above (including `GateInterface`, G-014, and `FieldDefinitionRegistryInterface`, #2047) is checked and returned BEFORE the fallthrough loop over sibling providers' `getBindings()` ever runs — the loop is only reached for abstracts none of the named cases matched. A host provider that binds one of these abstracts intending it to be resolvable by sibling providers through the bus is shadowed: every bus consumer still gets the kernel-owned service. In particular, the existing duplicate `FieldServiceProvider` registry binding is shadowed for sibling consumers; removing or reconciling that duplicate is a documented follow-up and is not required for #2047 because the real kernel path proves the canonical manager registry is authoritative. This does not affect resolution *within* the host provider itself — `ServiceProvider::resolve()`'s local-bindings-first rule (previous paragraph) still means a provider resolving an abstract it bound locally gets its own binding, never the bus. The shadowing only applies to *other* providers resolving that abstract through `KernelServicesInterface::get()`.
+<!-- Spec reviewed 2026-09-08 - #3021 circular service resolution guard: `ServiceProvider::resolve()` had no in-flight guard, so a binding factory that (directly or through a cycle of other abstracts) resolved its own abstract re-entered `resolve()` unboundedly — a probe with an artificial counter cap confirmed both a direct self-resolution ('A' -> 'A') and a two-service cycle ('X' -> 'Y' -> 'X') recursing past depth 5000 with no container-side termination; absent that probe cap, PHP has no recursion limit and the process runs to stack/memory exhaustion (a fatal error, not a catchable Throwable). `KernelHandlerContainer::get()`'s reflection auto-wiring branch (`$this->get($type->getName())` per constructor parameter) had the identical gap for a constructor cycle. Both now track an in-flight set of abstracts/ids being resolved on the current call stack (`ServiceProvider::$resolving`, `KernelHandlerContainer::$resolving`) and, on re-entry, throw `Waaseyaa\Foundation\ServiceProvider\CircularServiceResolutionException` (a `\RuntimeException` subtype) naming the ordered in-flight chain from the first re-entered abstract to the repeat, e.g. "Circular service resolution detected: A -> B -> A." — built only from abstract identifiers, never factory arguments, constructor arguments, resolved values, or config. Identifiers are caller-controlled strings and may themselves contain sensitive text or control characters, so consumers must apply sink-appropriate encoding or redaction rather than logging the message verbatim by class alone. The tracking maps prefix their internal keys and store each original identifier as the value, preserving a `list<string>` cycle even for numeric-string identifiers such as `"0"`. The in-flight set is cleared via try/finally around every factory/auto-wire invocation — success, a circular failure, or an unrelated exception — so a resolution failure never leaves the container or provider unusable for a later, valid resolution; a legitimate diamond (two consumers sharing one dependency, resolved sequentially from a common root) is not a cycle because the shared entry's in-flight marker clears before the second consumer needs it, and a `singleton` hit short-circuits before the in-flight check runs at all. On `ServiceProvider`, the in-flight set lives on the same object that owns `$resolved` — the `mergeChildProvider()` merge root — so a cycle crossing a merged child (e.g. root binds A -> B, a merged child binds B -> C -> A) is still caught in one place rather than missed or falsely reported per-provider. The exception's message deliberately does not start with the "No binding registered for " prefix `ServiceProvider::resolve()` uses for a genuinely unbound abstract, so `KernelHandlerContainer::get()`'s existing re-throw-unless-unbound-prefix rule (previous paragraphs) propagates a cycle instead of misreporting it as an unbound id. `resolveOptional()` is unchanged — including that it still catches `CircularServiceResolutionException` like any other `\RuntimeException` and returns `null`, matching its existing "swallow any resolution failure" contract; callers that need to distinguish a cycle from a genuinely missing service must call `resolve()` directly. Scope limit on the ordered path: each `ServiceProvider` owns its own in-flight set, and `ProviderRegistryKernelServices::get()`'s fall-through loop routes an unbound abstract to a *sibling* provider object, so a cycle that crosses providers through the kernel-services bus still terminates but renders a degenerate path — a two-provider `SA -> SB -> SA` ring reports "Circular service resolution detected: SA -> SA.". Termination and the compatibility guarantees hold; only the rendered chain is abbreviated, so an operator reading a self-referential path should also check the bus fall-through before concluding a single factory resolves itself. Sharing in-flight state across the bus would be a dependency-injection redesign and is deliberately out of scope for #3021. The exception is declared in `packages/foundation/public-surface.php`; no other public API is added, and no non-cycle behavior changes. Acceptance: `CircularServiceResolutionTest` (ServiceProvider, including numeric-string identifiers, the merge-root-crossing cycle, the diamond false-positive guard, and caller-controlled identifier text), `KernelHandlerContainerCircularResolutionTest` (constructor auto-wiring and numeric-string kernel-id cycles). -->
+
+**Hardcoded bus cases shadow sibling-provider bindings.** Inside `ProviderRegistryKernelServices::get()`, every abstract in the table above (including `GateInterface`, G-014, `FieldDefinitionRegistryInterface`, and the two field-type-manager keys) is checked and returned BEFORE the fallthrough loop over sibling providers' `getBindings()` ever runs — the loop is only reached for abstracts none of the named cases matched. A host provider that binds one of these abstracts intending it to be resolvable by sibling providers through the bus is shadowed: every bus consumer still gets the kernel-owned service. `FieldServiceProvider` deliberately adopts both the canonical field-definition registry and the field-type manager from the bus for its own bindings, so its `BundleTemplateCompiler`, local consumers, HTTP consumers, and sibling consumers converge on the same instances rather than forking either field authority. For the field-definition registry, a non-null bus value of the wrong type refuses resolution; only a standalone provider with no kernel registry constructs an isolated built-in registry. Other local bindings still follow `ServiceProvider::resolve()`'s local-bindings-first rule (previous paragraph). The shadowing only applies to sibling providers resolving an abstract through `KernelServicesInterface::get()`.
+
+**Field-type boot order (#2786).** `AbstractKernel` compiles or loads the package
+manifest before building the entity-type manager. It creates one
+`FieldTypeManager` from the manifest's exact `field_types` inventory, gives that
+instance to `FieldDefinitionRegistry` and every kernel-created runtime schema
+handler, and only then registers providers. HTTP schema routing and provider
+adapters (GraphQL, Admin Surface, and Wayfinding) receive the same instance
+through the bus. A manifest plugin that is missing, malformed, duplicated, or
+whose live attribute id differs from its cached key refuses boot before entity
+definitions are admitted.
 
 **Propagation through `mergeChildProvider()`.** When a stack provider merges a child via `mergeChildProvider()`, the child receives the same `KernelServicesInterface` instance so `resolve()` keeps working inside the child’s `register()`.
 
@@ -461,7 +707,7 @@ interface TagAwareCacheInterface extends CacheBackendInterface
 | Backend | File | Tag-aware | Notes |
 |---------|------|-----------|-------|
 | `MemoryBackend` | `packages/cache/src/Backend/MemoryBackend.php` | Yes | In-memory array; use for tests. Implements `TagAwareCacheInterface`. |
-| `DatabaseBackend` | `packages/cache/src/Backend/DatabaseBackend.php` | Yes | PDO-backed; auto-creates table on first use. `INSERT OR REPLACE`. Tags stored comma-separated. |
+| `DatabaseBackend` | `packages/cache/src/Backend/DatabaseBackend.php` | Yes | PDO-backed; requires migration-owned schema. `INSERT OR REPLACE`. Tags are comma-separated and every read is restricted to the active cache generation. |
 | `NullBackend` | `packages/cache/src/Backend/NullBackend.php` | No | All gets return false; all writes are no-ops. Use for disabled bins. |
 
 ### CacheFactory and CacheConfiguration
@@ -489,11 +735,68 @@ $cache = $factory->get('cache_entity');  // returns DatabaseBackend
 $cache = $factory->get('cache_other');   // returns MemoryBackend
 ```
 
+`CacheConfiguration::getConfiguredBins(): list<string>` is the canonical
+enumeration of every bin explicitly registered on a configuration -- the union
+of `setBackendForBin()` and `setFactoryForBin()` keys, deterministically
+ordered (bin-mapping entries first, then factory entries, duplicates
+collapsed). It deliberately excludes the default backend: a bin name nobody
+registered is not "configured" just because `CacheFactory::get()` will still
+hand back a usable (fresh, unconfigured) instance for it. `CacheFactory::
+getConfiguration(): CacheConfiguration` returns the configuration a factory
+resolves against, so a caller holding only `CacheFactoryInterface` (which does
+not expose bin enumeration, to avoid a breaking interface change) can still
+reach it: `$factory->getConfiguration()->getConfiguredBins()` when `$factory`
+is a `CacheFactory` (`CacheFactoryInterface`'s only implementation).
+
+`AbstractKernel::buildCacheFactory(RuntimeEpochInterface $runtimeEpoch):
+CacheFactory` is the one boot-scoped cache-composition authority. In ordinary
+provider order it first preserves an application provider's explicit
+`CacheFactoryInterface` binding when that binding resolves to the canonical
+`CacheFactory`; that factory's own `CacheConfiguration` remains the inventory
+authority. When no provider binds a factory, the kernel builds the framework's
+production bins (`render`, `discovery`, `mcp_read`). A provider binding to a
+different implementation fails explicitly because `CacheFactoryInterface`
+does not expose a configured-bin inventory and pairing it with a fabricated
+configuration would reintroduce split authority. The provider-owned path
+does not resolve `RuntimeEpochInterface`: that dependency belongs to the
+kernel's default `mcp_read` composition, which an application factory replaces.
+
+The selected factory is memoized for the kernel boot. `HttpKernel::
+finalizeBoot()` calls this method after resolving the runtime epoch through its
+HTTP service resolver (with a development-mode `StableRuntimeEpoch` fallback);
+`AbstractKernel::buildHandlerContainer()` exposes the same factory and its own
+configuration to CLI handlers. Both surfaces therefore use the exact same
+factory and bin list -- a CLI command enumerating "the application's configured
+bins" (`cache:clear`, #3025) cannot drift from or shadow what HTTP-serving boot
+registered.
+
 ### Tag invalidation
 
 File: `packages/cache/src/CacheTagsInvalidator.php`
 
 `CacheTagsInvalidator` holds references to all registered cache bins and delegates `invalidateTags()` to those that implement `TagAwareCacheInterface`.
+
+### Application-master cache invalidation
+
+`CacheServiceProvider` contributes the installed cache HMAC purpose through the
+Foundation application-master capability. The DB-02 migration-owned
+`cache_generation` singleton is the bounded invalidation authority: every
+database-cache write records its current generation and every read requires an
+exact match. Forward rekey and rollback each compare-and-swap that one logical
+record to the next monotonic generation. Existing payload rows are neither
+opened nor rewritten, and a later rollback never reactivates an older cache
+generation. Explicit deletion is physical across every generation for the
+selected cache id or bin, so operator cache clears reclaim superseded payload
+rows instead of only hiding them. Runtime cache construction and reads perform
+no DDL.
+
+The database queue contributes its payload HMAC purpose with a fail-closed
+drain strategy. Keyring-composed writers emit the active master version and
+read only declared versions; legacy application-secret envelopes require an
+explicit cutover-only compatibility flag. Forward inventory requires pending
+and failed predecessor payloads to be empty, rollback inventory requires failed
+successor payloads to be empty, and verification repeats those exact database
+checks. The adapter performs no job deletion or payload rewrite.
 
 ### Cache event listeners
 
@@ -568,11 +871,31 @@ final class DBALDatabase implements DatabaseInterface
 {
     public function __construct(private readonly Connection $connection);
     public static function createSqlite(string $path = ':memory:'): self;
+    public function transactional(\Closure $callback): mixed;
     public function getConnection(): Connection;   // ONLY on DBALDatabase, NOT on DatabaseInterface
 }
 ```
 
-`DBALDatabase` wraps a Doctrine DBAL `Connection`. The `createSqlite()` factory enables foreign-key enforcement on every new connection before any schema or data work, and enables WAL mode for non-memory databases. Query results use `fetchAssociative()` (equivalent to FETCH_ASSOC — no duplicate numeric-indexed columns).
+`DBALDatabase` wraps a Doctrine DBAL `Connection`. Under the
+[S1 SQLite topology](s1-sqlite-topology.md), `createSqlite()` is the shared
+connection boundary for authoritative storage and the optional search
+projection. It rejects DSN/URI and UNC/device path shapes, enables and verifies
+foreign-key enforcement plus a 5000 ms busy timeout on every connection, and
+enables and verifies WAL for file-backed databases. Effective drift fails with
+stable `S1-DB003`; issuing a PRAGMA without reading it back is not evidence.
+Query results use `fetchAssociative()` (equivalent to FETCH_ASSOC — no duplicate numeric-indexed columns).
+`query()` infers a Doctrine scalar parameter type for every positional or named
+argument. Integers and booleans bind as integers, `null` binds as NULL, and
+strings and floats bind as strings. This is required on SQLite when a bound
+integer is compared with an expression rather than an affinity-bearing bare
+column; relying on Doctrine's default string binding can make a numeric guard
+evaluate incorrectly. The inference matches the fluent query builders.
+
+`transactional()` is the concrete managed-callback convenience boundary. It
+uses the same transaction objects returned by `transaction()`; code that owns a
+`DatabaseInterface` may continue to use explicit commit/rollback. Raw Doctrine
+`Connection::transactional()` is an escape hatch for migration-only work and
+must not enclose framework repository mutations.
 
 ### TransactionInterface
 
@@ -586,7 +909,21 @@ interface TransactionInterface
 }
 ```
 
-`DBALTransaction` begins the transaction in its constructor. Calling `commit()` or `rollBack()` after the transaction is no longer active throws `\RuntimeException`.
+`TransactionCompletionInterface extends TransactionInterface` adds
+`afterCommit(\Closure): void`. `DBALTransaction` implements it through one
+completion coordinator shared by every `DBALDatabase` wrapper around the same
+Doctrine connection. Nested managed commits merge their callbacks into the
+parent frame; only the physical outer commit drains them, and rollback discards
+the affected frame. Completion callbacks run in registration order. All are
+attempted even when one throws; the committed transaction then reports their
+failures as `TransactionCompletionException` without claiming rollback.
+
+`DBALTransaction` begins the transaction in its constructor. Calling `commit()`
+or `rollBack()` after the transaction is no longer active throws
+`\RuntimeException`. If the connection already has an unmanaged Doctrine
+transaction but the completion coordinator has no matching parent frame,
+construction fails before opening a savepoint. This fail-closed rule prevents a
+savepoint release from being mistaken for the outermost commit.
 
 ## Query Builder
 
@@ -686,44 +1023,14 @@ Invalidation:
   - plus broad discovery-surface tags for relationship/node graph-impact changes
 - Fallback path (non tag-aware backends): `deleteAll()` for correctness.
 
-## MCP Read-Path Caching (v1.1)
+## Legacy MCP Read-Path Cache — REMOVED
 
-The HTTP kernel maintains a dedicated MCP read cache bin (database-backed, table `cache_mcp_read`) for read-heavy tool calls served by `Waaseyaa\Mcp\McpController`:
-
-- `search_entities` / `search_teachings`
-- `ai_discover`
-- `traverse_relationships`
-- `get_related_entities`
-- `get_knowledge_graph`
-
-Cache key contract:
-
-- Stable hash of `{contract_version, tool, arguments, account_context}`.
-- `arguments` are recursively normalized with deterministic associative-key sorting.
-- `account_context` includes:
-  - `authenticated` flag
-  - account ID
-  - sorted role list
-
-This prevents cross-account and anonymous/authenticated cache leakage while preserving deterministic replay for identical callers and inputs.
-
-Runtime behavior:
-
-- Tool result payloads are cached with 120-second TTL.
-- Payload contract remains unchanged (`meta.contract_version`, `meta.contract_stability`, tool metadata).
-- Cache writes include tags:
-  - `mcp_read`
-  - `mcp_read:contract:v1.0`
-  - `mcp_read:tool:{tool}`
-  - entity tags extracted from arguments/payload (`mcp_read:entity:{type}` and `mcp_read:entity:{type}:{id}`).
-
-Invalidation:
-
-- Preferred path (tag-aware backends): targeted `invalidateByTags()` on entity save/delete:
-  - `mcp_read`
-  - `mcp_read:entity:{type}`
-  - `mcp_read:entity:{type}:{id}`
-- Fallback path (non tag-aware backends): `deleteAll()`.
+The `cache_mcp_read` stack and the legacy discovery, search, and traversal tools
+were reachable only through the unrouted `Waaseyaa\Mcp\McpController` removed
+in WP17 (#1738). The live `Waaseyaa\Mcp\McpEndpoint` has no MCP read-cache bin
+or compatibility contract for those tool names. A future search/resource
+surface must define its own access-aware cache partitioning and invalidation
+contract before shipping.
 
 ## SSR Render Cache Variant Contract (v1.2)
 
@@ -789,6 +1096,10 @@ Public SSR routes now expose deterministic HTTP cache profiles aligned with work
   - `public, max-age={cache_max_age}, s-maxage={cache_shared_max_age}, stale-while-revalidate={cache_stale_while_revalidate}, stale-if-error={cache_stale_if_error}`
 - Authenticated SSR responses remain private:
   - `private, no-store`
+- Any response bound to a PHP session or carrying `Set-Cookie` is finalized as
+  `private, no-store`, even for an anonymous account. The final response policy
+  replaces the complete field, so `public`/`s-maxage` cannot coexist with a
+  cookie. Only cookie-free stateless responses remain shared-cache eligible.
 
 Default values when no explicit config is provided:
 
@@ -922,10 +1233,58 @@ interface SchemaInterface
 
 `DBALSchema` uses Doctrine DBAL's schema introspection and DDL generation. Type mapping: `serial` -> INTEGER AUTOINCREMENT, `varchar` -> TEXT, `int`/`integer` -> INTEGER, `text` -> TEXT, `float`/`numeric`/`decimal` -> REAL, `blob` -> BLOB.
 
+`DBALSchema::fieldNames(string $table): array` reads canonical column names
+through `TableColumnNames`, without modifying the schema. The caller
+checks table availability first. `SchemaRequirement::assertAvailable()` uses
+one table-existence inspection and, for non-empty DBAL requirements, one column
+inspection for all required fields (#3182). Ordinary adapters read live data.
+`DBALDatabase::inspectSchema(Closure $inspection): mixed` groups a read-only
+validation operation: adapters share one catalog enumeration and canonical
+columns per table until the callback completes or throws. Nested operations
+restore the enclosing adapter; escaped adapters revert to live reads on exit.
+The factory uses this scope for registered entity runtime guards and ends it
+before provider boot. Each new operation re-reads the live schema. All schema
+adapter mutators refuse within the scope; the callback contract also forbids
+raw SQL schema mutation. Constraint inspection and the activation fingerprint
+retain their existing independent live reads.
+Non-DBAL `SchemaInterface` implementations retain their per-field checks.
+Missing tables or fields and failed inspection retain the `[S1-DB106]` refusal;
+this optimization never authorizes DDL or changes constraint validation.
+
 `addPrimaryKey()` uses Doctrine's portable schema comparator and generated
 ALTER statements on capable platforms. SQLite cannot add a primary key to an
 existing table, so that platform retains a clear `\RuntimeException` requiring
 the key to be declared at table creation.
+
+**A targeted mutation emits SQL for its own table only (#2804).** Every mutator
+compares a single table against its own mutated clone —
+`AbstractSchemaManager::introspectTable()` plus `Comparator::compareTables()`,
+then `AbstractPlatform::getAlterTableSQL()` — and never compares schema to
+schema. This is a correctness boundary, not a performance one. Doctrine's
+introspection round-trip is lossy, so a table nobody touched can compare as
+changed against *itself*: a table with a composite primary key and
+single-column foreign keys reads as needing foreign-key indexes its DDL never
+created. A whole-schema `getAlterSchemaSQL()` therefore rebuilt such tables
+through SQLite's copy-and-replace, and the replacement was generated from the
+degraded introspection rather than the real DDL. Only what Doctrine models
+survived: a composite primary key returned as a single
+`INTEGER PRIMARY KEY AUTOINCREMENT` column, and table-level `UNIQUE` and
+`CHECK` constraints and triggers were dropped. Observed on a real database,
+adding one column to `waaseyaa_config_generation_v2` rebuilt the unrelated
+`waaseyaa_config_activation_v2` and `audit_checkpoint_succession_pruned`,
+replacing the authority-scoped `PRIMARY KEY (authority_id,
+activation_sequence)` with a global autoincrement and dropping the
+genesis-guard trigger — so two configuration authorities could no longer each
+hold activation sequence 1. With a single authority nothing collides and the
+degradation is silent, which is the more dangerous shape. Lossiness in the
+rebuild of the caller's *own* table remains, because SQLite alters by
+copy-and-replace; it simply no longer reaches tables the caller did not name.
+That remaining target-table fidelity gap is tracked as **#2805** —
+`addForeignKey()` still drops its own table's composite primary key,
+table-level `UNIQUE` and `CHECK` constraints, and triggers, and a shipped OIDC
+migration still compares whole schemas.
+Any new mutator must follow the single-table seam. Acceptance:
+`DBALSchemaTargetedMutationTest`.
 
 **Distinction from SchemaPresenter**: `SchemaInterface` is a database DDL abstraction in `packages/database-legacy/` for creating/altering tables. It is unrelated to `SchemaPresenter` (`packages/api/src/Schema/SchemaPresenter.php`), which generates JSON Schema output from entity field definitions for the API layer. `SchemaPresenter` works with `EntityType::getFieldDefinitions()` and does not use `SchemaInterface`.
 
@@ -961,9 +1320,16 @@ abstract class Migration
     public array $after = [];  // package names this migration must run after
 
     abstract public function up(SchemaBuilder $schema): void;
-    public function down(SchemaBuilder $schema): void {}  // optional rollback
+    public function providesSupportedReverse(): bool { return false; }  // explicit reverse opt-in (#2731)
+    public function down(SchemaBuilder $schema): void {}  // reverse body; ignored unless supported
 }
 ```
+
+Forward-only is the default. A `down()` override alone is not a supported reverse
+plan. Test fixtures and new migrations may return `true` from
+`providesSupportedReverse()`. Checksum-bound first-party historical files must
+not add that method — register exact ledger ids in `LegacyReversePlanCatalog`
+instead (see `docs/specs/s1-schema-authority.md` §Rollback and verification).
 
 ### SchemaBuilder
 
@@ -1026,7 +1392,146 @@ final class Migrator
 }
 ```
 
-Migrations are topologically sorted by `Migration::$after` dependencies. Each batch gets an incrementing batch number. Rollback undoes the last batch in reverse order.
+Migrations are topologically sorted by `Migration::$after` dependencies. Each batch gets an incrementing batch number. Rollback undoes the last batch in reverse order only when every node has an explicit supported reverse plan, the loaded source and package match the applied ledger identity (`[S1-DB113]`), and each `down()` changes the logical schema fingerprint (`[S1-DB114]`); unsupported reverses refuse with `[S1-DB104]` and leave schema and ledger unchanged (#2731).
+
+### Fresh-install reconciliation (#2701)
+
+`Migrator` wraps each v2 node's compile, targeted table materialization,
+execution and ledger write in one transaction, so an interrupted initialization
+leaves the node wholly applied or wholly absent — including a table the
+materializer created for it. `V2PlanExecutor` takes an optional
+`EntityTableMaterializerInterface`; without one, an absent table simply fails
+closed on real SQL. It compiles the authored plan in full first — so policy and
+capability refusals fire before any database contact, and `diff_hash` is fixed —
+then classifies and executes one operation at a time in authored order, so each
+operation is judged against the state its predecessors left behind rather than
+against a single pre-execution snapshot. `OpPreconditionResolver` compares column
+types by SQLite storage **affinity**, not by rendered SQL text, because the
+canonical materializer emits Doctrine's vocabulary (`CLOB`, `DOUBLE PRECISION`)
+while the v2 compiler emits its own (`TEXT`, `REAL`).
+
+Affinity alone is not sufficient: the two producers spell one logical type across
+an affinity boundary — Doctrine's `BOOLEAN` is NUMERIC affinity where the compiler
+renders `INTEGER`. That single pair is reconciled by an explicit per-logical-type
+allowlist rather than by equating INTEGER and NUMERIC in general, so a `DECIMAL`
+column still refuses an authored `int`.
+
+Primary-key membership is read from `PRAGMA table_xinfo.pk` and refuses under
+`[S1-DB110]`. A primary key is not expressible in `ColumnSpec` — the compiler
+renders only `<type> [NOT NULL] [DEFAULT <literal>]` — so such a column is not
+the one the operation declares. `pk` is a **1-based position within the key**,
+not a flag, so membership is any non-zero value and a column in a later position
+of a composite key counts. The check runs before the type, nullability and
+default comparisons, because SQLite reports an `INTEGER PRIMARY KEY` rowid alias
+as `notnull = 0` although it cannot hold NULL, which makes the nullability
+reading untrustworthy for exactly that column.
+
+**The column comparison is closed over SQLite's constraint grammar.**
+`column-constraint` and `table-constraint` are finite productions, so the
+properties a live column can carry outside the authored vocabulary are a closed
+list, and each is decided by the source that owns it:
+
+| Property | Source | Refuses when |
+|---|---|---|
+| `PRIMARY KEY` | `PRAGMA table_xinfo.pk` | non-zero (a 1-based position) |
+| generated / hidden | `PRAGMA table_xinfo.hidden` | non-zero |
+| `UNIQUE` constraint | `PRAGMA index_list.origin` = `u` + `index_info` | the column is a member |
+| `REFERENCES` | `PRAGMA foreign_key_list.from` | the column is a **source** |
+| type / nullability / default | `PRAGMA table_xinfo` | compared as described above |
+| `COLLATE` | stored DDL, via `SqliteTableDefinition` | effective collation ≠ `BINARY` |
+| `NOT NULL` conflict policy | stored DDL | the applied policy ≠ `ABORT` |
+| `CHECK` dependence | stored DDL | the expression can read this column |
+
+Reaching the end is therefore a *proof* of equivalence, not an absence of
+findings. `table_xinfo` replaces `table_info` because the latter omits generated
+columns entirely, which made a generated target look missing and deferred the
+failure to a raw SQL error instead of an auditable `[S1-DB110]` refusal.
+
+Three refusals are narrower than a blanket rule, because each has a legitimate
+shape beside it that must still be accepted. An index created by `CREATE INDEX`
+(`origin` = `c`) is a separate schema object with its own authored form,
+`AddIndex`, and never makes a column unauthorable — entity schema synchronization
+emits exactly that for `uuid`, so conflating it with a `UNIQUE` constraint would
+refuse every ordinary entity table. A foreign key refuses only where this column
+is the source; being the referenced target is a property of the other table. And
+explicit `ON CONFLICT ABORT` and explicit `COLLATE BINARY` restate the defaults
+the compiler's own output carries, so they are compared semantically and
+accepted.
+
+`CHECK` is judged by whether its expression **can read** the column, wherever the
+constraint is written, and the reader closes that question transitively through
+generated columns. The supported reference grammar, the one-sided
+over-approximation that makes it sound, the explicit unknown-refuses cases, and
+the stated limitations are recorded in `docs/change-records/FW-2701.md`.
+
+Defaults are compared as **SQL literal expressions**, both sides rendered through
+the compiler's own literal renderer. Comparing an unquoted PHP string against
+SQLite's literal text conflates two representations: it refuses an authored empty
+string, an authored `"NULL"`, and any value carrying surrounding whitespace or
+apostrophes, while accepting a column that has no default at all. Only the live
+side normalizes an unquoted `NULL` to "absent", which is what Doctrine emits for a
+nullable column.
+
+Index identity is the name the compiler will actually emit, compared through
+`PRAGMA index_xinfo` so that partiality, sort direction and **collation** all
+participate. An authored index declares no collation and therefore inherits the
+column's; an index under a different collation is refused, because its uniqueness
+and ordering semantics genuinely differ.
+
+Collation interpretation is **authoritative or silent**. `PRAGMA table_info` does
+not report collation, so `SqliteTableDefinition` reads the stored schema text.
+
+Interpretation is **token-preserving**, and this is a correctness requirement
+rather than an implementation detail. The text is tokenized so that identifiers,
+quoted identifiers, string literals and parenthesis nesting keep their
+boundaries, and comments and whitespace act as **separators** that end the token
+before them. `COLLATE` is recognised only as a standalone token at the column
+definition's own nesting level, so it is never matched inside a longer identifier
+and never merged with an adjacent token. Identifier boundaries follow SQLite's
+own rule, in which **every byte at or above 0x80 is an identifier character** —
+an ASCII-only rule would end an identifier early and could fabricate a `COLLATE`
+token where SQLite sees only a multi-word type name.
+
+One lexer exception is modelled explicitly: a UTF-8 byte-order mark is treated as
+whitespace **only where a token would start**. Inside a token those same bytes are
+ordinary identifier characters, which is why they are not stripped globally —
+`TEXT <BOM>COLLATE NOCASE` carries a real clause, while `COLLATE<BOM>NOCASE` is a
+single identifier carrying none. The **whole** definition is examined
+before answering, because a later `COLLATE` clause supersedes an earlier one —
+which is the clause SQLite applies.
+
+A collation name is read in **every spelling SQLite accepts**: bare, and
+double-quoted, backtick-quoted, bracketed or single-quoted, since SQLite takes a
+string literal wherever an identifier is expected. Accepting only the bare and
+quoted-identifier forms reported a legitimately `NOCASE` column as unknown, and
+unknown makes the caller refuse a migration whose index is in fact equivalent —
+fail-closed rather than dangerous, but still a wrong answer about valid DDL.
+
+Three outcomes, never two: a declared clause yields its collation; a column
+carrying none yields `BINARY`, authoritative because it is SQLite's documented
+default rather than a guess; anything unresolved — table absent, schema text
+unreadable, column not found, a `COLLATE` clause whose argument is not a name in
+any of those spellings — is **unknown**. Unknown fails closed: equivalence cannot be
+established, so the operation is refused. Collapsing unknown to `BINARY` would
+silently accept an index with different uniqueness and ordering semantics, which
+is the failure this check exists to prevent. An index entry that is an expression
+or rowid rather than a plain column (`cid < 0`) is refused for the same reason.
+
+The parser's predictions are pinned by differential tests that use SQLite itself
+as the oracle: each case creates the table, creates the authored index through the
+real compiler, and compares the parser against `PRAGMA index_xinfo`. The contract
+those tests enforce is one-sided — a non-null result must agree with SQLite;
+returning unknown is always permitted. That property is the safety one, and it is
+deliberately permissive: a reader that returned unknown for everything would
+satisfy it while refusing every migration. `SqliteCollationOracleCorpusTest`
+closes the other side over a wide corpus — each row names the collation SQLite
+actually uses and asserts the parser produces exactly it, so no row can pass by
+reporting unknown, and the corpus measures how much real DDL the reader resolves
+rather than only that it never lies. `MigrationRepository::record()` accepts a nullable
+`apply_mode` (`applied` | `already_satisfied`), added idempotently by
+`ensureCurrentSchema()`. It is audit evidence: `hasRun()`, `getStoredChecksum()`
+and verification never read it. See `docs/specs/schema-evolution-v2.md` §9.1.
+
 
 ### MigrationRepository
 
@@ -1038,6 +1543,99 @@ Tracks executed migrations in the `waaseyaa_migrations` table:
 - `package` VARCHAR(128) -- originating package
 - `batch` INTEGER -- batch number
 - `ran_at` TIMESTAMP
+
+#### Writer-position invariant (SQLite, #2446)
+
+`acquireSchemaAuthority()` runs inside the coordinator's transaction, which DBAL
+opens as a **deferred** transaction. A deferred transaction becomes a reader or
+a writer according to whichever kind of statement runs first, and that choice is
+irreversible for the transaction's lifetime in any useful sense:
+
+- If a **write** runs first, the transaction holds the write lock. A competing
+  claim blocks and `busy_timeout` (`SqliteTopology::BUSY_TIMEOUT_MS`) applies,
+  so contention resolves by waiting.
+- If a **read** runs first, the transaction pins a read snapshot. The first
+  later write is then a read-to-write upgrade, and if any other connection has
+  committed in the meantime SQLite fails it with `database is locked`
+  **immediately**. `busy_timeout` is deliberately not applied to that case,
+  because waiting could never resolve it.
+
+The invariant is therefore: **the transaction's first statement must be a
+write.** `acquireSchemaAuthority()` satisfies it via `claimWriterPosition()`,
+which issues the singleton-row `INSERT OR IGNORE` before anything else. That
+statement writes nothing when the row already exists but still takes the lock.
+
+Two traps this closes, both of which produced live 500s:
+
+- `CREATE TABLE IF NOT EXISTS` is **not** a write on an existing table. It must
+  consult `sqlite_schema` to decide whether to act, so it reads. It cannot serve
+  as the writer claim, and ordering it first does not help.
+- Any read before the claim — `PRAGMA table_info` in
+  `ensureSchemaAuthorityManifestColumns()` was the original one — forfeits the
+  waitable path for the whole transaction.
+
+Raising the busy timeout or retrying on busy does not address this: the failed
+upgrade is not waitable, and losers fail in microseconds, so a retry loop spins
+rather than converges. Regression coverage is
+`SchemaAuthoritySteadyStateConcurrencyTest`; note that
+`SchemaAuthorityConcurrencyTest` exercises only first install, where the
+`CREATE` genuinely creates and so takes the lock on its own.
+
+#### Prior-state validation (#2730)
+
+The order inside the coordinator transaction is fixed: `acquireSchemaAuthority()`
+(writer claim first, as above), then `assertSchemaAuthorityPreState()`, then
+`installOrUpgradeLedger()`, then the transition, then the manifest. The
+validation reads the live logical-schema and ledger fingerprints under the held
+writer lock — never before it — and refuses with `[S1-DB109]` when a recorded
+manifest no longer describes the database; an install without a fingerprinted
+manifest adopts. Running the ledger upgrade after the check keeps a pre-#2701
+manifest from reading as drift. Contract and the governed re-adoption step:
+`docs/specs/s1-schema-authority.md` "Prior-state validation and replay rechecks".
+
+#### Read-only entity-schema plan (SQLite, #2446)
+
+`EntitySchemaSync::syncAll()` must not enter `SchemaMutationCoordinator` merely
+to discover that every registered entity shape is already materialized. Its
+SQLite path first materializes the supplied iterable, then replays the ordinary
+schema-handler traversal while `PRAGMA query_only` is enabled. The same
+`ensure*()` decisions therefore inspect the real catalog and data, but the first
+attempted DDL or DML raises DBAL's `ReadOnlyException` before SQLite mutates the
+database. `CoordinatedEntitySchemaExecutor` marks that connection as planning so
+nested handlers do not acquire schema authority during this pass.
+
+- A plan that completes attempted no write and returns immediately. It opens no
+  schema-authority transaction, leaves the authority generation unchanged, and
+  may coexist with another WAL writer.
+- A read-only refusal means mutation is required. The executor restores the
+  connection's prior `query_only` mode and replays the materialized definitions
+  once through the coordinator.
+- An already-active coordinator skips planning; nested schema work remains in
+  its caller's transaction. Non-SQLite databases retain the prior coordinated
+  apply path until they have an equivalent fail-before-write planning boundary.
+- The plan's log records are buffered rather than emitted as they are produced.
+  A replay reaches every condition the plan reached and reports them itself, so
+  the buffer is discarded in that case and replayed otherwise — including when
+  the plan fails on its own terms, where its records are the only diagnostics.
+  One synchronization therefore reports a condition once, not once per
+  traversal.
+- A plan that fails for any reason other than the read-only refusal propagates
+  unchanged, and restores both the connection's prior `query_only` mode and its
+  planning mark on the way out. A connection left query-only would fail every
+  later write; a stale planning mark would let nested schema work skip the
+  coordinator.
+
+An install can hold entity tables while holding no authority or ledger records —
+anything materialized before #2446 looks exactly like that. A plan that finds no
+change leaves such an install untouched rather than quietly installing schema on
+its behalf: ordinary boot is a read path, and `MigrationRepository`'s installing
+methods belong to `db:init` or to the next real mutation. Both are authorized
+mutation boundaries, and the install converges through whichever arrives first.
+
+Do not replace this with a hand-maintained shallow table-existence check. Entity
+schema synchronization also owns additive columns, indexes, foreign keys,
+translation/revision tables, bundle subtables, and guarded data transitions; a
+second partial definition of “unchanged” would drift from the apply path.
 
 ### MigrationResult
 
@@ -1088,17 +1686,51 @@ Per spec §15 Q9, `extra.waaseyaa.migrations` also accepts an **ordered list** o
 
 **Entry classification heuristic (v1):** entries containing a backslash are FQCN namespace prefixes; everything else is a path string. Full discovery rules — including the no-match warning, classmap optimization requirement, and Windows-path caveat — live in `docs/adr/009-migration-manifest-discovery.md`.
 
+**Root applications:** the root `composer.json` may declare the same key. Its
+non-empty Composer `name` becomes the default package identity, namespace entries
+use the optimized root classmap, and relative paths resolve from the project
+root. A declaration without a package name fails closed. The historical
+undeclared `<projectRoot>/migrations` fallback remains supported under package
+`app`. Root declarations resolving to that canonical directory keep the same
+`app:*` ledger IDs and suppress the fallback; aliases never rename applied
+migrations. Other root paths and installed package paths keep Composer ownership.
+Kernel and CLI Migrator compositions use canonical RuntimePolicy and their
+runtime/configured logger for development warn-and-skip versus production-like
+checksum refusal. `db:init --dry-run` includes pending V2 entries without
+executing plans or updating schema/ledger.
+
 **v2 ordering:** within a package, list entries traverse left-to-right. Across packages, the unified migration DAG (mission #529 / WP06) reorders nodes by their declared `dependencies()`; raw discovery order is only the input. Within an FQCN entry, classmap iteration order is implementation-defined — v2 plans should not depend on it. Use explicit `MigrationInterfaceV2::dependencies()` for cross-migration ordering.
 
-**Entity tables:** Kernel `SqlSchemaHandler::ensureTable()` creates base columns (`id`, `uuid`, `bundle`, label/langcode keys, `_data`, …) when storage is first resolved. **Additive** columns (field-backed lookups, indexes) belong in package migrations so they run on **`db:init`** / `migrate` paths that do not eagerly touch every entity type. Do **not** add recurring `SqlSchemaHandler::addFieldColumns()` calls in `ServiceProvider::boot()` for the same DDL — that duplicates schema truth and runs every request.
+**Entity tables:** Coordinated schema sync (`install:init`, `db:init`,
+`schema:sync`) materializes each registered type through
+`SqlSchemaHandler::ensureTable()` (base columns plus declared
+`#[StorageSchemaTransition]` healers such as attachment-specific columns).
+Production HTTP must not create missing entity-storage tables (#2478): the
+kernel fail-closes with `[S1-DB106]` before provider boot for Framework
+SQL-backed definitions. The same `assertRuntimeSchema()` also validates any
+declared `_foreignKeys` on the entity type, failing closed with
+`[S1-DB106]` if a table exists but a declared foreign key does not (#2761);
+`ensureDeclaredForeignKeys()` remains the coordinated-schema-sync-only path
+that installs it. A valid custom `EntityStorageInterface` is not
+required to own an SQL table (#2482). The kernel repository factory also refuses
+such a definition before schema inspection: its custom backend is available
+through `getStorage()`, while `getRepository()` remains the richer Framework SQL
+contract and does not fabricate revision or publication semantics (#2496).
+`EntityStorageInterface` and `EntityQueryInterface` are class-level `@api`;
+malformed `storageClass` strings still fail the existing must-implement contract
+at runtime. Local/development
+boots may still materialize convenience schema. **Additive** columns that are
+not part of that coordinated path belong in package migrations so they run on
+**`db:init`** / `migrate`. Do **not** add recurring DDL in
+`ServiceProvider::boot()` for production HTTP.
 
 **SQLite / `down()`:** Additive column migrations may use a no-op `down()` when portable `DROP COLUMN` is not guaranteed; prefer compensating migrations for breaking changes.
 
-**Reference packages:** `waaseyaa/queue`, `waaseyaa/notification`, `waaseyaa/scheduler`, `waaseyaa/ai-observability` register `migrations`; `waaseyaa/oidc` registers its client, token, signing-key, consent, and secret-storage migrations. The secret-storage migration adds keyed lookup columns for access and refresh tokens; existing secret values are converted transactionally by the application-key-aware `oidc:migrate-secrets --confirm` command (#2037).
+**Reference packages:** `waaseyaa/queue`, `waaseyaa/notification`, `waaseyaa/scheduler`, `waaseyaa/ai-observability` register `migrations`; `waaseyaa/oidc` registers its client, token, signing-key, consent, secret-storage, authorization-code, signing-key-lifecycle, and application-master-custody migrations. The secret-storage migration adds keyed lookup columns for access and refresh tokens; existing secret values are converted transactionally by the application-key-aware `oidc:migrate-secrets --confirm` command (#2037). The authorization-code migration (`2026_08_12_000006`) owns the `oidc_authorization_codes` schema formerly installed by request traffic (contract: `docs/specs/api-layer.md`).
 
 ## HTTP Client
 
-Minimal HTTP client with no external dependencies (uses PHP streams). Zero composer dependencies — requires only `php: >=8.4`.
+The HTTP-client package supplies the existing stream implementation and an additive maintained Symfony implementation. Composer requires PHP >=8.4, symfony/http-client ^7.4 and symfony/http-client-contracts ^3.0; the execution candidate locks HttpClient 7.4.20.
 
 ### HttpClientInterface
 
@@ -1135,7 +1767,7 @@ final readonly class HttpResponse
 
 File: `packages/http-client/src/StreamHttpClient.php`
 
-Implementation using `file_get_contents()` with stream contexts. Throws `HttpRequestException` on failure. Response headers are read via `http_get_last_response_headers()` (PHP 8.5+); the legacy magic predefined `$http_response_header` was deprecated in 8.5.
+Implementation using `fopen()` with stream contexts and a bounded complete-body read. Throws `HttpRequestException` on connect/read failure and when the body is shorter than its declared Content-Length, a read times out, or its size is larger than `maxResponseBytes` (default 16 MiB). Reaching the ceiling is not a successful truncated response: `HttpRequestException::$response` stays `null` even if the status line was 2xx or 5xx. A complete body whose size equals the ceiling is accepted. Response headers are read via `http_get_last_response_headers()` (PHP 8.5+); the legacy magic predefined `$http_response_header` was deprecated in 8.5.
 
 ### HttpRequestException
 
@@ -1154,7 +1786,7 @@ final class HttpRequestException extends \RuntimeException
 }
 ```
 
-Carries the failed request's URL, method, and optionally the response (when the server responded but with an error status). This allows callers to inspect both transport failures and HTTP error responses uniformly.
+Carries the failed request's URL, method, and optionally the response (when the server responded but with an error status). Truncated, over-limit, and incomplete bodies are transport failures: `$response` is `null` so callers cannot treat a prefix as a complete payload. This allows callers to inspect both transport failures and HTTP error responses uniformly.
 
 ## Logging
 
@@ -1195,7 +1827,7 @@ Immutable value object carrying a single log entry: `level` (LogLevel), `message
 
 File: `packages/foundation/src/Log/LogManager.php`
 
-Central log orchestrator. Implements `LoggerInterface` — calling `log()` delegates to the default channel. Constructor accepts `LoggerInterface|HandlerInterface` for the default handler (legacy loggers are wrapped in `LegacyLoggerHandler`). `channel(string $name)` returns a `ChannelLogger` for the named channel; unknown channels fall back to the default. `fromConfig(array $config)` static factory builds channels from config (two-pass: non-stack handlers first, then stack handlers that reference other channels). `addGlobalProcessor(ProcessorInterface $processor)` allows runtime registration of processors (used by `HttpKernel` to add `RequestContextProcessor` after request resolution).
+Central log orchestrator. Implements `LoggerInterface` — calling `log()` delegates to the default channel. Constructor accepts `LoggerInterface|HandlerInterface` for the default handler (legacy loggers are wrapped in `LegacyLoggerHandler`) plus an optional kernel-scoped `RedactorProcessor` sink sanitizer. `channel(string $name)` returns a `ChannelLogger` for the named channel; unknown channels fall back to the default. `fromConfig(array $config, ?RedactorProcessor $sinkSanitizer = null)` builds channels in two passes and preserves the same mandatory sanitizer even for empty configuration. `addGlobalProcessor(ProcessorInterface $processor)` allows runtime registration of enrichment processors (used by `HttpKernel` to add `RequestContextProcessor` after request resolution); the sink sanitizer always runs after them so later processors cannot reintroduce secret data. The kernel reuses this exact sanitizer instance when configuration rebuilds the manager and when it constructs `SecretResolverRegistry`, so a resolved `SensitiveValue` registers its eligible raw and encoded representations before the resolver returns it. A non-`LogManager` logger injected into the kernel is wrapped as a legacy handler behind this same mandatory sanitizer and is not replaced by configuration; injection therefore cannot create an unsanitized custody registry.
 
 The kernel constructs `LogManager(new Handler\ErrorLogHandler())` at startup, then upgrades it after config loads: if `config['logging']['channels']` exists, uses `LogManager::fromConfig()`; otherwise falls back to `log_level` config with a single `Handler\ErrorLogHandler(minimumLevel: $level)`.
 
@@ -1203,7 +1835,7 @@ The kernel constructs `LogManager(new Handler\ErrorLogHandler())` at startup, th
 
 File: `packages/foundation/src/Log/ChannelLogger.php`
 
-Scoped `LoggerInterface` that stamps a channel name on every `LogRecord`, runs processors (global + per-channel), then delegates to a `HandlerInterface`. Created by `LogManager::channel()`. Constructor: `(string $channel, HandlerInterface $handler, array $processors = [])`. Processor failures are best-effort: caught, logged via `error_log()`, pipeline continues.
+Scoped `LoggerInterface` that stamps a channel name on every `LogRecord`, runs processors (global + per-channel), applies the same mandatory final sink sanitizer as its manager, then delegates to a `HandlerInterface`. Processor failures emit only fixed `LOG_PROCESSOR_FAILURE` fallback text and continue; sanitizer failure emits fixed `LOG_SANITIZER_FAILURE` text and drops the original record.
 
 ### Handler pipeline
 
@@ -1212,7 +1844,7 @@ Scoped `LoggerInterface` that stamps a channel name on every `LogRecord`, runs p
 | `HandlerInterface` | `Log/Handler/HandlerInterface.php` | Contract: `handle(LogRecord $record): void` |
 | `ErrorLogHandler` | `Log/Handler/ErrorLogHandler.php` | Delegates to `error_log()`. Constructor: `(?FormatterInterface $formatter = null, LogLevel $minimumLevel = LogLevel::DEBUG, ?\Closure $writer = null)`. Discards messages below `minimumLevel`. |
 | `FileHandler` | `Log/Handler/FileHandler.php` | Appends formatted record to a file with `LOCK_EX`. Constructor: `(string $path, ?FormatterInterface $formatter = null, LogLevel $minimumLevel = LogLevel::DEBUG)`. |
-| `StackHandler` | `Log/Handler/StackHandler.php` | Fan-out to multiple handlers. Constructor: `(HandlerInterface ...$handlers)`. Best-effort: catches `\Throwable` per handler so one failure doesn't stop others. |
+| `StackHandler` | `Log/Handler/StackHandler.php` | Fan-out to multiple handlers. Constructor: `(HandlerInterface ...$handlers)`. Best-effort: catches `\Throwable` per handler so one failure doesn't stop others and emits only fixed `LOG_HANDLER_FAILURE` fallback text. |
 | `NullHandler` | `Log/Handler/NullHandler.php` | Discards all records — for testing and disabled logging. |
 | `StreamHandler` | `Log/Handler/StreamHandler.php` | Writes to `php://stderr` or any stream resource. Constructor validates resource type; throws `\InvalidArgumentException` on non-resource. |
 | `LegacyLoggerHandler` | `Log/LegacyLoggerHandler.php` | Adapts Phase A `LoggerInterface` implementations to `HandlerInterface`. Internal, used by `LogManager` for backward compatibility. |
@@ -1232,7 +1864,7 @@ Processors enrich `LogRecord` context before handlers receive the record. Execut
 | Interface/Class | File | Purpose |
 |-------|------|---------|
 | `ProcessorInterface` | `Log/Processor/ProcessorInterface.php` | Contract: `process(LogRecord $record): LogRecord`. Must return a new record, not mutate input. |
-| `RedactorProcessor` | `Log/Processor/RedactorProcessor.php` | **Always-on security default** — prepended unconditionally by `LogManager::fromConfig()` before any config-named processors. Redacts context keys whose lowercased name contains any denylist keyword (`password`, `token`, `secret`, `authorization`, `api_key`, `cookie`) and, as a backstop, string values that contain those keywords (e.g. a verbatim `Authorization: Bearer …` header). Applies recursively to nested arrays. Replacement sentinel: `[REDACTED]`. Extra keywords accepted via constructor. Config name `redact` (can also be added explicitly via `processors` config). |
+| `RedactorProcessor` | `Log/Processor/RedactorProcessor.php` | **Mandatory final sink sanitizer** for bare, empty-config, configured, and scoped channel paths. It sanitizes message text plus bounded recursive context keys and values after all enrichment processors; replaces typed `SensitiveValue` objects, Throwable chains, Stringable values, unknown objects/resources, and explicitly registered raw/base64/base64url/URL/JSON-escaped representations; and retains heuristic key/value matching for `password`, `token`, `secret`, `authorization`, `api_key`, `cookie`, `credential`, `private_key`, and `passphrase` as defense in depth. All live representation lists are globally longest-first before replacement, so overlapping values cannot leak a suffix based on resolution order. Resolved-value representations are held in a nested WeakMap keyed by the sanitizer and live `SensitiveValue`, so high-churn versions retire with their custody holder. Replacement sentinel: `[REDACTED]`. Config name `redact` remains available as an earlier explicit processor, but cannot replace or bypass the final sanitizer. |
 | `RequestIdProcessor` | `Log/Processor/RequestIdProcessor.php` | Adds `request_id` (UUID hex) to context. Same ID for all records within a single processor instance. |
 | `HostnameProcessor` | `Log/Processor/HostnameProcessor.php` | Adds `hostname` to context. Defaults to `gethostname()`. |
 | `MemoryUsageProcessor` | `Log/Processor/MemoryUsageProcessor.php` | Adds `memory_peak_mb` (float) to context. |
@@ -1262,13 +1894,13 @@ interface RateLimiterInterface
 }
 ```
 
-Single method: `attempt(key, maxAttempts, windowSeconds)` returns a result array with `allowed` (bool), `remaining` (int), and `retryAfter` (?int seconds). Consumers use this interface when they need to enforce per-key rate limits — e.g. `RateLimitMiddleware` wraps HTTP endpoints, and auth controllers use it for login attempt throttling. Inject `RateLimiterInterface`; the default binding is `InMemoryRateLimiter`.
+Single method: `attempt(key, maxAttempts, windowSeconds)` returns a result array with `allowed` (bool), `remaining` (int), and `retryAfter` (?int seconds). Consumers use this interface when they need to enforce per-key rate limits — e.g. `RateLimitMiddleware` wraps HTTP endpoints, and auth controllers use it for login attempt throttling. Inject `RateLimiterInterface`; `HttpKernel` uses `DatabaseRateLimiter` with its canonical database so the default HTTP boundary is durable across requests and workers. Updates match the observed key, count and window start, so racing increments and expiry resets cannot overwrite another attempt (#3183). A typed unique collision while creating a first row or a lost conditional update re-reads live state, bounded to 32 attempts; exhaustion fails closed. Denied attempts still increment the count. SQLite lock/snapshot failures propagate unchanged. First-row collisions are retried only through a direct DBAL connection known to be outside a transaction; opaque adapters and caller-owned transactions preserve the original exception, since PostgreSQL may have aborted that transaction. Expired resets preserve the existing allowed result, including zero limits. The existing table, public result shape and fixed-window timing remain authoritative.
 
 ### InMemoryRateLimiter
 
 File: `packages/foundation/src/RateLimit/InMemoryRateLimiter.php`
 
-Sliding-window rate limiter stored in memory. Resets per-process. Used by `RateLimitMiddleware`.
+Fixed-window rate limiter stored in memory. Resets per-process. It is suitable for tests and deliberately process-local consumers, not the production HTTP default.
 
 ## Asset Management
 
@@ -1349,10 +1981,10 @@ Maps each profile to its default settings:
 | Setting | `local` | `self_hosted` | `northops` |
 |---|---|---|---|
 | storage | filesystem | filesystem | s3 |
-| embeddings | sqlite | sqlite | pgvector |
+| embeddings | database | database | database |
 | llm_provider | ollama | ollama | api |
 | transcriber | whisper_ollama | whisper_ollama | api |
-| vector_store | sqlite | sqlite | pgvector |
+| vector_store | database | database | database |
 | queue_backend | sync | database | redis |
 
 ### SovereigntyConfigInterface / SovereigntyConfig
@@ -1379,7 +2011,9 @@ $this->singleton(SovereigntyConfigInterface::class, fn() => SovereigntyConfig::f
 
 ## Community Context
 
-Request-scoped community isolation for multi-tenant sovereign apps. When a `CommunityContext` is active, entity storage drivers that are wired with `CommunityScope` automatically restrict all queries to the active community.
+Request-scoped community isolation for multi-tenant sovereign apps. When a `CommunityContext` is active, entity storage drivers that are wired with `CommunityScope` automatically restrict all base and revision queries and mutations to the active community. `EntityTypeManagerFactory` passes the same per-type scope to `SqlStorageDriver` and `RevisionableStorageDriver`; revision ownership is anchored to the canonical indexed base row.
+
+`HealthSchemaServiceProvider` also registers `tenancy:repair-translation-peers <entity_type> [--dry-run] [--json]`. The handler constructs `CommunityTranslationPeerRepairer` from the active database connection and entity type manager. This is an operator-invoked repair only: provider registration does not scan or mutate data during application boot.
 
 ### CommunityContextInterface / CommunityContext
 
@@ -1396,22 +2030,49 @@ interface CommunityContextInterface
 }
 ```
 
-`CommunityContext` is a mutable singleton registered in `FoundationServiceProvider`:
+`CommunityContext` is a mutable singleton registered in `FoundationServiceProvider`.
+The binding prefers the authoritative context from the kernel-services bus and
+creates a default only when the provider is used standalone:
 
 ```php
-$this->singleton(CommunityContextInterface::class, CommunityContext::class);
+$this->singleton(CommunityContextInterface::class, function (): CommunityContextInterface {
+    $kernelContext = $this->kernelServices?->get(CommunityContextInterface::class);
+
+    return $kernelContext instanceof CommunityContextInterface
+        ? $kernelContext
+        : new CommunityContext();
+});
 ```
+
+When the provider runs inside a kernel, this binding reuses the exact
+kernel-owned context supplied through `KernelServicesInterface`. The fallback
+constructor is only for a standalone provider without kernel services. Storage
+scopes, request middleware, and autowired extension controllers must therefore
+observe the same object and active community.
+
+`HttpKernel` explicitly installs `CommunityMiddleware` in its supported
+built-in stack before access middleware; compiled `AsMiddleware` metadata does
+not instantiate runtime middleware. `HttpMiddlewareStackComposer` combines the
+explicit built-ins with provider instances, rejects duplicate concrete classes,
+and uses the attribute only for stable priority ordering. The
+middleware preserves explicit route and session precedence, then falls back to
+this authoritative active object for fixed-community routes. It
+writes the resolved value to the normalized `_community_id` request attribute
+before access middleware runs. Immutable principals, community-scoped storage,
+and controllers therefore observe the same community ID. An inactive context
+does not add the normalized attribute and leaves principal scope null.
 
 ### CommunityMiddleware
 
 File: `packages/foundation/src/Community/CommunityMiddleware.php`
 Attribute: `#[AsMiddleware(pipeline: 'http', priority: 20)]`
 
-Resolves the active community from the incoming request and sets it on `CommunityContextInterface` for the duration of the request. Clears the context in a `finally` block after the response.
+Resolves the active community from the incoming request and sets it on `CommunityContextInterface` for the duration of the request. A `finally` block restores the exact pre-request state: configured fixed-community contexts remain active across long-lived worker requests, while dynamically selected contexts return to inactive. Deferred streamed-response callbacks temporarily rebind the same resolved community and restore the then-current state when the stream ends.
 
 **Resolution order (first match wins):**
 1. Route parameter `community_id` (e.g. `/community/{community_id}/...`)
 2. Session key `waaseyaa_community_id` (requires `SessionMiddleware` priority 30 to have run first)
+3. Existing active context (the fixed application `community_id`)
 
 When no community is resolved (CLI, admin superuser, unauthenticated), the context remains inactive and queries are unscoped.
 
@@ -1473,12 +2134,13 @@ Optional follow-ups (full header map API, lazy adapter, JSON:API adoption) are t
 
 | Router | Controller key(s) | Purpose |
 |--------|-------------------|---------|
-| `JsonApiRouter` | `jsonapi.*` | JSON:API CRUD delegation to `JsonApiController`. `handle()` now threads `$ctx->query` into single-resource `show()` calls too (CW-v1 option-1, #1920 PR-3 — previously only the collection `index()` call received it), needed for the new `?workingCopy=1` toggle (`docs/specs/api-layer.md` "GET single") and, as a side effect, fixing a pre-existing gap where sparse fieldsets (`fields[type]`) never reached a single-resource GET over HTTP. |
+| `JsonApiRouter` | `jsonapi.*` | JSON:API CRUD delegation to `JsonApiController`. PATCH/DELETE parse `If-Match` through `Waaseyaa\Api\Http\EntityMutationPrecondition` before dispatch (428/400 shared envelope; `EntityMutationToken::fromHttpIfMatch()` remains the policy). `handle()` also threads `$ctx->query` into single-resource `show()` calls (CW-v1 option-1, #1920 PR-3 — previously only the collection `index()` call received it), needed for the new `?workingCopy=1` toggle (`docs/specs/api-layer.md` "GET single") and, as a side effect, fixing a pre-existing gap where sparse fieldsets (`fields[type]`) never reached a single-resource GET over HTTP. |
 | `EntityTypeLifecycleRouter` | `entity_types`, `entity_type.disable`, `entity_type.enable` | Entity type listing and lifecycle management |
 | `SchemaRouter` | `openapi`, `schema.*` | OpenAPI and JSON Schema endpoints |
 | `DiscoveryRouter` (`Waaseyaa\Api\Http\Router`) | `discovery.topic_hub`, `discovery.cluster`, `discovery.timeline`, `discovery.endpoint` | Discovery API for topic hubs, clusters, timelines (registered from `ApiServiceProvider::httpDomainRouters()`) |
 | `SearchRouter` | `search.semantic` | Semantic search via embedding storage |
 | `MediaRouter` (`Waaseyaa\Media\Http\Router`) | `media.upload` | Authenticated `GET /api/media/upload` exposes only safe size/MIME constraints; authenticated `POST` retains the existing multipart upload with `access media` plus bundle-specific create access enforced before persistence. File validation includes size limits, sanitization, and move error handling (`MediaServiceProvider`). MIME validation is **sniff-only and fail-closed** (2026-07-01 WP4 hardening): the type is detected from file contents via `UploadHandler::detectMimeType()` (ext-fileinfo) — the client-declared MIME is never consulted (Symfony `getMimeType()` is not called; symfony/mime is not installed), and undetectable types are rejected 415 (`File type could not be verified.`). Allowlist matching is shared with `UploadHandler` (`mimeTypeMatches()`, exact + `type/*` wildcards). Default allowlist deliberately EXCLUDES `image/svg+xml` (script-capable; `/files/` serving adds no attachment/nosniff headers) and `application/octet-stream` (finfo's answer for any unrecognized binary); sites opt back in explicitly via `upload_allowed_mime_types`. The stored `File.mimeType` is the sniffed type. |
+| `MediaDownloadRouter` (`Waaseyaa\Media\Http\Router`) | `media.download`, `media.view` | Both routes resolve numeric IDs or bounded UUIDs, require the same entity `view` decision before audited `source_uri` access, confine `public://` paths under the configured files root, and collapse every denial/absence to the same 404. `/download` retains top-level document-navigation compatibility. `/view` is an explicit same-origin iframe surface: only content-sniffed `application/pdf` becomes inline; all other MIME types remain attachments regardless of navigation headers. The kernel's canonical response policy supplies `SAMEORIGIN` and `nosniff` without replacing a deployment CSP. Both return complete 200 bodies and advertise `Accept-Ranges: none`. |
 | `GraphQlRouter` (`Waaseyaa\GraphQL\Http\Router`) | `graphql.endpoint` | GraphQL query/mutation execution (`GraphQlServiceProvider`) |
 | `McpRouter` | `mcp.endpoint` | MCP JSON-RPC endpoint |
 | `SsrRouter` (`Waaseyaa\SSR\Http\Router`) | `render.page` | Server-side page rendering (`SsrServiceProvider`) |
@@ -1500,7 +2162,7 @@ This kernel-adjacent registrar runs once at boot (called from `HttpKernel`) and 
 | OpenAPI schema doc | `GET /api/openapi.json` | `_authenticated` |
 | Entity-type catalog + lifecycle | `GET /api/entity-types`; `POST /api/entity-types/{entity_type}/{enable,disable}` | `_role: admin` |
 | Broadcast (SSE) | `GET /api/broadcast` | default |
-| Media upload/download | `POST /api/media/upload`; `GET /media/{id}/download` | `access media`; `allowAll` transport posture + download handler entity-view enforcement |
+| Media upload/download/view | `POST /api/media/upload`; `GET /media/{id}/{download,view}` | `access media`; byte routes use `allowAll` transport posture + shared handler entity-view enforcement |
 | Attachment download | `GET /attachment/{id}/download` | option-less (handler enforces) |
 | Semantic search | `GET /api/search` | default |
 | Discovery endpoints | `GET /api/discovery/{hub,cluster,timeline,endpoint}/…` | default |
@@ -1520,7 +2182,7 @@ This kernel-adjacent registrar runs once at boot (called from `HttpKernel`) and 
 | Media versions | `GET /api/media/{uuid}/versions[/{vid}]` | `_authenticated` |
 | OCAP audit log | `GET /api/audit/events` | `_role: admin` |
 | MCP-admin REST | `GET /api/mcp/tools`; `GET /api/mcp/tools/{name}`; `GET /api/mcp/server-config` | `_role: admin` |
-| OIDC client CRUD | `GET\|POST\|PATCH\|DELETE /api/oidc-clients[/{id}[/regenerate-secret]]` | `_role: admin` |
+| OIDC client CRUD | `GET\|POST\|PATCH\|DELETE /api/oidc-clients[/{id}[/regenerate-secret]]` (PATCH/DELETE require strong `If-Match`) | `_role: admin` |
 | Classification retention policies | `GET\|POST\|PATCH\|DELETE /api/classification/policies[/{id}]` | mixed |
 | JSON:API CRUD (all entity types) | `GET\|POST\|PATCH\|DELETE /api/{entity_type}[/{id}]` | per entity access policy |
 
@@ -1568,7 +2230,8 @@ Exceptions thrown by terminal dispatch setup (including provider router construc
 
 Behaviour of the CSRF response step:
 
-- **Restricted to `text/html`** — skips JSON, octet-stream, and any other primary Content-Type.
+- **`text/html` responses, plus authenticated login sessions** — the HTML writer skips JSON, octet-stream, and any other primary Content-Type; a second writer delivers the same cookie on any response whose request carries an authenticated `_account` and the `waaseyaa_uid` login-session marker (#2177 SPA boot path). See `docs/specs/access-control.md` for the full delivery matrix.
+- **Policy-governed flags (#2149)** — `buildMiddlewareStack()` constructs `CsrfMiddleware` with `new SessionCookiePolicy($this->sessionCookieOptions())`, so the cookie's `Secure`/`SameSite` attributes follow the same resolved `session.cookie` config as the session cookie (forced booleans win; `'auto'` follows the trusted request scheme).
 - **Idempotent** — no-ops if an `XSRF-TOKEN` cookie is already present on the response (the middleware may have set it for non-validating GET requests that pass through without the 200-stub issue).
 - **Session guard** — returns immediately if no PHP session is active or the session token key is absent.
 
@@ -1609,6 +2272,7 @@ String-backed enum of operator-facing error codes:
 | `DATABASE_UNREACHABLE` | Database file missing or corrupt |
 | `DATABASE_SCHEMA_DRIFT` | Entity table columns don't match expected schema (base or bundle subtable) |
 | `MISSING_BUNDLE_SUBTABLE` | A bundle with registered fields has no `{base}__{bundle}` subtable |
+| `MISSING_BUNDLE_UNIQUE_KEY` | A bundle subtable is missing a declared unique index, or the named index is non-unique / targets different columns |
 | `ORPHAN_BUNDLE_SUBTABLE` | A `{base}__{bundle}` subtable exists with no registered bundle fields |
 | `FK_ENFORCEMENT_DISABLED` | Foreign-key enforcement off at the connection level (e.g. SQLite without `PRAGMA foreign_keys = ON`) |
 | `STORAGE_DIRECTORY_MISSING` | `storage/framework/` does not exist |
@@ -1617,7 +2281,7 @@ String-backed enum of operator-facing error codes:
 | `INGESTION_RECENT_FAILURES` | High ingestion failure rate |
 | `COLUMN_DATA_STORAGE_DRIFT` | A field registered with `FieldStorage::Data` still has a backing column on the base table or a bundle subtable (new writes go to `_data`; the column holds stale values) |
 
-Each code has a `defaultMessage()` method for human-readable descriptions. Severity: `MISSING_BUNDLE_SUBTABLE` and `FK_ENFORCEMENT_DISABLED` are errors; `ORPHAN_BUNDLE_SUBTABLE` and `COLUMN_DATA_STORAGE_DRIFT` are warnings (the base row is still reachable, the lingering surface is merely stale).
+Each code has a `defaultMessage()` method for human-readable descriptions. Severity: `MISSING_BUNDLE_SUBTABLE`, `MISSING_BUNDLE_UNIQUE_KEY`, and `FK_ENFORCEMENT_DISABLED` are errors; `ORPHAN_BUNDLE_SUBTABLE` and `COLUMN_DATA_STORAGE_DRIFT` are warnings (the base row is still reachable, the lingering surface is merely stale).
 
 ### DiagnosticEmitter
 
@@ -1671,6 +2335,7 @@ Three check groups: boot (entity type registry), runtime (database connectivity,
 For any entity type whose `EntityType::getBundleEntityType()` is non-null, `checkSchemaDrift()` does not stop at the base table. It enumerates the registered bundles via `$this->fieldRegistry->bundleNamesFor($entityTypeId)`, and for each bundle:
 
 - If the bundle has registered fields (`bundleFieldsFor()` is non-empty) but the `{base}__{bundle}` subtable is absent, emits `MISSING_BUNDLE_SUBTABLE` (fail).
+- If the registry declares bundle storage unique keys, each named index must be unique and target the exact ordered field list; absence or shape drift emits `MISSING_BUNDLE_UNIQUE_KEY` (fail).
 - If a `{base}__{bundle}` subtable exists but no fields are registered for that bundle, emits `ORPHAN_BUNDLE_SUBTABLE` (warn). Orphan detection scans `sqlite_master LIKE '{base_table}__%'` (ESCAPE-aware) and compares against the registry.
 - If the subtable exists but its columns do not match the registered field shape, the existing `DATABASE_SCHEMA_DRIFT` code is emitted with the subtable name in the message so the operator can distinguish base-table drift from bundle-table drift.
 
@@ -1689,6 +2354,44 @@ Authoritative contracts: `docs/specs/bundle-scoped-storage.md §Drift diagnostic
 ### Role registry composition
 
 `AbstractKernel::buildHandlerContainer()` composes the CLI handler container from the booted provider list and returns a `KernelHandlerContainer` instance (`packages/foundation/src/Kernel/KernelHandlerContainer.php`), a named PSR-11 `ContainerInterface` implementation that replaced the inline anonymous class. Among its kernel-owned bindings it registers `Waaseyaa\User\RoleRepository` via `RoleRepository::fromProviders($this->providers)`, which scans every provider implementing `Waaseyaa\Foundation\ServiceProvider\Capability\ProvidesRolesInterface` and flattens their `Role` contributions into an id-keyed registry. This is a kernel-owned service mirroring the `HealthChecker` composition pattern above: a type no single provider binds, assembled once by the kernel and made injectable into class-based command handlers. It lets role-aware handlers such as the `user:assign-role` handler (`Waaseyaa\CLI\Handler\UserAssignRoleHandler`) resolve a role to its registered permissions and stamp the union onto a user. See `docs/specs/access-control.md §Roles` for the role-to-permission model.
+
+**Permission catalogue composition (#2788).** The sibling capability `Waaseyaa\Foundation\ServiceProvider\Capability\ProvidesPermissionsInterface` (`permissions(): array<string, array{title, description}>`) feeds the same pattern one step earlier, at boot rather than at container build, and BEFORE any provider boot hook runs (a boot hook may perform durable writes, such as the generated governance provider seeding workflows, so invalid governance must refuse the process first): `AbstractKernel::composePermissionCatalogue()` calls `Waaseyaa\Access\PermissionHandler::fromProviders($this->providers, $this->manifest->permissions)`, which unions the compiled manifest's `extra.waaseyaa.permissions` entries with every contributing provider and fails closed (`LogicException` naming the owner) on a duplicate id, an invalid id, a non-array definition, a missing or empty `title`, a non-string `description`, or an unknown member, then collects roles ONCE through `RoleRepository::fromProviders($this->providers)` and calls `assertPermissionsCatalogued($catalogue)`. Any `ProvidesRolesInterface` role granting a permission the catalogue does not declare aborts boot with a `RuntimeException` naming every offending `(role, permission)` pair and the role-providing classes. Both composed instances are kernel-owned — exposed as `permissionCatalogue()` and `roleRepository()` (each a `LogicException` before boot) — and bound by identity in `buildHandlerContainer()` as `Waaseyaa\Access\PermissionHandlerInterface` and `Waaseyaa\User\RoleRepository`, so `permission:list`, `user:assign-role` and any catalogue-aware handler resolve exactly the instances the boot validation accepted and providers' `roles()` is never consulted a second time. Upstream, `PackageManifestCompiler` is the first custody boundary, with one admission sequence for every source (installed packages in `installed.json` order, then the root application; fresh compile and cache reload alike): an `extra.waaseyaa.permissions` catalogue that is not an object keyed by id, an invalid id, or a malformed definition refuses compilation with `MalformedPermissionManifestException` naming the owning source — nothing is skipped or coerced; an id another source already owns refuses with `PermissionManifestCollisionException` naming the existing owner first, decided before the redeclared definition is inspected, so a malformed redeclaration cannot bypass duplicate refusal. On a cache reload the root's own entries re-merge only when byte-identical to the cached manifest; a differing definition is a collision against the cached manifest, and a changed root `composer.json` invalidates the fingerprint and recompiles. The closed shape is `Waaseyaa\Foundation\Discovery\PermissionDefinitionShape`, shared with `PermissionHandler::fromProviders()` so provider and manifest entries report identical diagnostics. Contract detail: `docs/specs/access-control.md §Permission Handler`.
+
+## Strict audit ledger port (`Waaseyaa\Foundation\Audit`, #2177 F4)
+
+A fail-closed reserve/finalize audit contract, deliberately the opposite of `waaseyaa/audit`'s `AuditWriterInterface`.
+
+`AuditWriterInterface` is contractually best-effort — `record()` MUST swallow every exception and MUST NOT throw. That is right for an observability log and unusable for a surface that must refuse to act when it cannot be audited. `StrictAuditLedgerInterface` throws `StrictAuditLedgerException` when a record cannot be made durable, so a caller can decline to proceed.
+
+| Type | Role |
+|---|---|
+| `StrictAuditLedgerInterface` | `reserve()` / `finalize()` / `record()`; throws rather than swallowing |
+| `AuditStage` | pipeline stage enum; `outcome()` / `severity()` map onto the existing `audit_event` grammar |
+| `StrictAuditReservation` | what is about to be attempted — already-redacted arguments only |
+| `StrictAuditReceipt` | handle joining a reservation to its outcome |
+| `StrictAuditLedgerException` | raised when durability cannot be achieved |
+| `NullStrictAuditLedger` | records nothing; the default for best-effort surfaces, never for a mutating one |
+
+**Why this port lives in foundation.** It is not foundation's domain — the implementation is `Waaseyaa\Audit\Writer\DatabaseStrictAuditLedger`, in `waaseyaa/audit` (layer 1). But its first consumer is the MCP write tier (layer 6), and `waaseyaa/mcp` must not require `waaseyaa/audit` at runtime (`McpDispatchEvent`, contract clause 18). Foundation is the one package both the consumer and the implementation already depend on, so the port sits here and the layer graph stays acyclic and downward-only. Consumers depend on the contract; only the kernel wiring knows the implementation.
+
+**The guarantee is pre-durability, not atomicity.** `reserve()` must commit before the caller acts, giving "no side effect without a durable record of the attempt". It does not couple the side effect to the outcome record — see `docs/specs/ocap-audit-log.md` and `docs/specs/mcp-endpoint.md` for the four reasons that coupling is not reachable and for the dangling-reservation semantics.
+
+## Operation approval port (`Waaseyaa\Foundation\Audit\Approval`, #2177 F1)
+
+The human-approval companion to the strict ledger: durable, once-only approvals for destructive operations, bound to one exact call. The port lives in foundation for the identical reason as `StrictAuditLedgerInterface` immediately above — the consumer is the MCP write tier and `waaseyaa/mcp` must not require `waaseyaa/audit` at runtime; the implementation is `Waaseyaa\Audit\Writer\DatabaseOperationApprovalStore` (see `docs/specs/ocap-audit-log.md` §"Operation approval event log"). Since slice B, `AuditServiceProvider` binds the port (schema ensured lazily; TTL from `mcp.write_tier.approval.ttl_seconds`) and `McpEndpoint`'s write-tier approval gate consumes it (`docs/specs/mcp-endpoint.md` §"Human-approval gate"); the operator decision routes landed in slice C1b (`packages/api`'s `McpApprovalController`, resolving the port lazily per request through the kernel-services bus — `docs/specs/mcp-endpoint.md` §"Admin decision surface"); the admin-SPA UI is not yet present.
+
+| Type | Role |
+|---|---|
+| `ApprovalTuple` | exact binding: principal key × surface × operation × canonical raw-argument SHA-256 fingerprint; derives the collision-unambiguous `requestKey` used for pending reuse |
+| `CanonicalArgumentFingerprint` | canonical fingerprint of the RAW arguments: recursive map-key sort, list order preserved, tool-name domain separation, `JSON_THROW_ON_ERROR \| JSON_UNESCAPED_SLASHES \| JSON_UNESCAPED_UNICODE`; versioned domain label |
+| `ApprovalStatus` | derived state, never a stored column: `pending` / `approved` / `denied` / `consumed` / `expired` |
+| `ApprovalRequest` | read model of one request; owns the single expiry comparison `isExpiredAt()` — inclusive boundary (`now >= expiresAt`), instant-based, no sub-second escape — and the decision-reason normal form `normalizeDecisionReason()` (trim, blank → null, ≤ `MAX_DECISION_REASON_LENGTH` = 500 Unicode characters, single-line: ASCII control characters rejected) |
+| `OperationApprovalStoreInterface` | `open()` / `find()` / `listPending()` / `decide()` / `consume()`; every method throws rather than degrading |
+| `ApprovalRequestPage` | one bounded page of live pending requests from `listPending()` (C1a): `list<ApprovalRequest>` in stable ascending requested order plus the opaque `nextCursor` (null on a terminal page); requests carry `safeArguments` only, never raw call arguments |
+| `ApprovalStoreException` | store cannot read/append durably, or the request is unknown/expired for the operation; message sanitized, cause in `$previous` |
+| `ApprovalAlreadyDecidedException` | a decision already exists — the recorded decision stands, never overwritten |
+
+Contract highlights: `open()` may reuse an unexpired **undecided pending** request with an identical `requestKey` (duplicate pending rows under a create race are documented-harmless — each approval still consumes exactly once); `decide()` takes the **server-derived** operator uid (positive, never from request payload) plus an optional human reason (normalized/validated before any row is appended, persisted on the `decided` event as durable incident evidence) and rejects missing/already-decided/expired requests; `consume()` runs transactionally, requires Approved-and-unexpired at the consume boundary, takes the exact request id plus the strict-ledger receipt id and the retry's correlation id, and returns `false` (never a silent success) on any state or race loss; `listPending()` is the bounded operator queue — page size 1..`PENDING_PAGE_MAX_LIMIT` (100, default `PENDING_PAGE_DEFAULT_LIMIT` = 50), out-of-range limits and malformed/tampered cursors throw `\InvalidArgumentException` **before any query**, the cursor is opaque/versioned and encodes only an immutable scan position (the last scanned `requested` event row id — no mutable state revealed, nothing grantable), traversal is live (not a snapshot: no duplicates or omissions among requests that stay pending; requests opened between pages join a later page, requests decided/expired between pages stop appearing) and the store scans in bounded chunks — never an unbounded `SELECT` (see `docs/specs/ocap-audit-log.md` §"Operation approval event log" for the query shape).
 
 ## Internal Interfaces
 
@@ -1719,6 +2422,14 @@ File: `packages/queue/src/QueueInterface.php`
 
 Queue implementations: `DbalQueue` (DBAL-backed persistent), `InMemoryQueue` (testing), `MessageBusQueue` (Symfony Messenger bridge), `SyncQueue` (immediate execution).
 
+### Job
+
+File: `packages/queue/src/Job.php`
+
+Abstract application job. Consumers subclass `Waaseyaa\Queue\Job` and implement
+`handle()`. There is no `JobInterface`. Job middleware is
+`Waaseyaa\Foundation\Middleware\JobMiddlewareInterface`, not a queue-package type.
+
 ### Worker
 
 File: `packages/queue/src/Worker/Worker.php`
@@ -1741,6 +2452,14 @@ Long-running daemon that processes jobs from a queue transport.
 - Memory growth budget exhausted (`$options->memoryLimit > 0` and `(memory_get_usage(true) - baselineBytes) >= $options->memoryLimit * 1024 * 1024`, where `baselineBytes` is captured once at the start of `run()` — **not** total process RSS; avoids exiting immediately when the host process is already large)
 
 **POSIX signal handling:** `listenForSignals()` registers SIGTERM/SIGINT handlers that set `$shouldQuit = true`. `pcntl_signal_dispatch()` is called each iteration in `shouldContinue()`. Gracefully degrades when `pcntl` extension is unavailable.
+
+**Configuration runtime epoch:** A long-running worker captures the configured
+`RuntimeEpochInterface` value before each job and checks it again after the job
+boundary. When transactional configuration activation advances the epoch, the
+worker exits the loop cleanly after the current job so its supervisor can start
+a process bound to the new immutable generation. The HTTP kernel uses the same
+epoch to invalidate generation-sensitive caches; epoch failure is fail-closed,
+not permission to keep serving an unknown generation.
 
 **Job processing pipeline:**
 1. `transport->pop($queue)` — dequeue raw message (`{id, payload, attempts}`)
@@ -1796,7 +2515,222 @@ The legacy concrete `FailedJobRepository` class (a thin facade delegating to `In
 
 `CreateQueueTables` (`packages/queue/src/Migration/CreateQueueTables.php`) and timestamped migrations under `packages/queue/migrations/` (registered via `extra.waaseyaa.migrations` in `packages/queue/composer.json`) create **`waaseyaa_queue_jobs`** and **`waaseyaa_failed_jobs`**. Older docs may refer to unprefixed names; the DDL above is authoritative.
 
+## Versioned application-master custody
+
+`ApplicationMasterKeyring` is the successor-facing Layer-0 custody boundary for
+application-master rotation. It holds one monotonically versioned active-write
+reference and a bounded map of lower, explicitly declared legacy read/verify
+references. All references must use secret class `application-master` and the
+versioned resolver purpose `waaseyaa.application.master.v1`. Key material is
+resolved only at a guarded cryptographic operation boundary; the keyring,
+handles, diagnostics, exceptions, serialization, and clone surfaces expose no
+master bytes or provider identifiers.
+The resolver must already be frozen when the keyring is constructed. Legacy
+handles are read-only and cannot invoke the seal consumer. Each cryptographic
+operation resolves its selected reference afresh; framework custody deliberately
+does not retain master bytes between operations. A provider may apply its own
+policy-governed cache behind the reference boundary, but it must never replace
+the bytes of an existing application-master reference in place. Rotation creates
+a new immutable reference and monotonically higher keyring version; the
+provider-returned version token is diagnostic metadata, not an envelope key ID.
+
+`ApplicationMasterPurposeRegistry` is assembled before use and then frozen. A
+purpose policy declares a stable purpose identifier, owning package, transition
+strategy, bounded maximum lifetime and retention, inventory adapter identity,
+and rollback behavior. Its checksum is computed from a canonical purpose-sorted
+projection. Duplicate, conflicting, syntactically valid but unregistered, or
+post-freeze registrations fail closed. The closed strategy vocabulary is:
+`reencrypt-ciphertext`, `recompute-lookup-index`,
+`retain-historic-verifier`, `invalidate-rebuildable`, `drain-or-expire`, and
+`ephemeral-no-persistence`.
+
+New encrypted writes use only the active master version. Persisted ciphertext
+uses `ApplicationMasterEnvelope` format
+`waaseyaa.application-master.envelope.v1`; XChaCha20-Poly1305 authenticates the
+format, exact master version, registered purpose, record identity, and schema
+version as associated data. A purpose-and-master-version-specific 32-byte key is
+derived from the selected master with HKDF-SHA-256 and a public
+domain-separation salt. Reads
+select exactly the version declared by the envelope and never probe arbitrary
+keys or fall back to the active version. Unknown versions, unknown purposes,
+non-canonical encodings, malformed envelopes, and authentication failures are
+refused before unrelated references are resolved. Invalid caller-supplied seal
+metadata is validated before the active reference is resolved. Authenticated
+decryption failures retain the stable non-secret
+`SECRET_CONSUMER_AUTHENTICATION_FAILED` reason instead of collapsing into a
+generic consumer failure.
+
+Non-ciphertext purposes use strict
+`waaseyaa.application-master.authentication.v1` tags carrying only the exact
+master version, registered purpose, and canonical SHA-256 HMAC output. Creating
+a write tag always uses the active version. Verification selects only the tag's
+declared readable version. Lookup-index purposes may compute one candidate per
+declared readable version so rows remain retrievable during transition; that
+legacy operation does not grant predecessor write authority. Authentication,
+verification, and lookup operations derive and erase their purpose/version key
+inside the guarded consumer and never export it. Ciphertext purposes refuse the
+authentication surface, and non-lookup purposes refuse multi-version lookup
+candidates before resolving external custody.
+
+This core cryptographic boundary does not itself claim the rekey transition is
+complete. Purpose inventory adapters, joint row transitions, persisted registry
+state, immutable ledger/cursors, resumable compare-and-swap batches,
+worker/cache reconciliation, retained-backup compatibility, and predecessor
+revocation gates remain required. Their tables arrive only through DB-02
+versioned migrations; runtime constructors and read-only audits perform zero
+DDL. Framework code never generates or replaces an operational master, and
+external custody remains responsible for provisioning and eventual destruction.
+
+The persistence model separates append-only evidence from mutable coordination
+projections. `waaseyaa_application_master_rekey_event` is a per-request,
+sequence-unique SHA-256 hash chain; database triggers refuse update and delete.
+`waaseyaa_application_master_rekey` stores the immutable request tuple and a CAS
+revision for its current state. Purpose-policy snapshots are canonical rows bound
+to the request's registry checksum. Non-secret master-version rows retain only
+version, state, reference fingerprint, and lifecycle timestamps. Adapter progress,
+per-purpose verification, and revocation-gate evidence use request-scoped
+composite keys. No table stores master or derived-key bytes, plaintext, complete
+ciphertext, tokens, or raw authorization material.
+
+The persisted state vocabulary follows the authorized sequence exactly:
+`prepare-and-authorize`, `install-new-active-with-old-legacy-read-verify`,
+`enumerate-snapshot`, `transition-bounded-batches`, `verify-every-purpose`,
+`reconcile-writers-and-workers`,
+`hold-and-optionally-execute-rollback-window`,
+`prove-backup-retention-or-restore-compatibility`, and
+`revoke-old-in-ledger`. Forward-only `rolling-back` and `rolled-back` states may
+record an exercised rollback; failures append evidence and block advancement but
+do not erase a resumable state or cursor.
+The canonical writer/worker and cache reconciliation gates move the request into
+the still-open rollback-window state. Recording `rollback-window-closed` moves it
+forward to backup-retention proof; it never opens a window that its own evidence
+declares closed.
+An authorized rollback starts only from that open state, at a non-backdated time
+no later than the immutable rollback deadline, after complete adapter and purpose
+verification and with no unresolved failure. One transaction records the forward
+`rolling-back` event, returns active writes to the predecessor, and changes the
+failed successor to `failed-read-only`. The successor remains readable, recorded,
+and non-reusable; neither framework rollback nor its evidence claims external key
+destruction.
+The matching explicit rollback keyring topology makes the predecessor the only
+active seal/authentication version, retains any lower declared legacy readers,
+and permits exactly one higher failed successor for open, verification, and
+lookup only. Ordinary monotonic construction continues to reject higher
+read-only versions; rollback composition must bind this exceptional topology to
+the persisted `rolling-back` request and version ledger.
+
+Each inventoried adapter may have at most one open failure at its exact durable
+cursor. Recording a failure compare-and-swaps both adapter and request failure
+counts, advances both revisions without changing the resumable state/cursor, and
+appends only a stable failure code plus non-secret evidence hash. Resolution
+requires the exact request revision, adapter revision, open cursor, and a new
+resolution hash; it closes the mutable failure projection and appends immutable
+resolution evidence before retry is permitted. Exception text, tokens,
+ciphertext, plaintext, and key material are never persisted as failure evidence.
+Restart reconstructs the block from database projections rather than process
+memory. The coordinator translates transition and verification callback
+exceptions into stable operation-specific codes and a SHA-256 commitment over
+only request digest, adapter, cursor, operation, and exception class; callback
+messages are discarded. Owner effects roll back before this separate failure
+transaction commits. Snapshot callback failures use the same non-secret
+commitment before an adapter projection exists, increment only the request
+failure count, and block inventory retry until exact resolution evidence closes
+the open failure. A successful retry then creates the adapter projection once.
+
+One adapter owns every purpose that shares a storage row. Its immutable snapshot
+binds adapter id, sorted purpose ids, inventory token, and total. Each bounded
+batch commits the owner's joint row CAS effects and the expected prior cursor,
+next cursor, per-purpose counts, and batch commitment in one database
+transaction. A stale cursor or projection revision rolls the transaction back;
+retry begins from the durable cursor. Adapter completion does not imply purpose
+verification: every purpose separately records a count and verification hash.
+Composition requires each adapter to expose the exact `DatabaseInterface` object
+owned by the rekey store; parameter-derived physical-database identities are not
+sufficient because distinct connections can share them. Every owner read and CAS
+effect uses the same object supplied through `ApplicationMasterRekeyContext`
+inside the store transaction.
+
+Rollback re-inventories successor-version rows only after the persisted writer
+switch. Every adapter has a separate immutable rollback snapshot, cursor, count
+map, status, and SHA-256 batch chain; forward transition evidence is never
+overwritten. Reverse owner CAS effects and rollback cursor evidence commit in one
+transaction on the exact database authority, and restart resumes from that
+cursor without replay. Callback failures roll owner effects back, retain only a
+stable code and non-secret commitment at the rollback cursor, and require exact
+resolution evidence. An adapter becomes rollback-complete only after immutable
+per-purpose verification matches its durable rollback counts. The request enters
+`rolled-back` only when every composed owner is complete and verified, the
+predecessor remains active, the successor remains failed-read-only, and a final
+non-secret completion hash extends the event chain.
+
+Executable adapters implement one Foundation contract and expose the exact
+`DatabaseInterface` object owned by the rekey store. Composition refuses a
+distinct object before inventory or mutation even when both connections report
+the same physical database identity. Snapshot is
+read-only. A transition callback executes *inside* the store's database
+transaction after expected request/adapter revisions and cursor are checked; it
+returns the next cursor, row count, exact per-purpose deltas, and commitment.
+The store validates that result before committing both owner CAS effects and
+cursor evidence. A malformed result, owner CAS conflict, or ledger write failure
+rolls the whole batch back. Verification is likewise owner-supplied but is
+persisted separately for every purpose. Restart reconstructs context from the
+immutable request, registry snapshot, adapter snapshot, and durable cursor; no
+completed external effect is inferred from an in-memory coordinator object.
+
+Predecessor revocation additionally requires exact evidence for four closed
+gates: `writers-and-workers-reconciled`, `caches-reconciled`,
+`rollback-window-closed`, and `retained-backups-compatible-or-expired`. Missing
+or failed purpose verification, adapter failure, cursor incompleteness, or a
+missing gate refuses revocation. Revocation changes only the framework ledger
+and future-use policy; it does not claim external key destruction.
+
+`ApplicationSecret` remains a compatibility adapter while existing consumers
+move to the versioned keyring. Its unversioned bootstrap behavior is not evidence
+of rotation safety and must not be copied into new persisted-purpose consumers.
+
 ## Kernel Bootstrap
+
+### API-catalog provider composition
+
+The RFC 9727 catalog follows the same explicit receiver-capability pattern as
+agent-tool and migration provider injection. Packages that own an intentionally
+public API implement
+`Waaseyaa\Foundation\ServiceProvider\Capability\ProvidesApiCatalogEntriesInterface`
+and return immutable `ApiCatalogEntry` values. `AbstractKernel` sorts those
+providers by class name and passes them to the one
+`AcceptsApiCatalogEntryProvidersInterface` receiver before providers boot.
+
+Foundation owns only the contribution values and capability interfaces. The
+Layer-4 API package owns serialization, HTTP routing, content negotiation, and
+configuration. This keeps every dependency downward-only and prevents the
+kernel from importing MCP, Wayfinding, or other optional packages. The target
+value accepts only root-relative same-origin paths; canonical origin selection
+belongs exclusively to the API package.
+
+Anonymous GET/HEAD requests to `/.well-known/api-catalog` are always included
+in `HttpKernel`'s stateless path set, even when an application has not added the
+path to `session.stateless_paths`. Existing session cookies still resume under
+the established `SessionMiddleware` rule.
+
+### AI-catalog provider composition
+
+Experimental AI Catalog discovery mirrors the installed-provider lifecycle but
+uses a separate contract. Packages implement
+`ProvidesAiCatalogEntriesInterface` and return immutable `AiCatalogEntry`
+values. `AbstractKernel` sorts contributors by provider class and injects them
+into `AcceptsAiCatalogEntryProvidersInterface` receivers before boot. The
+Layer-4 API package owns configuration, application query overlays,
+serialization, schema validation, and HTTP; Foundation owns only the safe
+value and capability contracts. It therefore imports no API, MCP, or draft
+standards implementation.
+
+`AiCatalogEntry` accepts a deployment-neutral two-segment key, public display
+metadata, a media type, and a same-origin root-relative artifact path. It has no
+field for a host, bearer token, inline artifact body, or arbitrary metadata.
+The API owner derives a domain-anchored `urn:air` identifier and absolute URL
+from its configured canonical HTTPS base. Anonymous GET/HEAD requests to
+`/.well-known/ai-catalog.json` are stateless by default; the route itself is
+still absent unless an application explicitly enables a non-empty catalog.
 
 The kernel boot sequence is decomposed into extracted bootstrapper classes in `packages/foundation/src/Kernel/Bootstrap/`. `AbstractKernel` delegates to these rather than inlining the logic.
 
@@ -1811,10 +2745,11 @@ Default logger is `LogManager(new Handler\ErrorLogHandler())`. After config load
 Boot sequence (idempotent — guarded by `$this->booted` flag, set only after all steps succeed):
 
 ```
-EnvLoader::load(.env)
+EnvLoader::load(.env) once per process through Symfony Dotenv
   → ConfigLoader::load(config/waaseyaa.php)
   → rebuild LogManager (fromConfig if logging.channels exists, else log_level fallback)
   → debug/environment safety guard
+  → construct one SecretResolverRegistry over the same final sink sanitizer
   → resolve WAASEYAA_APP_SECRET into kernel-owned ApplicationSecret (before database IO)
   → new EventDispatcher()
   → new EntityTypeLifecycleManager($projectRoot)
@@ -1824,9 +2759,11 @@ EnvLoader::load(.env)
   → bootEntityTypeManager()  // delegates to EntityTypeManagerFactory: repository factory (EntityRepository, sole engine post-C-22) — no storage factory is wired
   → compileManifest()        // ManifestBootstrapper
   → bootMigrations()         // reuses DBAL connection from bootDatabase
-  → discoverAndRegisterProviders()  // ProviderRegistry
+  → discoverAndRegisterProviders()  // providers may register exact secret provider/policy declarations
+  → freeze SecretResolverRegistry   // all later provider/class/purpose/environment mutations refuse
   → loadAppEntityTypes()     // reads config/entity-types.php
   → validateContentTypes()   // DiagnosticEmitter check
+  → composePermissionCatalogue() // one PermissionHandler from manifest permissions + ProvidesPermissionsInterface and the one validated RoleRepository; malformed/duplicate entries and uncatalogued role grants fail boot BEFORE any provider boot hook (#2788)
   → bootProviders()          // calls boot() on all registered providers
   → discoverAccessPolicies() // AccessPolicyRegistry
   → bootKnowledgeExtensionRunner() // plugin discovery for knowledge tooling extensions
@@ -1835,7 +2772,7 @@ EnvLoader::load(.env)
 
 Early boot initializes the entity lifecycle manager (for disabling entity types at runtime) and the entity audit logger (for write audit trails). The `EntityWriteAuditListener` is registered on the event dispatcher before any entity storage is created, ensuring all entity writes are audited from boot onward.
 
-`bootEntityTypeManager()` wires storage for each registered entity type. The construction logic is delegated to `EntityTypeManagerFactory` (`packages/foundation/src/Kernel/EntityTypeManagerFactory.php`); the kernel threads in callables for the lazy access-handler resolver, the community-scope resolver, and the account-context attacher — keeping the factory dependency-free while preserving the lazy resolution semantics. Every `SqlSchemaHandler` instantiated in that path receives the kernel's `LoggerInterface` as its fifth constructor argument (after entity type, database, shared `FieldDefinitionRegistry`, and optional `null` bundle enumerator) so schema derivation can log unknown field types without failing boot. Column mapping contract: [`field/column-derivation.md`](./field/column-derivation.md).
+`bootEntityTypeManager()` wires storage for each registered entity type. The construction logic is delegated to `EntityTypeManagerFactory` (`packages/foundation/src/Kernel/EntityTypeManagerFactory.php`); the kernel threads in callables for the lazy access-handler resolver, the community-scope resolver, and the account-context attacher — keeping the factory dependency-free while preserving the lazy resolution semantics. The community resolver runs once per repository construction and its result is shared by the base and revision drivers, so tenant visibility cannot diverge between current rows and revision history. Every `SqlSchemaHandler` instantiated in that path receives the kernel's `LoggerInterface` as its fifth constructor argument (after entity type, database, shared `FieldDefinitionRegistry`, and optional `null` bundle enumerator) so schema derivation can log unknown field types without failing boot. Column mapping contract: [`field/column-derivation.md`](./field/column-derivation.md).
 
 `loadAppEntityTypes()` reads `config/entity-types.php` and registers any `EntityTypeInterface` instances found there. Non-conforming entries are logged as warnings. Registration failures (duplicate IDs, invalid definitions) are logged as errors but do not halt boot.
 
@@ -1847,11 +2784,45 @@ Early boot initializes the entity lifecycle manager (for disabling entity types 
 
 Three protected methods provide environment awareness to all kernel subclasses:
 
+`RuntimePolicy::resolve()` is the typed bootstrap boundary shared by the kernel
+and consumers that must display or apply the same policy. It is constructed
+from the already assembled bootstrap configuration plus the documented process
+fallbacks; it is not read from `EnvironmentConfigFactory` and must never be
+persisted into governed/syncable configuration. Operator diagnostics such as
+`waaseyaa about` receive the resolved value and do not re-read environment
+superglobals.
+
 | Method | Resolution | Returns |
 |--------|-----------|---------|
 | `resolveEnvironment(): string` | Config `'environment'` key → `APP_ENV` env var → `'production'` | Canonical environment name (e.g., `'production'`, `'local'`, `'development'`) |
 | `isDevelopmentMode(): bool` | Calls `resolveEnvironment()`, checks if value is `dev`, `development`, `local`, or `testing` (case-insensitive) | `true` in dev environments |
 | `isDebugMode(): bool` | `APP_DEBUG` env var → config `'debug'` key → `false` | `true` when debug is enabled |
+
+`RuntimePolicy::isDevelopmentEnvironment()` trims and case-normalizes a name,
+then permits only `dev`, `development`, `local`, and `testing`.
+`RuntimePolicy::isDevelopment()` delegates to that public package-policy seam.
+`RuntimePolicy::isExplicitDevelopment()` applies the same classifier only to
+an explicitly configured string; security-sensitive provider fallbacks use it
+when a missing profile must remain production-like instead of inheriting
+process `APP_ENV`.
+`isProductionLike()` is its fail-closed inverse: staging, unknown, missing,
+empty, and malformed values receive production safety controls. When the
+assembled config explicitly contains `environment` with a non-string or blank
+value, that invalid authoritative input resolves to `production`; it does not
+fall through to a development-like process value. Migration output, package
+development conveniences, application-secret fallback, Auth mail fallback,
+configuration authority, AI-agent null-storage fallback, Debug, and SSR
+error-detail policy consume this boundary rather than maintaining local
+allowlists or re-reading process state.
+
+`SqliteTopology` is the sole reviewed classification exception: the database
+package is below Foundation and cannot import `RuntimePolicy` without a package
+cycle. An Architecture test compares its allowlist to RuntimePolicy's exact
+private canonical list, while package tests pin normalization and invalid
+explicit-config fail-closed behavior. The baseline-backed
+`bin/check-runtime-policy-custody` gate scans package, root-application, and
+skeleton source roots and rejects new production `APP_DEBUG` policy reads and
+new development allowlists outside these two authorities.
 
 **Boot guard:** Immediately after loading configuration, `boot()` checks `isDebugMode() && !isDevelopmentMode()`. If debug is enabled outside a development environment, it throws `RuntimeException` with the message `APP_DEBUG must not be enabled in production (APP_ENV=...)`. This prevents accidentally deploying with debug mode active.
 
@@ -1861,16 +2832,17 @@ These variables and config keys are the primary **bootstrap surface** for operat
 
 | Name | Role |
 |------|------|
-| `APP_ENV` | Canonical environment name; falls back to config `environment`, then `'production'`. Drives `isDevelopmentMode()` and the production SQLite existence guard. |
+| `APP_ENV` | Process fallback for the canonical environment name when config omits `environment`; explicit invalid config is production-like and never falls through. Drives `isDevelopmentMode()` and the production SQLite existence guard. |
 | `APP_DEBUG` | Boolean debug flag; falls back to config `debug`. **Must not be true** when the resolved environment is non-development (see boot guard above). |
-| `WAASEYAA_APP_SECRET` | Sole application master secret. Outside `local`/`dev`/`development`/`testing`, it must be `base64:` plus canonical RFC 4648 encoding of exactly 32 bytes and is resolved before database boot. Development kernels synthesize a per-kernel ephemeral value when absent. `ApplicationSecret` derives raw 32-byte HKDF-SHA-256 keys with public salt `waaseyaa.app-secret.hkdf.v1` and distinct versioned purpose labels; master and derived bytes are never configuration values, logs, exceptions, or serialized payloads. |
-| `WAASEYAA_DB` | Optional override for the SQLite database file path when `config['database']` is not set (see `DatabaseBootstrapper`). Relative values resolve against the kernel **project root**, never the process CWD (#1650 / FR-007); absolute values (POSIX, Windows drive-letter, UNC) and `:memory:` pass through untouched. |
-| `WAASEYAA_CONFIG_DIR` | Optional override for the sync config directory (used by `ConsoleKernel` alongside `config['config_dir']`). |
-| `.env` (file) | Loaded first from `$projectRoot/.env` via `EnvLoader::load()` before `config/waaseyaa.php`. `EnvLoader` writes to `putenv()`, `$_ENV`, and `$_SERVER` without overwriting keys already present in any of those stores (see source listing under Kernel Bootstrap file index). |
+| `WAASEYAA_APP_SECRET` | Sole application master secret. Outside `local`/`dev`/`development`/`testing`, it must be `base64:` plus canonical RFC 4648 encoding of exactly 32 bytes and is resolved before database boot. Development kernels synthesize a per-kernel ephemeral value when absent. `ApplicationSecret` derives raw 32-byte HKDF-SHA-256 keys with public salt `waaseyaa.app-secret.hkdf.v1` and distinct versioned purpose labels, including `waaseyaa.auth.token-hmac.v1` for reset/verify/invite tokens when no valid explicit `AUTH_TOKEN_SECRET` is set; master and derived bytes are never configuration values, logs, exceptions, or serialized payloads. |
+| `WAASEYAA_DB` | Optional override for the SQLite database file path when `config['database']` is not set (see `DatabaseBootstrapper`). Relative values resolve against the kernel **project root**, never the process CWD (#1650 / FR-007). Pure resolution preserves POSIX, Windows drive-letter, UNC and `:memory:` spellings; production boot separately rejects UNC/device paths and production `:memory:` under the S1 topology. |
+| `WAASEYAA_CONFIG_SYNC_PATH` | Canonical optional selector for the local sync-artifact directory. Relative values resolve from the project root. All supplied selectors must normalize to one path. |
+| `WAASEYAA_CONFIG_DIR` | Transitional alias for `WAASEYAA_CONFIG_SYNC_PATH`. Equivalent use emits typed deprecation evidence; disagreement fails composition. |
+| `.env` (file) | Loaded from `$projectRoot/.env` via `EnvLoader::load()` before `config/waaseyaa.php`. The same boundary is called by HTTP before worker dispatch and by CLI boot paths, but each real base path is parsed only once per process. Symfony Dotenv owns the `.env.local` and environment-specific cascade, interpolation, multiline, comment, quote, and `export` grammar. Process-injected values win, and resolved values are consistent across `getenv()`, `$_ENV`, and `$_SERVER`. Malformed or unreadable files fail with a redacted message. |
 
 **Review note (assert / IO):** Layer 0 code may use `assert()` for internal invariants and file/stream helpers for logging, caches, or HTTP clients. Production should assume `zend.assertions` may be off; hot paths must not rely on assertions for security. When adding `file_put_contents`, `fopen`, `unserialize`, or `base64_decode` in Layer 0 packages, document the trust boundary (operator-only paths vs request-derived input) in package-level docblocks or this spec.
 
-**Stored-payload `unserialize()` trust boundary (D-12):** Three Layer-0 stores deserialize object graphs — `Worker::processJob()` (`packages/queue/src/Worker/Worker.php`), `DatabaseBackend::mapRowToItem()` (`packages/cache`), and `SqlState::get()/getMultiple()` (`packages/state`). This is **intentional and cannot be tightened to `allowed_classes => false`**: queue messages are open-ended objects and cache/state values are `mixed`; a static allowlist would reject legitimate consumer classes. Every persistent payload is authenticated before `unserialize()`: cache uses `waaseyaa.cache.payload-hmac.v1`, queue and failed-job retry use `waaseyaa.queue.payload-hmac.v1`, and SQL state uses `waaseyaa.state.payload-hmac.v1`. Each HMAC-SHA-256 key is derived independently from `WAASEYAA_APP_SECRET`; versioned envelopes parse strictly and compare MACs with `hash_equals()`. Persistent queue/state readers accept authenticated envelopes only.
+**Stored-payload `unserialize()` trust boundary (D-12):** Three Layer-0 stores deserialize object graphs — `Worker::processJob()` (`packages/queue/src/Worker/Worker.php`), `DatabaseBackend::mapRowToItem()` (`packages/cache`), and `SqlState::get()/getMultiple()` (`packages/state`). This is **intentional and cannot be tightened to `allowed_classes => false`**: queue messages are open-ended objects and cache/state values are `mixed`; a static allowlist would reject legitimate consumer classes. Every persistent payload is authenticated before `unserialize()`: cache uses `waaseyaa.cache.payload-hmac.v1`, queue and failed-job retry use `waaseyaa.queue.payload-hmac.v1`, and SQL state uses the caller-owned 32-byte HMAC key supplied to `SqlState`. Cache and queue keys are application-master purpose owners; the state package deliberately declares no built-in purpose because no production provider composes `SqlState`. An application that persists SQL state must own and document that key lifecycle explicitly. All three versioned envelopes parse strictly and compare MACs with `hash_equals()`; persistent queue/state readers accept authenticated envelopes only.
 
 ### DatabaseBootstrapper
 
@@ -1894,7 +2866,7 @@ Creates `DBALDatabase::createSqlite()` using the canonical path resolution (`res
 | `:memory:` | sentinel | `:memory:` (untouched; never warns) |
 | `/var/db/app.sqlite` | absolute (leading `/`) | untouched |
 | `C:\data\app.sqlite`, `C:/data/app.sqlite` | absolute (drive letter + separator) | untouched |
-| `\\server\share\app.sqlite` | absolute (UNC) | untouched |
+| `\\server\share\app.sqlite` | absolute (UNC) | untouched by pure resolution; S1 boot refuses `S1-DB001` before connection |
 | `./storage/waaseyaa.sqlite` | relative (leading `./` stripped) | `{projectRoot}/storage/waaseyaa.sqlite` |
 | `storage/waaseyaa.sqlite` | relative | `{projectRoot}/storage/waaseyaa.sqlite` |
 | `../shared/db.sqlite` | relative (climbing) | `{projectRoot}/../shared/db.sqlite` |
@@ -1907,11 +2879,13 @@ Creates `DBALDatabase::createSqlite()` using the canonical path resolution (`res
 
 Production safety contract:
 - environment resolution matches the kernel contract: config `'environment'` key → `APP_ENV` env var → `'production'`
+- DSN/URI-shaped raw configuration and UNC/device paths fail with `S1-DB001`
+- production `:memory:` fails with `S1-DB002`; it remains a development/test-only sentinel
 - when the resolved environment is `production`, file-backed SQLite paths must already exist before boot continues
 - if the resolved production SQLite file is missing, bootstrap throws `RuntimeException` naming `bin/waaseyaa db:init` as the sanctioned first-deploy path (`Database not found at {path}. In production, the database must already exist. Run "bin/waaseyaa db:init" to create the database file and apply migrations. The command is idempotent and safe to run on every deploy.`). The guard itself is unchanged; `db:init` bypasses it by running through the minimal-console path (see `ConsoleKernel::shouldUseMinimalConsole()` and the `DbInitCommand` reference below).
 - when that production guard fires, bootstrap does not create the parent directory as a side effect
 - non-production environments (`local`, `dev`, `development`, `testing`, etc.) keep the existing auto-create behavior
-- `:memory:` remains allowed in all environments for explicit in-memory bootstrap/test cases
+- `:memory:` remains allowed in non-production environments for explicit in-memory bootstrap/test cases
 
 ### ManifestBootstrapper
 
@@ -1924,11 +2898,13 @@ public function boot(string $projectRoot): PackageManifest
 
 Instantiates `PackageManifestCompiler` with `storagePath: $projectRoot . '/storage'` and calls `load()` (cache-first, compile on miss).
 
-`storage/framework/packages.php` includes metadata key `_manifest_inputs_fp`: an `xxh128` digest of the raw contents of the project `composer.json` and `vendor/composer/installed.json`. When present and not equal to a freshly computed digest, `load()` discards the cache and recompiles (covers new/removed Composer packages and copied stale caches). After loading a cached manifest, `assertProvidersExist()` validates that all declared provider classes can be autoloaded. If any are missing, the manifest auto-recovers by logging a warning and recompiling from disk, no manual `optimize:manifest` needed. `StaleManifestException` is still thrown by `assertProvidersExist()` but is caught internally by `load()` as a recompile trigger. If the recompiled manifest still contains missing providers (e.g., stale `composer.json` declarations), `load()` logs an error with actionable remediation guidance, stamps the missing provider list into the cache via `_known_missing_providers`, and returns the manifest without rethrowing. On subsequent requests, `validateCachedProviders()` compares the current missing set against the stamped known-missing set: if they match, recompilation is skipped (only an error is logged). If `composer.json` changes (fingerprint mismatch), the stamp is naturally cleared by a fresh compile. This prevents repeated full-compile cost on every request when a provider is permanently misconfigured (#9). If the stamp cannot be persisted (missing cache file, write failure), `stampKnownMissing()` logs a warning so operators can diagnose why recompilation continues.
+`storage/framework/packages.php` includes metadata key `_manifest_inputs_fp`: an `xxh128` digest computed by `computeManifestInputsFingerprint()` over the raw bytes of, in order, the project `composer.json`, `vendor/composer/installed.json`, `vendor/composer/autoload_classmap.php`, `vendor/composer/autoload_psr4.php`, and — #2778 — a fifth component built from the current on-disk `composer.json` of every installed **path** package (`installed.json` marks `dist.type === 'path'` or `source.type === 'path'`), sorted by package name for determinism. This fifth component is the manifest-cache authority for path-package discovery metadata: `compile()` (via `hydrateInstalledPackageMetadata()`) re-reads each such package's own `composer.json` on every compile and merges its `extra.waaseyaa` declarations, so that file is as authoritative a manifest input as `installed.json` itself — a path package can change its own providers/migrations/permissions/etc. while root `composer.json`, `installed.json`, and both autoload dumps stay byte-identical, and only hashing this fifth component catches it. Only the single `composer.json` file of each path package is read — no source tree is walked or hashed, keeping recompute-per-request bounded to N small file reads for N *true* path packages, not a fresh classmap of unrelated code. The `dist`/`source` type check — not `install-path` presence — is what keeps that N small: Composer 2.x stamps `install-path` on every installed package regardless of origin (dist, source, or path), so gating on it alone would read and hash every installed dependency's `composer.json` on every `load()`, including the cache-hit path (caught in PR review on #2790, verified against this repo's own `vendor/composer/installed.json` where all 200 installed packages carry `install-path`). Packages that are not path-installed (ordinary dist installs from Packagist) contribute nothing to this component; their metadata is already fully captured by `installedRaw`, consistent with the issue's observation that a normal dist-package upgrade already changes `installed.json` (a dist package cannot change content without a new `dist`/`source` reference). `load()` trusts a cache only when it carries a **string** `_manifest_inputs_fp` that exactly equals the computed digest; a missing or non-string fingerprint is stale by definition and recompiles, as does any mismatch (covers new/removed/edited Composer packages — dist or path — copied stale caches, and legacy or hand-written caches without a fingerprint) (#2788 cache custody). After loading a cached manifest, `assertProvidersExist()` validates that all declared provider classes can be autoloaded. If any are missing, the manifest auto-recovers by logging a warning and recompiling from disk, no manual `optimize:manifest` needed. `StaleManifestException` is still thrown by `assertProvidersExist()` but is caught internally by `load()` as a recompile trigger. If the recompiled manifest still contains missing providers (e.g., stale `composer.json` declarations), `load()` logs an error with actionable remediation guidance, stamps the missing provider list into the cache via `_known_missing_providers`, and returns the manifest without rethrowing. On subsequent requests, `validateCachedProviders()` compares the current missing set against the stamped known-missing set: if they match, recompilation is skipped (only an error is logged). If `composer.json` changes (fingerprint mismatch), the stamp is naturally cleared by a fresh compile. This prevents repeated full-compile cost on every request when a provider is permanently misconfigured (#9). If the stamp cannot be persisted (missing cache file, write failure), `stampKnownMissing()` logs a warning so operators can diagnose why recompilation continues.
 
 The compiled manifest now also carries `packageDeclarations`, derived from package-local `composer.json` metadata and merged installed-package metadata. This is the post-M10 baseline used to normalize provider ownership and to verify that declared provider classes still exist before the manifest is trusted.
 
-On every successful cache read, root `extra.waaseyaa` **providers** and **permissions** are merged again from `composer.json` so a structurally valid cache cannot omit app-level declarations that match the current fingerprint. Composer keys `extra.waaseyaa.commands` and `extra.waaseyaa.routes` are **deprecated**: they are not compiled into `PackageManifest`, and `PackageManifest::fromArray()` ignores legacy `commands`/`routes` keys if present in an older `packages.php`. The compiler logs a warning when any installed package or root `composer.json` still declares those keys (see `docs/adr/0001-manifest-routes-commands-removal.md`). HTTP routes and console commands are owned by `ServiceProvider::routes()` / `ServiceProvider::commands()` and the core CLI registry — not the manifest lists.
+On every successful cache read — which by the rule above means the fingerprint already proved the cache was compiled from exactly the current inputs — root `extra.waaseyaa` **providers** and **permissions** are merged again from `composer.json` so a structurally valid cache cannot omit app-level declarations; the byte-identical cached-root permission re-merge exemption exists only under that proven fingerprint, so a legacy cache carrying a package-owned permission the root also declares recompiles and is refused as a package/root collision rather than read as unchanged root ownership. Composer keys `extra.waaseyaa.commands` and `extra.waaseyaa.routes` are **deprecated**: they are not compiled into `PackageManifest`, and `PackageManifest::fromArray()` ignores legacy `commands`/`routes` keys if present in an older `packages.php`. The compiler logs a warning when any installed package or root `composer.json` still declares those keys (see `docs/adr/0001-manifest-routes-commands-removal.md`). HTTP routes and console commands are owned by `ServiceProvider::routes()` / `ServiceProvider::commands()` and the core CLI registry — not the manifest lists.
+
+`PackageManifest::$configContracts` (cache key `config_contracts`, #2430) carries CFG-03 configuration-contract declarations verbatim, keyed by package name, for packages declaring `extra.waaseyaa.config-contract` (`schema-provider`, `version`, `readable_versions` — exactly those three keys). `ConfigPackageCompatibility` is built from this and decides whether authored configuration may be staged, so `collectConfigContracts()` distinguishes three states rather than two. **No declaration** means the package contributes no configuration contract — complete and ordinary. **A valid declaration** is recorded verbatim. **A malformed declaration fails closed**: compilation throws `MalformedConfigContractException` naming the package and the invalid field, and configuration discovery, signing, and import all refuse until it is fixed. Demoting the third case to the first would be a security defect, not a convenience: a package that declares a contract and gets it wrong is evidence the installed cohort is not what it claims to be, and silently treating it as contributing nothing yields an under-specified compatibility cohort that both the signer and the verifier would accept. Per-entry validation stays with `ConfigPackageContract::fromComposerManifest()`. Like every optional manifest key, it deserializes as `$data['config_contracts'] ?? []` so older caches stay loadable. A valid cache hit preserves this installed cohort byte-for-byte while remerging root providers and permissions; root metadata cannot erase or synthesize installed configuration contracts (#3044).
 
 ### ProviderRegistry
 
@@ -1980,7 +2956,7 @@ Kernel/
     AbstractKernel.php           -- boot orchestrator, delegates to Bootstrap/ classes
     HttpKernel.php               -- HTTP request handling, cache setup, CORS
     ConsoleKernel.php            -- CLI bootstrapping; delegates command graph assembly to `Waaseyaa\CLI\CliCommandRegistry`
-    EnvLoader.php                -- .env file parser; writes to putenv(), $_ENV, and $_SERVER (each destination guarded independently — preset keys in any destination are never overwritten)
+    EnvLoader.php                -- once-per-process Symfony Dotenv boundary; process values win and resolved keys are published consistently to putenv(), $_ENV, and $_SERVER
     ConfigLoader.php             -- config/waaseyaa.php loader
     EventListenerRegistrar.php   -- registers cache invalidation listeners
     BuiltinRouteRegistrar.php    -- registers shared foundation-owned HTTP routes (schema, discovery, entity-types, broadcast SSE, media upload/versions, semantic search, workflow/queue/scheduler/notification admin, Mercure monitor, OCAP audit log, MCP-admin REST `/api/mcp/{tools,server-config}`, OIDC client CRUD, classification retention policies, SSR catch-all)
@@ -1996,7 +2972,7 @@ Middleware/
     HttpHandlerInterface.php     -- handle(Request): Response
     HttpPipeline.php             -- onion-pattern HTTP middleware stack
     DebugHeaderMiddleware.php    -- X-Debug-Time/Memory/Request-Id headers (APP_DEBUG only)
-    BodySizeLimitMiddleware.php  -- rejects oversized request bodies (413)
+    BodySizeLimitMiddleware.php  -- rejects oversized request bodies (413) in the route's refusal envelope; Content-Length fast path requires a digit-only header
     JobMiddlewareInterface.php   -- process(Job, JobHandlerInterface): void
     JobHandlerInterface.php      -- handle(Job): void
     JobPipeline.php              -- onion-pattern job middleware stack
@@ -2057,6 +3033,9 @@ Http/
     ControllerDispatcher.php     -- routes controller names to domain routers; Inertia responses use Inertia::getRenderer()
     JsonApiResponseTrait.php     -- shared JSON:API response builder
     CorsHandler.php              -- CORS preflight and header resolution
+    Refusal/
+        RefusalEnvelope.php          -- renders kernel refusals in the matched route's declared transport
+        HttpRefusal.php              -- one refusal, carried in both JSON:API and transport-neutral form
     Router/
         DomainRouterInterface.php        -- supports(Request)/handle(Request) contract
         WaaseyaaContext.php              -- typed request context value object
@@ -2132,7 +3111,7 @@ Schema/
 ```
 HttpClientInterface.php          -- request/get/post contract
 HttpResponse.php                 -- readonly DTO: statusCode, body, headers, json(), isSuccess()
-StreamHttpClient.php             -- file_get_contents + stream context implementation
+StreamHttpClient.php             -- fopen + fail-closed bounded body read
 HttpRequestException.php         -- thrown on request failure
 ```
 
@@ -2144,7 +3123,7 @@ DbalQueue.php                    -- DBAL-backed persistent queue
 InMemoryQueue.php                -- in-memory queue for testing
 MessageBusQueue.php              -- Symfony Messenger bridge
 SyncQueue.php                    -- immediate synchronous execution
-Job.php                          -- job value object
+Job.php                          -- abstract application job (`handle()`)
 Worker/
     Worker.php                   -- processes jobs from queue
     WorkerOptions.php            -- max jobs, memory limit, sleep, timeout
@@ -2206,6 +3185,100 @@ The canonical JSON:API response trait is `Waaseyaa\Foundation\Http\JsonApiRespon
 - **Bimaaji decoupling.** Independent surface; out of scope for this mission.
 - **Symfony-import boundary linter.** Per ratified C-005 (b), the `bin/check-symfony-imports` script is deferred to a follow-up issue — the soft-rot tradeoff is documented there. Until that linter ships, the mission's executable contract is `packages/api/tests/Contract/SymfonyImportBoundaryTest`, which asserts a sample app-controller fixture produces a JSON:API response without `use Symfony\` imports.
 
+## SQLite artifact installation ownership
+
+`FrameworkRuntimeTableCatalogue` is the versioned framework authority for
+host-authored SQLite state. `SqliteArtifactPreparer` builds a candidate from an
+application artifact while preserving or merging the serving runtime tables
+according to that catalogue. Applications declare only their artifact-owned
+tables; unknown tables in either input fail closed.
+
+**Completeness is the load-bearing property (#2547 and #3142, catalogue version 4).**
+Fail-closed rejection only helps if the catalogue actually covers what Framework
+migrations install. It did not: 22 Framework-owned tables were unclassified, so
+a serving database built on the same commit as the artifact was rejected before
+a single row was copied — Framework could boot and pass CI while being unable to
+complete its own documented data refresh.
+
+Two rules follow from that:
+
+- **New migration-installed runtime state is classified in the same change that
+  installs it.** `FrameworkRuntimeTableCatalogueCompletenessTest`'s
+  `PRE_CATALOGUE_ADJUDICATION_TABLES` list is a shrinking ledger of historical
+  debt, not a place to defer work to.
+- **Set comparison is not proof.** That test compares installed names against
+  catalogued ones and stayed green throughout, because a grandfather entry
+  satisfies it. `MigrationInstalledArtifactPreparationTest` drives the real
+  preparer over a real migration-installed database, which is the assertion the
+  production failure actually tripped.
+
+Classification follows who authors the rows. Framework-owned tables whose rows
+the serving host writes are `Preserve` (or `AppendOnly` where the rows are a
+ledger); rows that are content or rebuildable come from the artifact
+(`Artifact`); identity is `IdentityMerge`. Three consequences worth stating,
+because each is a place the obvious answer is wrong:
+
+- **The configuration-authority graph moves as one set.** Foreign keys and
+  cross-table triggers bind those tables together, so preserving some while
+  taking others from the artifact would leave the graph referencing rows that
+  are not there. (Restoring them without firing those triggers against a partial
+  state is #2548.)
+- **Monotonic counters are a correctness concern, not a data-retention one.**
+  `waaseyaa_scheduler_fence_sequence` is preserved because a reset would let a
+  stale lease holder out-fence the live one.
+- **`waaseyaa_schema_authority` is `Artifact`**, not preserved: it counts the
+  migration ledger, and `waaseyaa_migrations` is already artifact-owned. The
+  candidate's schema is the artifact's, so its generation must be too. Its
+  `schema_fingerprint` is the one field this rule does not fully settle:
+  runtime preservation (cloning serving-only tables, merging identities) can
+  still change the candidate's actual logical schema relative to what the
+  artifact's own recorded fingerprint describes. #3149 closed that gap: the
+  preparer reconciles `schema_fingerprint` — and only that field — inside its
+  candidate transaction, after preservation and before commit, then verifies
+  the recorded and computed values agree after commit using the same
+  computation the serving host's own `[S1-DB109]` pre-state check uses.
+  `ledger_fingerprint`, `source_catalog_fingerprint`, and `generation` stay
+  exactly what the artifact recorded, for the reason above.
+
+`AppendOnly` and `Preserve` are the same code path in the preparer today. The
+distinction is recorded intent — which rows are a rewritable state and which are
+a ledger — so a policy that does distinguish them lands on the right rows.
+
+When an application uninstalls an optional domain, it may pass that domain's
+former tables through `retiredApplicationTables`. Retirement is intentionally
+strict: each table must be absent from the new artifact, must not conflict with
+an active application or framework-owned table, and may exist in the serving
+database only when it is empty. A populated retired table fails before the
+candidate is created. This provides an explicit removal path without turning
+unknown-table rejection into implicit data deletion.
+
+**Runtime schema compatibility is structural, not textual.** Before a
+`Preserve`, `AppendOnly`, or `IdentityMerge` table's rows are copied, the
+serving and artifact schemas must agree. `SqliteSchemaSignature` decides that
+from what SQLite reports (`table_xinfo`, `foreign_key_list`, `index_list`,
+`index_xinfo`) plus a canonical token stream of the DDL for the semantics the
+pragmas do not expose: CHECK expressions, generated-column expressions and
+storage, per-column collation, ON CONFLICT clauses, AUTOINCREMENT, WITHOUT
+ROWID, STRICT, the rowid alias, foreign-key deferrability, index expressions
+and partial predicates, and triggers. Declared column types reduce to their
+affinity except in STRICT tables. The `sqlite_master.sql` bytes themselves are
+never compared: two databases whose runtime tables were created by different
+code paths (a migration versus an earlier lazy creator, or a DBAL schema
+builder versus raw SQL) differ in line breaks, identifier quoting, `CLOB`
+versus `TEXT`, an explicit `DEFAULT NULL`, or an inline versus table-level
+primary key while being the same schema, and a serving database that predates
+a migration keeps its original creator's text because the migration's
+`hasTable` guard makes it a no-op. A rejection names the first differing
+structural part (`Incompatible runtime schema for auth_tokens
+(columns.1.not_null)`). Constraint names, comments, and column type spelling
+beyond affinity are the only DDL facts deliberately not compared.
+
+The `user` table is the sole declared schema-evolution exception: an artifact
+may add the nullable canonical identity columns and their named unique indexes
+to a six-column serving table. The stable `uuid` identity must agree before a
+serving row replaces its matching artifact row; remaps and unrelated unique
+collisions fail atomically.
+
 ## Implementation gotchas
 
 - **Backward-compatible cache evolution**: When adding new properties to cached manifests/configs, make them optional in deserialization (use `$data['key'] ?? []`) to avoid breaking old cached files.
@@ -2222,3 +3295,143 @@ The canonical JSON:API response trait is `Waaseyaa\Foundation\Http\JsonApiRespon
 <!-- Spec reviewed 2026-05-17 - dead-code Phase 3 Bucket 4: @api PHPDoc sweep on additional public-API classes. No behavioural change. -->
 
 <!-- Spec reviewed 2026-05-18 - WP07 (agent-executor mission) rebase + rewire: no behavioural change to this subsystem; touch refreshes drift-detector timestamp. -->
+# Provider capability projection
+
+`ProviderCapabilitySource` is the kernel-owned read-only projection used when a
+package must compose provider capabilities after every provider has registered.
+It exposes only `implementing(interface)` in compiled manifest order; it does
+not expose container mutation or a generic provider service locator. Auth
+consumer extension composition is its first security-sensitive user.
+
+## Repository reference-validation composition
+
+`EntityTypeManagerFactory` supplies each canonical SQL repository with an
+`EntityIdentifierResolver` backed by the same completed entity-type manager.
+The lazy repository factory captures that manager only after construction;
+reference checks resolve through its registered repositories rather than a
+second registry or a controller-local lookup. The active save-time validation
+path derives canonical `EntityExists` constraints, including multi-value `All`
+composition. Missing resolver or malformed target metadata refuses before write.
+Explicit validation opt-outs remain unchanged. This does not implement deletion
+restrictions, translation/revision write validation, or polymorphic references.
+The behavioral contract and focused evidence are in `entity-system.md` and
+`FW-ENTITY-REFERENCE-INTEGRITY-01`.
+
+## Embedding transport and transaction integration (FW-AIV-EXECUTION-01)
+
+SymfonyHttpClient under waaseyaa/http-client owns generic HTTP mechanics with
+total max_duration, inactivity timeout, verified TLS, no automatic redirects or
+retries and a configured response cap. ai-vector keeps a minimal payload/status/
+JSON adapter and provider policy. The maintained Symfony floor is ^7.4, locked
+7.4.20; native fallback does not require ext-curl. Existing stream consumers are
+unchanged. Save transfers use 2 seconds; Ollama CLI/query 15 seconds and OpenAI
+CLI/query 20 seconds. Whole request, credential and batch time are separate.
+
+EntitySourceChangedEvent carries the actual source connection after writes and
+before true commit. ai-vector invalidation participates in that transaction;
+failure aborts the source mutation. Provider calls run after true commit without
+entity transactions held. Production has no delayed post-delete or non-HTTP
+invalidation callbacks. Post-commit provider failure remains best-effort, logged
+with AIV-EXECUTION-007; the application operator monitors source errors separately
+and owns scheduled refresh reconciliation. See semantic-search-contract.md.
+
+## Route metadata foundation (ROUTE-METADATA-01)
+
+Foundation supplies immutable route declarations, handler references, finalized
+contribution inputs and snapshots under `Routing/Metadata`, plus a standalone
+composition epoch. The epoch consumes a bootstrap-validated participation token,
+refuses actual legacy contributors without calling their hooks, and publishes
+only after the whole contribution succeeds. Recursive or failed collection is
+terminal. A new epoch is required to retry.
+
+Readiness also admits copied built-in and terminal metadata lists with reserved
+source IDs and contiguous ordinals. Collection preserves built-in, provider and
+terminal order, then sorts by descending priority with stable ties. Duplicate
+names across any source refuse publication. Selected non-secret shared inputs
+and the full source roster bind snapshot identity, including when no provider
+declares routes. Empty static lists are valid standalone inputs and do not prove
+that a kernel admitted its complete source set.
+
+The internal Kernel `RouteInputProjector` provides the memory-only entity-input
+adapter. It takes already finalized exposure decisions and capability facts,
+validates exact exposure/definition roster agreement, and copies only IDs,
+bundle metadata and exposure booleans into immutable shared/provider contexts.
+It does not discover capabilities, resolve services or recompute API policy.
+Shared inputs survive cohorts with no declarative providers. No configuration
+is selected yet. The standalone adapter does not attest boot timing or provenance;
+kernel input admission below owns those responsibilities.
+
+Kernel input admission now captures the existing API policy's scalar map during
+ordinary API boot through `RouteExposureInputs` on the existing resolver. It
+freezes once after finalizers against the entity roster and admitted API provider
+presence, then constructs shared/provider contexts. No policy resolution or
+definition refresh occurs in getters. Missing, invalid, duplicate, stale and late
+publication refuse canonical access. Late writes poison cached access without
+mutating earlier immutable values. Admitted API absence yields false exposure;
+missing participation never means absence. Ordinary legacy boot and bare API
+provider construction remain compatible. Boot/profile custody applies to inputs.
+
+Metadata accepts only finite UTF-8 scalar data and arrays. Untyped two-string
+class/method syntax is reserved and rejected without autoloading; closed typed
+lists such as HTTP schemes have their own validation. Identity tags list/map
+shape and integer/string keys before Foundation canonical map sorting, and
+preserves finite float types. Snapshot projections retain the original data.
+
+Kernel bootstrap now admits participation against the manifest's raw records and
+the actual registered provider roster. It preserves restricted-profile custody
+and refuses route authority permanently after a failed boot, while retaining
+existing ordinary boot retry behavior. Access before boot completes refuses.
+This token does not claim a completed route graph. Kernel whole-source admission
+is available through `getRouteSnapshot()`; HTTP matching, CLI and Bimaaji adoption
+remain pending.
+Existing route registration remains active until the staged adoption
+described in [route-metadata.md](route-metadata.md) is implemented and qualified.
+
+## Explicit execution service admission
+
+`KernelHandlerContainer::explicitServices(Request)` admits only existing registered kernel/provider keys to a request-local `ExplicitHandlerServices` facade. Symfony service-contracts supplies locator mechanics, metadata-only `has` and circular factory protection. Kernel bindings keep their declared shared cache; provider singleton/factory resolution bypasses the legacy container's provider-result cache. Kernel keys take precedence, then the first provider declaration; failure of that selection propagates without another provider attempt. Numeric-string IDs retain their existing behavior, with provider binding maps correctly documenting PHP's integer key coercion.
+
+The facade carries the actual Request, and explicitly supplied factories may own request-local state. This does not add a provider request-scope declaration. The existing generic CLI container continues its compatibility lookup; canonical handler lookup does not delegate to its autowiring or fallback path. The HTTP bridge remains pending.
+
+## Kernel route source admission
+
+Successful runtime boot admits the neutral builtin/terminal authority and exact finalized provider contexts to one `RouteCompositionEpoch`. Contribution is lazy and never part of boot. `getRouteSnapshot()` checks input custody before collection and again before returning a completed value; a caught input mutation during contribution cannot escape on the first request. Reuse also rechecks custody, so late exposure failure refuses a previously completed snapshot. Legacy providers refuse the entire cohort without executing hooks. Duplicate, failed or recursive contribution is terminal. CLI entry points establish the CLI profile; ordinary HTTP boot establishes HTTP. Restricted and failed kernel custody is retained. The immutable source authority is preloaded and hashed during existing bootstrap validation, so later inspection reads no source or entity definitions and performs no autoload.
+
+## HTTP route execution projection
+
+`HttpKernel` now admits a kernel-local `HttpRouteComposer` from validated route
+participation and frozen inputs. Fully declarative HTTP reuses the complete
+kernel snapshot; mixed legacy HTTP compiles metadata and invokes actual legacy
+hooks once. Explicit `routing.mode` defaults to `legacy`; `canonical` refuses
+legacy contributors before execution. Unknown modes and poisoned inputs refuse
+routing without fallback. Stable metadata handler IDs reach middleware unchanged
+and resolve only in terminal dispatch through explicit bindings. Matching uses
+the actual request and the language-stripped path. See
+[route-metadata.md](route-metadata.md) for compatibility and qualification limits.
+
+## Auth/OIDC metadata adoption
+
+ROUTE-METADATA-01 updates the historical eager AuthOidcRouteServiceProvider example above: admitted HTTP now selects declarative routes and constructs only the matched auth controller through an explicit nonshared factory. Optional OIDC routes use frozen explicit binding-key presence. Foundation projects provider getBindings() keys after boot without invoking factories; this adds service:<id> booleans to route contexts and sealed input identity. There is no service discovery or health probe during inspection. Bare legacy compatibility hooks remain distinct from canonical admission.
+
+ROUTE-METADATA-01 Foundation HTTP terminal preparation adds shared schema-show and workflow-list request actions and optional forwarded parameter names to existing JSON:API/translation dispatch. ApiServiceProvider explicitly binds these nonshared adapters with the canonical kernel manager, access handler and field registry. Schema authority fallback consumes the boot-scoped field-type registry. Builtin OpenAPI and unknown legacy-action responses remain unchanged. Complete API metadata admission, lazy HTTP router-chain selection and installed strict graph proof remain pending.
+
+ROUTE-METADATA-01 lazy HTTP execution: selected declarative closures use ControllerDispatcher directly with the existing optional Inertia renderer, avoiding construction of unused legacy domain routers. Builtin string and legacy selections retain the router chain. Finalized input custody is rechecked after both selected factory and renderer/legacy construction, so caught publication failure still refuses before handler execution. No fallback or route admission change is introduced.
+
+
+ROUTE-METADATA-01 frozen API availability prerequisite: the existing neutral boot publication now copies boolean api.route.* facts with exposure, validates their namespace and types, and exposes them only after freeze. Duplicate, malformed and late publication poisons both views. API publishes only after its existing successful install gates and catalog construction, adding no probes or service resolutions. The kernel projects copied facts with existing service-presence inputs into snapshot identity. Optional publish arguments preserve callers; absent API supplies no API route facts. Full API admission and installed strict Bimaaji proof remain open.
+
+
+ROUTE-METADATA-01 complete API admission: ApiServiceProvider contributes one pure table from finalized copied exposure, api.route availability and declared service presence. Fixed API rows and JsonApiRouteProvider structural rows share the same authority with bare compatibility replay through RouteMetadataCompiler. Canonical declarations identify explicitly bound, nonshared request adapters; no controller or domain-router construction occurs during inspection. The owned JSON structural generator is loaded during register, before cold reads. Canonical workflow inclusion uses declared TransitionService binding presence; an unhealthy selected dependency refuses execution rather than silently withdrawing routes. Bare compatibility retains its prior healthy-resolution gate and semantic controller/alias defaults until legacy callers migrate. OIDC admin inclusion uses copied entity presence. MCP permission/session/CSRF, retention roles/defaults, priorities and hidden opaque404 behavior remain unchanged. The stateless hidden handler accepts optional forwarded request/path arguments without service reads. Removal condition for semantic adapter mapping and bare replay is completion of legacy API callers under RM-06; owner waaseyaa/api. Admin Surface/FETDER producers and CLI/Bimaaji/installed strict export remain open.
+
+
+ROUTE-METADATA-01 Admin Surface admission: one table declares core, optional page-builder and SPA routes from copied binding presence and preloaded path authority. Explicit nonshared core/page-builder/SPA request handlers preserve existing gates, transport/status rules, principal/body forwarding and cookie rewrite. Host construction, package probes and SPA file reads occur only during selected execution. Canonical unhealthy declared host dependencies refuse; bare compatibility retains its healthy optional-host gate and projects the same table with the same handlers. Custom host factory lifetime is per selected construction, with factory-owned reuse and legacy once-at-registration behavior retained. Deptrac classifies the three handlers in existing Delivery and composition; generated dependency view is refreshed. Source admission does not complete FETDER/CLI/Bimaaji or installed strict export qualification.
+
+
+## ROUTE-METADATA-01 canonical inspection
+
+ProviderRegistryKernelServices serves RouteSnapshot through the optional lazy
+kernel accessor, ahead of provider bindings. Each read retains completed-boot,
+participation and input-custody checks. Bimaaji projects that authority via the
+existing RouteMetadataCompiler; route:list constructs its router from it.
+Neither consumer assembles HTTP execution routers or invokes legacy hooks.
+The shared refusal/compatibility contract is recorded in route-metadata.md.

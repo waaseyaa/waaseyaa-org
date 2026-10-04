@@ -1,15 +1,20 @@
 # Middleware Pipeline
+<!-- Spec reviewed 2026-08-26 - #2180 selects FrankenPHP runtime mode explicitly. `frankenphp_handle_request()` exists in worker and classic builds, and classic mode may throw or return false when it is called, so neither function existence nor first-call behaviour is a mode signal. The committed Caddy worker block sets `WAASEYAA_FRANKENPHP_WORKER=1` inside the worker process; all four front-controller copies enter the loop only for that exact marker and fail closed when an explicitly selected worker lacks its API. Classic FrankenPHP, php -S, and FPM always invoke the synchronous handler. The native harness pins the marker only in its worker block, proves repeated worker callbacks, and requires classic mode to return a non-empty 200 response. -->
+<!-- Spec reviewed 2026-08-26 - #2490 makes HttpKernel's explicit built-in factories the sole production construction path. HttpMiddlewareStackComposer combines those instances with provider contributions, rejects duplicate concrete classes, and stably sorts by AsMiddleware priority. RateLimitMiddleware (durable DatabaseRateLimiter) and BodySizeLimitMiddleware are now active by default; CompressionMiddleware, RequestLoggingMiddleware, and ETagMiddleware remain provider opt-ins pending their documented boundary audits. -->
+<!-- Spec reviewed 2026-08-29 - #2700: password-authenticated sessions bind User.session_generation; SessionMiddleware fails closed and clears identity when the generation is missing or stale. Password reset increments the generation with the credential save, revoking all older sessions. -->
+<!-- Spec reviewed 2026-08-16 - #2150: ResponseCacheControlMiddleware is the outermost HTTP response-policy layer. SessionMiddleware marks every stateful request and disables PHP's independent session cache limiter before startup; after all inner cookie writers unwind, the response layer replaces any cache policy with private, no-store when the request is session-bound or the Symfony response carries Set-Cookie. Cookie-free stateless responses preserve their public SSR policy. -->
+<!-- Spec reviewed 2026-08-22 - #2494 FrankenPHP worker mode includes auto_prepend_file once per process, not once per request. The repo `public/index.php` `$handler` therefore arms `Waaseyaa\FrankenPhp\WorkerAcceptance` via string `class_exists` only when `WAASEYAA_FRANKENPHP_ACCEPTANCE` is exactly `worker-lane-v1` and SAPI is `frankenphp`. The seam ignores request headers and environment-supplied paths, loads no `tests/` path from the front controller, and stays inert if the class or extras are missing. Production leaves the env unset. Skeleton / `make:public` stub / golden stay unchanged. -->
+<!-- Spec reviewed 2026-08-10 - #2327 corrected runtime wiring: HttpKernel explicitly installs CommunityMiddleware at priority 20 because compiled AsMiddleware metadata is inventory rather than executable registration. CommunityMiddleware preserves route/session precedence, falls back to the authoritative active configured context, writes `_community_id` before FieldReadContextMiddleware, and restores the prior configured context after dispatch for long-lived workers. Fixed-community immutable principals therefore align with storage/controllers; inactive contexts remain unscoped. -->
 <!-- Spec reviewed 2026-07-30 - #2154 (follow-up to #2146): a session.stateless_paths entry of exactly "/" now means the ROOT PATH only, not a prefix of every path. Prefix-matching it made every anonymous GET stateless including /admin/login (a GET that must mint a CSRF token, withheld when no session exists), so an app could not express a cookie-free homepage without silently breaking its own authentication. Named prefixes are unchanged. See middleware-pipeline.md "Stateless path gate". -->
 
 <!-- Spec reviewed 2026-07-30 - #2146 stateless session paths: SessionMiddleware gains an opt-in session.stateless_paths gate (anonymous GET/HEAD on configured prefixes skip session_start; session-cookie-carrying requests resume; other methods unchanged; default [] is exact behavior parity). Access-control semantics unchanged: skipped sessions resolve to AnonymousUser under deny-unless-granted. Full contract in middleware-pipeline.md "SessionMiddleware". -->
 <!-- Spec reviewed 2026-07-17 - #2064 WP2 production-wires FieldReadContextMiddleware at priority 15 through the audit provider. It runs after bearer/session identity (40/30) and before route authorization (10), installs a strictly audited immutable principal, restores the fiber-local scope in finally, and wraps deferred streamed-response callbacks with the same bounded principal. Field enforcement remains dormant. -->
 
-<!-- Spec reviewed 2026-06-19 - classic-FrankenPHP fallback in the front controller: `frankenphp_handle_request()` is defined under BOTH worker mode AND classic FrankenPHP (`php-server`) / FPM, where *calling* it throws "called while not in worker mode" — so branching on `function_exists()` alone mis-detected classic mode and `frankenphp php-server --root public` 500'd on every request (alpha.225 only had a worker-mode harness; no native binary tested classic mode). The worker loop now attempts the loop and, if the FIRST call throws before any request is handled, falls through to the single synchronous `$handler()` path (classic FrankenPHP, `php -S`, FPM); worker mode is unchanged. Verified against a real FrankenPHP 1.12 binary (classic `php-server` → 200; worker mode → 200 on repeated warm requests). Applied identically across all four front-controller copies (repo `public/index.php`, `skeleton/public/index.php`, the `make:public` stub, and the `golden-public-index.php` drift reference) so the byte-for-byte convergence audit (`waaseyaa-audit-site`) still holds; locked by `tests/Architecture/FrontControllerRuntimeDispatchTest.php`. The skeleton also adds a `composer serve:franken` script (classic `php-server` on `127.0.0.1:8080`, loopback + non-privileged → no privileged-port/auto-TLS prompt). -->
 <!-- Spec reviewed 2026-06-19 - runtime-agnostic dev-serve refactor: the FrankenPHP worker-mode adapter is now identical across all three front controllers (repo `public/index.php`, the `make:public` template stub, and `skeleton/public/index.php`), so `public/index.php` is the single source of runtime awareness. The concurrent runtime is launched by the NATIVE `frankenphp` command + a committed `config/frankenphp/Caddyfile` (worker mode) — the framework no longer wraps it in a `serve` subcommand (`serve` is now ONLY plain single-worker `php -S`). The three runtimes and the SessionMiddleware -> AuthorizationMiddleware pipeline below are otherwise unchanged. -->
 <!-- Spec reviewed 2026-06-04 - PR #1614: the front controller (`public/index.php`) now supports three runtimes ahead of the same authorization pipeline: (1) FrankenPHP worker mode — boot once then loop on `frankenphp_handle_request()` so the app stays warm and requests are served concurrently across threads (a long-lived SSE `/api/broadcast` stream pins one thread while the rest stay responsive); (2) FrankenPHP/FPM classic — one request per invocation; (3) `php -S` cli-server — single request with static-file passthrough. The middleware pipeline (SessionMiddleware -> AuthorizationMiddleware) and its onion/attribute model are unchanged; only the request-loop wrapper differs by runtime. -->
 <!-- Spec reviewed 2026-04-22 - public/index.php: optional Dotenv loadEnv(..., APP_ENV, production), REQUEST_URI ?? '/' in cli-server guard, outer Throwable catch JSON:API 500 -->
 
-Waaseyaa implements typed middleware pipelines for two execution contexts: HTTP requests and background jobs. Each pipeline uses the onion pattern with separate, type-safe interface pairs. Middleware is discovered via PHP 8 attributes and compiled into sorted stacks.
+Waaseyaa implements typed middleware pipelines for two execution contexts: HTTP requests and background jobs. Each pipeline uses the onion pattern with separate, type-safe interface pairs. For HTTP, `HttpKernel` explicitly constructs the built-ins and accepts provider contributions; `HttpMiddlewareStackComposer` reads PHP 8 attributes for priority metadata, rejects duplicate concrete classes, and stably sorts the one runtime stack. Compiled discovery metadata is inventory only and never instantiates middleware.
 
 ## Packages
 
@@ -151,7 +156,7 @@ A middleware can short-circuit by returning a response without calling `$next->h
 The production HTTP pipeline in `HttpKernel::serveHttpRequest()` wires middleware in priority order around the real dispatch handler:
 
 ```
-SecurityHeadersMiddleware -> SessionMiddleware -> CsrfMiddleware -> AuthorizationMiddleware -> provider middleware -> controller/domain-router dispatch
+ResponseCacheControlMiddleware -> SecurityHeadersMiddleware -> RateLimitMiddleware -> BodySizeLimitMiddleware -> BearerAuthMiddleware -> SessionMiddleware -> CommunityMiddleware -> CsrfMiddleware -> FieldReadContextMiddleware -> AuthorizationMiddleware -> controller/domain-router dispatch
 ```
 
 ### Pre-boot maintenance gate (outside this pipeline)
@@ -181,14 +186,21 @@ response, and otherwise unwinds over the final response. Provider middleware
 contributed through `HasMiddlewareInterface::middleware()` has this same
 contract; no separate app response hook is required.
 
-`public/index.php` is a thin entry point that boots the kernel and sends the returned response. Production apps typically load `.env` **before** constructing `HttpKernel` via Symfony `Dotenv::loadEnv($projectRoot . '/.env', 'APP_ENV', 'production')` when the file exists — the third argument defaults missing `APP_ENV` to **`production`**, not Symfony's implicit **`dev`**. The monorepo entry wraps malformed `.env` in try/catch; skeleton / `make:public` stub match Minoo's optional-load + outer `Throwable` catch returning JSON:API 500. The file also contains a `cli-server` guard (see [cli-server static file guard](#cli-server-static-file-guard)) so static assets are served directly by the built-in server without passing through `HttpKernel`:
+`CommunityMiddleware` is an explicit kernel built-in. Its `#[AsMiddleware]`
+attribute supplies priority metadata, but compiled manifest metadata is not an
+executable registration path. The same rule applies to every built-in: exactly
+one factory owns construction. If a provider contributes a concrete class that
+is already present, composition fails with both owners instead of silently
+running it twice.
+Like the field-read principal middleware, it rebinds its request community
+around deferred streamed-response callbacks before restoring worker state.
+
+`public/index.php` is a thin entry point that loads bootstrap environment values, boots the kernel, and sends the returned response. Under FrankenPHP worker mode, `auto_prepend_file` runs once per process; the repo copy therefore invokes `Waaseyaa\FrankenPhp\WorkerAcceptance` at the start of each `$handler` invocation when `WAASEYAA_FRANKENPHP_ACCEPTANCE` is exactly `worker-lane-v1` and SAPI is `frankenphp`, so the worker-runtime acceptance lane can emit per-request identity headers. The front controller does not `require` `tests/`. The seam does not accept an environment-supplied filesystem path or a request header, and a missing class or missing extras file is a no-op rather than a 500. Production leaves that env unset and the branch does not run. Every governed front-controller copy calls `EnvLoader::load($projectRoot . '/.env')` before reading worker or debug values. That canonical boundary uses Symfony Dotenv with a production default, preserves process-injected values, redacts parse failures, and parses each real base path once per process. Kernel and command-specific calls share the same idempotent boundary, so a retained worker never reparses or mutates the process environment per request. The file also contains a `cli-server` guard (see [cli-server static file guard](#cli-server-static-file-guard)) so static assets are served directly by the built-in server without passing through `HttpKernel`:
 
 ```php
 $projectRoot = dirname(__DIR__);
 require $projectRoot . '/vendor/autoload.php';
-if (is_file($projectRoot . '/.env')) {
-    (new \Symfony\Component\Dotenv\Dotenv())->loadEnv($projectRoot . '/.env', 'APP_ENV', 'production');
-}
+EnvLoader::load($projectRoot . '/.env');
 $kernel = new HttpKernel($projectRoot);
 $response = $kernel->handle();
 $response->send();
@@ -202,12 +214,30 @@ $response->send();
 
 Behavior:
 1. **Stateless path gate (#2146):** if `session.stateless_paths` is configured (a list of path prefixes wired by `HttpKernel`), an anonymous `GET`/`HEAD` request matching a prefix skips `session_start()` entirely, so informational surfaces stay `Set-Cookie`-free and shared-cache friendly. Three guards bound the skip: a request that already carries the session cookie resumes its session normally (authenticated visitors keep their identity on stateless pages); every non-`GET`/`HEAD` method always gets a session (login, form and CSRF flows are unaffected); and the default `[]` disables the gate, preserving pre-#2146 behavior exactly. Prefix matching is exact-segment (`/docs` matches `/docs` and `/docs/x`, never `/docsearch`). An entry of exactly **`/` means the root path only** (#2154) — it is not a prefix of every path, because prefix-matching it would silently make the whole site stateless including `/admin/login`, a GET that must mint a CSRF token; an app listing `/` for a cookie-free homepage composes it with named prefixes (`['/', '/news']`) as usual. With no active session, `CsrfMiddleware`'s token-presence guard withholds the `XSRF-TOKEN` cookie on its own. Access control is unaffected: a skipped session resolves the account to `AnonymousUser`, and deny-unless-granted still governs the route.
-2. If `session.cookie` options are configured (see `HttpKernel` / `config/waaseyaa.php`), applies matching `ini_set` calls for `session.cookie_*` and `session.use_strict_mode` **before** `session_start()`. Supported keys: `httponly` (bool), `secure` (bool or `'auto'` to enable only when the request is HTTPS or `X-Forwarded-Proto: https`), `samesite` (string), `use_strict_mode` (bool).
-3. Reads `$_SESSION['waaseyaa_uid']` (or `$request->attributes->get('_session')` for testability).
-4. Loads `User` entity via `EntityRepositoryInterface::find($uid)`.
-5. Falls back to `AnonymousUser` if uid is null, user not found, or storage throws.
-6. Sets `AccountInterface` instance on `$request->attributes->set('_account', $account)`.
-7. Calls `$next->handle($request)`.
+2. If `session.cookie` options are configured (see `HttpKernel` / `config/waaseyaa.php`), applies matching `ini_set` / `session_set_cookie_params` / optional `session_name()` calls for `session.cookie_*` and `session.use_strict_mode` **before** `session_start()`. Supported keys: `httponly` (bool), `secure` (bool or `'auto'` to enable only when the request is HTTPS or `X-Forwarded-Proto: https`), `samesite` (string), `use_strict_mode` (bool), `name` (?string), `csrf_name` (string, default `XSRF-TOKEN`), `path` (string, default `/`), `domain` (?string), `host_bound` (bool — `__Host-` profile: Secure, Path=/, no Domain, distinct `__Host-` names; rejects incompatible configured or already-active session settings including Secure/HttpOnly/SameSite, #3047). Malformed `host_bound`/path/domain values (non-boolean garbage, non-string path/domain, control characters) are rejected at policy construction rather than silently normalized. The stateless-path cookie check resolves the **configured** session name via `SessionCookiePolicy` before `session_name()` is applied, so a `__Host-…` cookie resumes identity even while PHP's global name is still `PHPSESSID`.
+3. Reads the canonical `AuthenticatedSession` identity keys (`waaseyaa_uid` and `waaseyaa_session_generation`) from `$_SESSION` (or `$request->attributes->get('_session')` for testability). A uid without an integer generation is cleared and fails closed.
+4. Loads the `User` via `EntityRepositoryInterface::find($uid)` and obtains its Internal generation through the audited `user.session-identity` capability.
+5. Accepts the session only when its generation exactly matches the User generation. A mismatch clears both identity keys and resolves to `AnonymousUser`; password reset increments the User value to revoke all older sessions (#2700).
+6. Applies the injected canonical authentication-eligibility policy to both a
+   loaded PHP-session User and a User pre-resolved by bearer middleware. When
+   verified email is required, an unverified User becomes anonymous before
+   community enrichment or authorization; PHP-session identity keys are also
+   cleared while unrelated session state is preserved (#2757).
+7. Falls back to `AnonymousUser` if uid is null, user not found, storage throws, or the audited generation dependency is unavailable.
+8. Sets `AccountInterface` instance on `$request->attributes->set('_account', $account)`.
+9. Marks non-stateless requests as session-bound for final cache reconciliation,
+   disables PHP's independent session cache limiter before framework-owned
+   session startup, and calls `$next->handle($request)`.
+
+### Final response cache policy
+
+`ResponseCacheControlMiddleware` is priority 110, outside every built-in
+response mutator. After inner middleware and controller dispatch complete, it
+replaces the entire `Cache-Control` field with `private, no-store` when either
+the request was session-bound or the final Symfony response carries any
+`Set-Cookie`. This removes `public`/`s-maxage` contradictions and leaves exactly
+one response-level cache authority. Cookie-free stateless responses retain the
+SSR renderer's public policy.
 
 This middleware always calls the next handler. It never short-circuits.
 
@@ -332,20 +362,86 @@ $raw = $request->getContent();  // reads from the Request object, not php://inpu
 
 ## Built-in HTTP Middleware
 
-All HTTP middleware implement `HttpMiddlewareInterface` and use `#[AsMiddleware(pipeline: 'http', priority: N)]` for auto-discovery. Higher priority runs first (outer onion layer).
+All HTTP middleware implement `HttpMiddlewareInterface`. `#[AsMiddleware(pipeline: 'http', priority: N)]` supplies ordering and inventory metadata; it is not auto-instantiation. Higher priority runs first (outer onion layer), and equal priorities preserve built-in/provider registration order.
 
 | Priority | Class | Package | Purpose |
 |----------|-------|---------|---------|
-| 100 | `SecurityHeadersMiddleware` | foundation | Runtime-safe defaults (`X-Frame-Options: SAMEORIGIN` + `nosniff`) around the final response; CSP and HSTS remain opt-in. Constructor: `(?string $csp, bool $hstsEnabled, int $hstsMaxAge, string $frameOptions)`. Explicit construction retains the historical CSP/HSTS-on defaults; `HttpKernel` passes `null`/`false` for those deployment-sensitive headers. |
-| 90 | `CompressionMiddleware` | foundation | gzip compression for responses above minimum size. Constructor: `(int $minimumSize = 1024)` |
-| 80 | `RateLimitMiddleware` | foundation | IP-based rate limiting via `RateLimiterInterface`. Constructor: `(RateLimiterInterface, int $maxAttempts = 60, int $windowSeconds = 60)` |
-| 70 | `BodySizeLimitMiddleware` | foundation | Rejects payloads over max bytes (413). Constructor: `(int $maxBytes = 1_048_576)` |
-| 60 | `RequestLoggingMiddleware` | foundation | Logs method, URI, status, duration. Constructor: `(?Closure $logger = null)` |
-| 50 | `ETagMiddleware` | foundation | ETag generation + 304 Not Modified for GET/HEAD |
+| 110 | `ResponseCacheControlMiddleware` | user | Outermost response cache reconciliation for session-bound and cookie-bearing responses. |
+| 100 | `SecurityHeadersMiddleware` | foundation | Runtime-safe defaults (`X-Frame-Options: SAMEORIGIN` + `nosniff`) around the final response; CSP and HSTS remain opt-in through `security_headers` configuration on this one kernel-owned instance. Constructor: `(?string $csp, bool $hstsEnabled, int $hstsMaxAge, string $frameOptions)`. Standalone construction retains the historical CSP/HSTS-on defaults. |
+| 80 | `RateLimitMiddleware` | foundation | IP-based 60 requests / 60 seconds by default, backed by the kernel's durable shared database. |
+| 70 | `BodySizeLimitMiddleware` | foundation | Rejects payloads over 1 MiB by default with 413, rendered in the matched route's declared refusal envelope (see "Route-declared refusal envelopes"). |
 | 40 | `BearerAuthMiddleware` | user | JWT and API key auth via Bearer header. Constructor: `(EntityRepositoryInterface, string $jwtSecret, array $apiKeys, ?LoggerInterface)` |
 | 30 | `SessionMiddleware` | user | Resolves `AccountInterface` from session |
-| 20 | `CsrfMiddleware` | user | Double-submit / header CSRF validation for state-changing non-JSON requests |
+| 20 | `CommunityMiddleware` | foundation | Resolves and bounds the request community before principal construction. |
+| 20 | `CsrfMiddleware` | user | Double-submit / header CSRF validation for state-changing requests. JSON content types are exempt by default; a route with `_csrf = true` (`RouteBuilder::requireCsrf()`) validates every content type, and `_csrf = false` (`csrfExempt()`) skips validation. Writes the configured CSRF cookie (default `XSRF-TOKEN`; host-bound `__Host-XSRF-TOKEN`) on `text/html` responses and on any response carrying an authenticated `_account` plus the `waaseyaa_uid` login-session marker (SPA boot via JSON; bearer-only requests excluded); cookie name/path/domain/`Secure`/`SameSite` come from the resolved `session.cookie` policy shared with the session cookie (`SessionCookiePolicy`, #2149/#3047) |
+| 15 | `FieldReadContextMiddleware` | access (audit provider) | Provider contribution that binds the audited immutable principal. |
 | 10 | `AuthorizationMiddleware` | access | Route-level access enforcement via `AccessChecker` |
+
+`DebugHeaderMiddleware` is a conditional kernel built-in in debug mode. Three
+attribute-bearing foundation middleware remain dormant unless a provider opts
+in after deployment-specific review: compression (priority 90) needs cache,
+`Vary`, and streaming analysis; request logging (60) needs privacy, redaction,
+and volume policy; ETag generation (50) needs representation, authorization,
+and cache-context analysis.
+
+Both active security controls have an emergency configuration rollback under
+`http_security`: set `rate_limit.enabled` or `body_size_limit.enabled` to
+`false`. Positive integer overrides are `rate_limit.max_attempts` (60),
+`rate_limit.window_seconds` (60), and `body_size_limit.max_bytes` (1048576).
+
+## Route-declared refusal envelopes
+
+The kernel refuses some requests before the matched controller ever runs: the
+body-size guard's 413, and the JSON pre-parse's 400 on a malformed body
+(`HttpKernel::parseJsonBody()`). Both answered in the framework's JSON:API error
+document. On an endpoint that advertises a different transport that document is
+a shape the client cannot interpret, and it *shadows* the endpoint's own
+refusal — the MCP endpoint's oversize-body JSON-RPC refusal
+(`McpErrorCode::REQUEST_TOO_LARGE`) and `-32700` answers were unreachable
+because the kernel had already replied (#2594).
+
+A route therefore declares the vocabulary its kernel-level refusals are
+rendered in, as plain route-option data:
+
+```php
+RouteBuilder::create('/mcp')
+    ->refusalTransport(RefusalEnvelope::TRANSPORT_JSON_RPC, [
+        RefusalEnvelope::REASON_PAYLOAD_TOO_LARGE => McpErrorCode::REQUEST_TOO_LARGE,
+        RefusalEnvelope::REASON_PARSE_ERROR       => -32700,
+    ])
+```
+
+| Element | Location |
+|---|---|
+| `RefusalEnvelope` (renderer + option/reason constants) | `packages/foundation/src/Http/Refusal/RefusalEnvelope.php` |
+| `HttpRefusal` (one refusal, in both vocabularies) | `packages/foundation/src/Http/Refusal/HttpRefusal.php` |
+| `RouteBuilder::refusalTransport()` (declaration surface) | `packages/routing/src/RouteBuilder.php` |
+| Resolution point (`_refusal_envelope` request attribute) | `HttpKernel::matchRoute()` |
+
+Because the declaration is data, Foundation never learns which transport it is
+serving and the endpoint's package keeps ownership of its error codes — no
+upward import, and the seam is inert on a `core`-only install. `matchRoute()`
+resolves the options once and puts the resulting `RefusalEnvelope` on the
+request as `RefusalEnvelope::REQUEST_ATTRIBUTE`; every refusal site reads it
+through `RefusalEnvelope::forRequest()`.
+
+Three invariants hold, and are pinned by tests:
+
+1. **The seam negotiates the envelope only.** The cap, the decision to refuse,
+   and the HTTP status are untouched. A route declares an error *code*, never a
+   status, so no route declaration can soften a 413 into a 200. No route is
+   ever exempted from `BodySizeLimitMiddleware` — exempting `/mcp*` would have
+   fixed the shape by removing the boundary, which is not a fix. The
+   `Content-Length` fast path only treats a digit-only header (`/^\d+$/D`, the
+   same rule as `StreamableHttpTransportGuard`) as a declared length; a garbage
+   header such as `2000000abc` is not rewritten as oversize, so the actual-read
+   backstop still enforces the cap against the body and a JSON-RPC route can
+   still emit the transport's `-32600` Invalid Content-Length.
+2. **The kernel never invents an error code.** A reason left unmapped, an
+   unknown transport, or ill-typed options all degrade to the JSON:API envelope.
+3. **The reported cap is the kernel's own.** `error.data.max_request_bytes`
+   carries `body_size_limit.max_bytes`, not the endpoint's advertised maximum,
+   because that is the limit the request actually hit.
 
 ## File Reference
 
@@ -391,7 +487,7 @@ All HTTP middleware implement `HttpMiddlewareInterface` and use `#[AsMiddleware(
 
 | File | Role |
 |------|------|
-| `public/index.php` | Thin entry point: optional pre-kernel `Dotenv::loadEnv(..., 'APP_ENV', 'production')`, boots `HttpKernel`, sends returned `Response`. `cli-server` guard uses `$_SERVER['REQUEST_URI'] ?? '/'` when resolving paths. |
+| `public/index.php` | Thin entry point: calls the canonical once-per-process `EnvLoader` before runtime dispatch, boots `HttpKernel`, and sends the returned `Response`. `cli-server` guard uses `$_SERVER['REQUEST_URI'] ?? '/'` when resolving paths. |
 | `HttpKernel::serveHttpRequest()` | Wires CORS, route matching, `HttpPipeline`, dispatch |
 
 #### cli-server static file guard

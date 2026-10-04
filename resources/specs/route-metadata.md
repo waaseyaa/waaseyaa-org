@@ -1,0 +1,529 @@
+# Route metadata composition
+
+Status: **implemented bounded contract; publication qualification in progress**
+under Framework #3123 and #3122. Whole-package convergence remains separate.
+This document records the accepted contract. It does not describe behavior available at
+`5196f173b06bac698f14d292c7b827f2ddac388f`.
+
+## Purpose and boundary
+
+The application route table is a completed, immutable metadata snapshot. The
+same definitions feed HTTP matching, URL generation, `route:list`, and Bimaaji
+graph inspection. Matching and inspection do not construct controllers, resolve
+execution services or credentials, start sessions, query application data,
+perform durable writes, invoke handlers, or retain request state.
+
+This is a route production and inspection contract. Ordinary kernel boot may
+intentionally perform work outside this boundary. A metadata-only acceptance
+test must therefore measure calls made while collecting and inspecting routes,
+separately from any broader boot activity.
+
+Route metadata describes declared transport access. Effective access can be
+narrower after middleware, entity and field policy, domain-router, and handler
+checks. Route-table parity does not establish full dispatcher parity, which
+remains separately owned by #3013, or effective access parity, owned by #3004.
+
+## Ownership and dependency direction
+
+`waaseyaa/foundation` owns the layer-neutral contribution protocol, value
+objects, collection lifecycle, readiness states, completed snapshot, and
+composition input identity. Service providers already belong to Foundation,
+so their contribution contract must not import Layer 4 Routing types. This
+removes the existing `ServiceProvider::routes(WaaseyaaRouter, ...)` coupling
+tracked by #1866 rather than introducing a new Foundation to Routing cycle.
+
+`waaseyaa/routing` validates and compiles Foundation metadata values to Symfony
+routes, matches and generates URLs, and resolves a handler reference only after
+a request has matched. Foundation's HTTP kernel may compose these pieces under
+its existing kernel exemption. CLI and Bimaaji consume the completed Foundation
+snapshot and do not rebuild it.
+
+## Contribution API
+
+The proposed provider capability is conceptually:
+
+```php
+interface ContributesRouteMetadataInterface
+{
+    /** @return iterable<RouteDefinition> */
+    public function routeDefinitions(RouteContributionContext $context): iterable;
+}
+```
+
+The exact PHP names may change during implementation, but these semantics may
+not. `RouteContributionContext` exposes copied, finalized declaration inputs:
+
+- non-secret scalar, list, and map configuration selected for route exposure;
+- installed-capability presence facts computed without loading an execution
+  controller or resolving a service;
+- an immutable entity-definition and API-exposure projection produced after
+  entity registration and exposure declarations freeze;
+- the contribution source ID and stable source order.
+
+It exposes no container, entity manager, repository, credential resolver,
+session, request, provider instance, live controller, or general callable.
+Capability presence means that an installed and configured feature declares a
+route. It does not assert that the route's execution service is healthy.
+
+The entity projection contains only the IDs, bundle/path components, and
+exposure decisions needed to generate routes. Foundation creates it after the
+existing entity registration phase is finalized by snapshotting
+`EntityTypeManager::getDefinitions()`. At the baseline that method returns the
+in-memory registered definition array directly and does not construct storage
+or repositories (`packages/entity/src/EntityTypeManager.php:447-450`). The
+projection reads only definition metadata getters and copied, finalized,
+non-secret scalar exposure config. It does not change the entity registration
+source or roster. It validates and freezes the projected values before the
+route epoch.
+
+Projection generation may not call `getStorage()`, `getRepository()`,
+`resolveFieldDefinitions()`, resolve any other service, query storage, inspect
+application data, autoload a class, invoke a provider, or call an execution
+factory. Installed-capability facts are supplied by the already-compiled
+package manifest/declaration inventory, not by `class_exists()` or controller
+resolution. The context never exposes the manager or exposure policy. If entity
+registration or exposure declarations have not finalized successfully, route
+composition is unavailable rather than partial. Moving a prohibited operation
+into a pre-epoch projection step does not satisfy this contract.
+
+The internal Kernel `RouteInputProjector` now copies the definition roster once,
+checks supplied finalized exposure-map keys against it, and selects only entity
+ID, bundle entity-type ID and effective `api_exposed` decisions. It accepts
+finalized scalar capability facts and produces an immutable `foundation.inputs`
+context even when the cohort has no declarative providers. Provider contexts
+retain canonical participation order. No application configuration is selected
+in this slice. Exposure policy is not recomputed; the supplied map must come
+from the existing finalized policy. Map provenance, capability provenance and
+boot finalization remain the kernel integration caller's contract, not guarantees
+established by this standalone projector. Kernel input admission below owns them.
+
+Kernel input admission now supplies that boundary. Its boot-local
+`RouteExposureInputs` slot is passed through the existing kernel-services
+resolver. Ordinary API boot publishes `effectiveMap()` from the exact shared
+policy it already resolves. No second policy is computed. After finalizers and
+actual-provider roster validation, the kernel freezes the publication against
+registered entity IDs and creates immutable shared/provider contexts once.
+The final API provider's exact bootstrap-admitted FQCN determines API presence;
+no provider reflection or autoload occurs during projection. An admitted API
+absence produces false exposure for the complete roster. Missing/stale
+participation cannot use that fallback. API presence without publication, stale
+rosters, malformed or duplicate publication refuse canonical inputs while
+ordinary legacy boot remains compatible. Late publication poisons subsequent
+canonical getters even after caching, leaving previously returned values
+unchanged. Restricted, early and failed-boot custody also applies to inputs.
+Full kernel route-source composition and consumer adoption remain pending.
+
+PHP cannot sandbox an arbitrary contributor. The supported contract is enforced
+by the restricted context, value validation, code review, and poison acceptance
+fixtures. A contributor that performs hidden global I/O violates the contract.
+The framework does not claim to make malicious PHP pure.
+
+### Closed route-participation inventory
+
+The existing manifest compile/discovery phase must add one closed classification
+for every declared provider: `none`, `declarative`, or `legacy`. Each record
+contains the provider FQCN, classification, declaring method/capability owner,
+versioned classification-input digest, and compiler schema/code identity. It
+contains no local source path. The classification-input digest binds the leaf
+provider declaration; the transitive provider parent chain; recursively used
+traits and trait aliases; the effective `routes()` declaring method owner and
+source; the pure contributor capability/interface definition and effective
+implementation when applicable; and Foundation's base no-op method and class
+identity when `none` is claimed. The digest uses content and symbolic
+provenance, never absolute source locations.
+
+This inventory is produced during ordinary manifest bootstrap,
+before route contribution begins, and is an input to the composition epoch.
+
+The compiler already autoloads declared provider classes with `class_exists()`
+and reads interfaces with `class_implements()` at
+`PackageManifestCompiler.php:156-172`; the same compile pass uses
+`ReflectionClass` for scanned declaration classes beginning at line 174. The
+proposed provider-method reflection belongs to that existing discovery boundary.
+It determines provenance without instantiating a provider or executing
+`routes()`. Manifest bootstrap validates the compiled classification-input and
+cohort/compiler identities and hands route composition an already validated
+inventory token plus records. Route contribution and inspection compare only
+that token and record identity. They may not locate source, read or hash source
+files, autoload, reflect, or silently recompile. A missing record, identity
+mismatch, unknown enum value, or unvalidated token makes route readiness
+unavailable and requires a separate manifest compile/bootstrap.
+
+Classification is deterministic:
+
+1. a provider implementing the pure route contributor capability is
+   `declarative`; this takes precedence even while it retains a compatibility
+   `routes()` method;
+2. otherwise, a `routes()` method whose declaring class is exactly Foundation's
+   base `ServiceProvider` no-op is `none`;
+3. every other concrete `routes()` implementation is `legacy`;
+4. a declared provider whose method/capability provenance cannot be established
+   is unknown and refuses manifest/route readiness.
+
+Using the reflected declaring class correctly treats an inherited custom parent
+override and a method imported from a trait as `legacy`, while an ordinary class
+inheriting Foundation's no-op is `none`. A direct interface implementation that
+declares `routes()` is also `legacy` unless it implements the pure capability.
+Existing provider eligibility rules still apply separately. `none` providers
+remain part of ordinary registration and boot; only route contribution ignores
+them.
+
+## Definition shape
+
+Every `RouteDefinition` is deeply immutable and contains only scalar values and
+immutable Foundation value objects:
+
+- unique route name;
+- path;
+- normalized uppercase HTTP methods;
+- host pattern, schemes, and Symfony condition expression;
+- parameter requirements and defaults;
+- routing options, including priority and parameter bindings;
+- one `HandlerReference`;
+- declared access requirements (`public`, authenticated, session, permission,
+  role, gate, and CSRF posture);
+- rendering, JSON:API, and refusal-transport metadata;
+- contribution source ID and declaration ordinal.
+
+Defaults and options must contain only null, booleans, integers, finite floats,
+strings, and recursively immutable lists/maps of those values. Objects,
+resources, closures, callable arrays, and invokable values are rejected before
+publication. Secret configuration values are forbidden from definitions,
+diagnostics, and composition identity material.
+
+Path, host, schemes, methods, requirements, defaults, options, and condition are
+all lossless metadata fields. An absent field retains Symfony's ordinary
+default. A condition is stored as its expression string and evaluated by the
+Routing compiler/matcher at request time with Symfony's supported expression
+context. Contribution and inspection never evaluate it. An expression form
+that cannot be represented and compiled without executing application PHP is
+rejected as unsupported; it is never omitted or coerced. The same fail-closed
+rule applies to unsupported nested defaults and options.
+
+### Handler references
+
+The serialized forms are stable identifiers:
+
+- `builtin:<sentinel>` identifies a reviewed Foundation domain-router sentinel,
+  such as `builtin:render.page` or `builtin:media.download`. The allowed roster
+  is explicit. Arbitrary strings cannot silently become built-ins.
+- `service:<service-id>::<method>` identifies a container service and public
+  method. The service ID and method syntax are validated during composition,
+  but the service is resolved from the request-local execution resolver only
+  after matching.
+- `class:<fqcn>::<method>` is shorthand for a class-string service ID. It is
+  allowed only when the application's compiled service declarations explicitly
+  register that FQCN for request-local resolution. Inspection does not call
+  `class_exists`, autoload, reflect, instantiate, or infer constructor wiring.
+
+Both service forms use the same request-aware resolver. It performs lookup only
+after matching and supplies the current request execution context. The lookup
+honors the service container's explicit lifetime declaration: a shared service
+remains shared, while a factory or request-scoped service follows its declared
+lifetime. This prevents a route snapshot from capturing a live instance; it
+does not impose a universal controller lifetime. There is no magic zero-argument
+construction and no fallback from a missing service to `new`.
+Providers that currently publish class-method strings must add or identify an
+explicit request-local service declaration during `register()`. A non-static
+method works only through that registered instance. A genuinely static method
+uses the same registered-service path rather than a separate reflection path.
+Resolution failure is an execution-time failure with the route and handler ID
+in a non-secret diagnostic. It does not alter the completed snapshot.
+
+## Composition order and duplicates
+
+Foundation collects sources in this order:
+
+1. Foundation built-ins currently emitted before providers;
+2. discovered provider contributions in canonical provider discovery order;
+3. terminal Foundation routes, currently `public.home` then `public.page`.
+
+Within a source, declaration order is retained. Publication validates the whole
+set, rejects an exact duplicate route name, then sorts by priority descending
+with original collection order as the stable tiebreaker. This preserves current
+`WaaseyaaRouter::sortRoutesByPriority()` behavior: a provider route at default
+priority remains ahead of the default-priority terminal `public.page`, while an
+explicit higher priority wins independent of registration timing. Duplicate
+path patterns with distinct names remain legal and are resolved by this order.
+There is no last-writer override.
+
+Foundation's standalone epoch now admits immutable built-in and terminal lists
+at readiness, using reserved source IDs `foundation.builtin` and
+`foundation.terminal` with contiguous declaration ordinals. It freezes selected
+shared declaration inputs, includes the complete ordered provider roster in
+identity, validates duplicate names across all admitted sources, and sorts by
+descending priority with stable collection ties. Legacy participation refuses
+the entire snapshot even when static routes are available. Empty static lists
+are valid standalone inputs; they are not proof that a kernel projected all its
+routes. Kernel entity/exposure projection, whole-source admission and Routing
+compilation are implemented. HTTP compatibility and canonical consumer adoption
+remain pending.
+
+`FoundationRouteDefinitions` is the sole neutral authority for the fourteen
+builtin and two terminal declarations. `BuiltinRouteRegistrar` projects those
+same values through Routing's `compileRoute` adapter, restoring the existing
+allowlisted builtin controller sentinels and original defaults/options shape.
+The retained original-registrar fixture qualifies every static field and order.
+Provider hooks remain the explicit legacy HTTP path in this slice.
+
+After finalizers and input freezing, the kernel admits the exact provider/context
+roster plus both complete static sources to one lazy epoch. Boot invokes no
+contributors. `getRouteSnapshot()` checks participation and input custody on
+every call, including after collection and after publication, and returns the shared immutable
+snapshot only after whole-source validation. CLI and HTTP entry points establish
+their profile before boot; restricted and failed instances cannot revive route
+authority. Shared declaration inputs enter identity even for a no-op-only cohort.
+
+## Lifecycle, identity, and failure
+
+A composition epoch begins after provider discovery and route-declaration
+inputs are finalized. Collection has the states `unavailable`, `collecting`,
+`complete`, and `failed`.
+
+- Access before the epoch is ready reports `unavailable` with the boot profile.
+- Recursive access while collecting reports `collecting` and refuses.
+- Any invalid definition, duplicate, required contributor failure, or legacy
+  incompatibility moves the epoch to terminal `failed`; no snapshot is
+  published. Retry requires a new kernel and new epoch.
+- Only successful validation publishes `complete` atomically.
+- A failed epoch never returns a prior or partial snapshot.
+
+The snapshot belongs to one kernel composition epoch. Its identity includes the
+contract schema version, Framework code identity, ordered cohort/source IDs,
+definition digests, and a versioned deterministic digest of normalized
+non-secret declaration inputs. Secret values and filesystem paths are excluded
+rather than hashed. The snapshot contains no live provider, container, router,
+controller, request, account, session, or mutable Symfony collection. It is
+never stored in a process-static property. Consumers receive the immutable
+snapshot or immutable projections, so one consumer cannot mutate another's
+view.
+
+Restricted discovery and schema-sync profiles cannot transition in-place to a
+runtime route epoch. Reuse is explicitly refused; runtime composition requires
+a new runtime kernel. This slice does not solve broader #2859 transitions.
+
+An unsupported boot profile receives a structured unavailable result. Optional
+capability absence is a successful, recorded composition decision when based on
+declared installation/configuration facts. Failure to resolve or construct a
+service is not an absence decision and must never be used during collection.
+
+## HTTP use
+
+Routing lazily compiles the completed snapshot to a request-context-free
+Symfony collection once per composition epoch. It may cache that compiled
+collection inside the owning kernel epoch, never process-wide. Each request
+supplies its own Symfony request context for matching and URL generation.
+After a match, the request-local execution resolver turns the handler ID into an
+executable target. Existing middleware, parameter conversion, access checks,
+and domain-router precedence continue afterward.
+
+No independent HTTP-only contribution path is supported after migration. This
+is what makes HTTP, CLI, and Bimaaji observe the same canonical definitions.
+
+## Legacy migration
+
+Calling `ServiceProvider::routes()` and then stripping controllers or cloning a
+Symfony collection is forbidden. The legacy hook can execute arbitrary code and
+already captures shared nested objects despite collection cloning. Sanitizing
+its output cannot establish purity.
+
+Legacy handler values have explicit dispositions:
+
+| Legacy value | Canonical disposition |
+|---|---|
+| Reviewed opaque string used by a Foundation domain router, such as `render.page` | Map explicitly to the allowlisted `builtin:` ID. Unknown opaque strings are refused. |
+| `Class::method` string for a non-static method | Register the class/service and migrate to `class:<fqcn>::<method>` or `service:<id>::<method>`. Inspection does not autoload or test callability. |
+| `Class::method` string for a static method | Register a service adapter or the class service and use the same `class:`/`service:` lookup path. Static invocation is not inferred during inspection. |
+| `[ClassName::class, 'method']` callable array | `RouteBuilder` currently normalizes this to `Class::method`; migrate with the corresponding registered class/service rule above. |
+| `[object, 'method']` callable array | Register the object's construction and lifetime as a service and publish only its `service:` ID. |
+| Named function string or first-class function callable | Register a small service adapter and publish its `service:` ID. A bare function is not a canonical handler. |
+| Invokable object | Register it as a service with an explicit method such as `__invoke`; publish only its `service:` ID. |
+| Closure, including a provider-bound lazy factory | Move captured inputs and construction into a registered service/factory and publish only its `service:` ID. |
+
+Every provider that actually contributes routes, including contributors whose
+current body appears declarative, must opt into the new contributor capability.
+Providers classified `none` do not need an empty contributor implementation.
+Automatic adaptation of an actual route hook would still invoke arbitrary
+legacy PHP and would make compatibility depend on unreviewed behavior. During a
+bounded transition:
+
+- the first compatibility release defaults existing applications to an
+  explicitly reported `legacy` HTTP mode;
+- that mixed-mode HTTP registrar examines each provider exactly once per epoch:
+  `none` performs no route work; `declarative` collects and compiles metadata
+  into execution-compatible routes; `legacy` invokes that provider's old hook
+  exactly once. It never selects two paths for one provider, so converted routes
+  neither disappear nor register twice while legacy remains the default;
+- canonical snapshot publication, CLI inspection, and Bimaaji inspection still
+  refuse the whole cohort if any provider is classified `legacy`. Providers
+  classified `none` do not block publication. Unknown, missing, or stale
+  classifications refuse readiness. A partial snapshot is never published;
+- an application opts into `canonical` mode only after its provider scan reports
+  no legacy-only provider; canonical mode fails closed if one later appears;
+- metadata consumers refuse with the names of legacy-only providers;
+- the legacy mode cannot claim HTTP, CLI, or Bimaaji parity;
+- providers do not contribute through both paths in one epoch;
+- the default changes and the old hook is removed only after all first-party
+  providers, the skeleton, generated recipe output, and named installed
+  consumers qualify canonical mode through the governed breaking-change path.
+
+Closure and object handlers migrate to request-local service IDs. Static file
+reads and HTML rewriting move behind execution handlers. Availability gates
+move to finalized configuration or installed-capability declarations. Controller
+factories, repositories, entity managers, mailers, rate limiters, and workflow
+services remain in request execution wiring.
+
+Downstream application providers require the same migration. Framework can
+enumerate and qualify its own source roster, skeleton template, generated recipe,
+and named FETDER consumer, but it cannot claim completeness for arbitrary
+external PHP providers.
+
+## Acceptance
+
+Before remediation can be called complete, evidence must show:
+
+1. a nonempty application contribution is visible identically to HTTP matching,
+   `route:list`, and Bimaaji graph inspection;
+2. poison factories for services, credentials, sessions, queries, writes, and
+   handlers remain uncalled during contribution and inspection;
+3. a legacy-only provider is named in an explicit refusal and is not executed;
+4. equivalent inputs produce byte-equivalent ordered definitions and identity;
+5. duplicates and invalid values fail before publication;
+6. early, recursive, failed, and unsupported-profile access refuse explicitly;
+7. a consumer cannot mutate the shared snapshot or retain request state in it;
+8. HTTP resolves a service handler per request from the same matched metadata;
+9. source, relevant split-package, generated-application, and installed-consumer
+   forms prove the crossings they claim.
+10. a cohort containing `none` plus `declarative` providers publishes
+    successfully without invoking the inherited no-op;
+11. a cohort containing an actual `legacy` contributor refuses canonical
+    publication and inspection without invoking its hook;
+12. stale, missing, unknown, and classification-input-mismatched participation
+    records refuse readiness rather than guessing `none` or refreshing during
+    inspection. Controls include an unchanged leaf provider with a changed
+    parent override, imported trait, capability interface/implementation, or
+    Foundation base no-op.
+
+Items 10-12 are required future fixture-matrix evidence once the contributor
+and participation APIs exist. The current source-consumer red test cannot prove
+an interface that has not yet been implemented.
+
+These checks qualify route production and consumption. They do not establish
+all domain-router dispatch, every effective authorization policy, or arbitrary
+external application compatibility.
+
+### Implemented Routing compiler boundary
+
+`Waaseyaa\Routing\RouteMetadataCompiler` and the optional snapshot argument of `WaaseyaaRouter` now provide the request-local Symfony adapter. It publishes stable handler IDs in `_controller`, performs no execution lookup and parses supported conditions without evaluation. Unsupported condition syntax/functions and application route compiler classes refuse rather than activating PHP during compilation. Symfony owns collection priority, matching and generation. This adapter does not itself complete kernel source admission, register execution bindings, migrate providers or repair the installed Bimaaji path.
+
+### Explicit handler execution boundary
+
+`RouteHandlerResolver` consumes a completed snapshot and request-local `ExplicitHandlerServices`. Before lookup it verifies the matched `_route` and exact stable `_controller` ID. Builtins return their declared sentinel without lookup. Class and service targets require an explicit registered binding; public real methods are checked after lookup, and resolution returns a closure without invoking it. Unknown/mismatched matches refuse without constructing services. Factory failures expose only route, handler and reason, with no original exception chain.
+
+The Foundation facade uses Symfony service-contracts' locator trait for metadata-only `has`, exact factory selection and circular detection. Kernel bindings preserve their shared cache; provider singleton and factory lifetimes remain provider-owned, including after legacy container cache warming. The first admitted binding wins, and its failure cannot select another provider. The facade carries the actual current Request, while snapshots retain no request or service objects. This does not introduce provider request-scope declarations or complete HTTP composition, middleware, access or invocation integration.
+
+## HTTP bridge adoption
+
+HTTP now uses one kernel-local execution projection. Configure `routing.mode`
+as `legacy` (the default) or `canonical`; unknown values refuse routing. A
+canonical cohort reuses `getRouteSnapshot()` without recollection. Mixed legacy
+HTTP collects declarative providers and calls legacy hooks once, retaining the
+existing builtin sentinels and terminal ordering. Canonical inspection still
+refuses the entire mixed cohort before contribution. No partial snapshot is
+created. `_waaseyaa_route_mode` records the selected mode on matched requests.
+
+Explicit binding keys are admitted without constructing handlers. Declarative
+service/class IDs remain stable through middleware, then terminal dispatch
+resolves the selected real public method using the actual request. Legacy
+controller values retain their compatibility semantics. Composition failure or
+caught recursion is terminal. Kernel custody is checked after collection and
+before reuse or execution. Maintained Symfony matching receives the original
+request, including headers and any attached session; a minimal path adapter
+preserves the language-stripped matching path. Session initialization continues
+in the existing post-match middleware. Provider migrations, installed parity and
+CLI/Bimaaji adoption remain pending.
+
+
+RM-06 SSR source adoption: the required SSR provider now declares its three
+crawler routes and explicitly registers nonshared SEO controller construction.
+Its legacy hook is a projection of those same definitions. This removes SSR
+from the legacy-only cohort without changing GET/public/priority declarations.
+API, Admin Surface, Routing auth/OIDC and the FETDER application provider remain
+required migrations. No installed or Bimaaji acceptance follows from this source
+checkpoint alone.
+
+## Auth/OIDC metadata adoption
+
+RM-06 auth/OIDC adoption: Foundation freezes service:<binding-id> presence from explicit provider binding keys after successful runtime boot. These booleans are declarations, not health checks. Routing declares twelve auth handlers and individually includes the seven OIDC endpoints only for present explicit bindings. Inspection never resolves controllers or autoloads OIDC. Selected unhealthy handlers fail closed instead of disappearing. Auth factories are nonshared and preserve existing constructor dependencies; bare legacy helpers project the same route definitions. API, Admin Surface and FETDER remain required migrations, with CLI/Bimaaji and installed/Linux qualification open.
+
+
+## JSON:API metadata producer
+
+API producer preparation: JsonApiRouteProvider::routeDefinitions consumes only copied entity/exposure inputs and emits immutable structural declarations. Its bare-manager constructor and registration methods remain compatibility projections of that same table. The two-entry structural cache stores RouteDefinition values, not live Symfony routes or callable handlers. Nonexposed routes carry a named stateless diagnostic handler identity. This helper is not a provider capability: ApiServiceProvider remains legacy until configured availability and existing domain-router parameter/response adaptation receive complete metadata execution wiring.
+
+API optional-install preparation: normal boot freezes existing content-search and MCP availability checks, including absence. Route projection reuses these scalar install facts. No new metadata capability or execution adapter is admitted by this slice; workflow binding and terminal adaptation remain pending.
+
+Queue execution preparation uses explicit nonshared QueueAdminApiRouter action methods and the existing Symfony service locator/resolver path. Legacy and explicit terminals share parameter and response adaptation. This binding is preparatory: ApiServiceProvider remains a legacy contributor until its complete route table and remaining terminal families are migrated. Synthetic resolver/dispatcher parity is not installed-consumer admission evidence.
+
+Media and monitor execution preparation adds explicit nonshared router bindings, keeping matched-request parameter authority, account-sensitive media status handling and streamed monitor responses in their existing domain routers. Model resolution is deferred until selection, and unhealthy bindings fail closed. The complete API route table and metadata capability remain pending; synthetic resolver/dispatcher controls qualify terminal adaptation only.
+
+Scheduler, notification and catalog execution preparation adds four explicit nonshared router bindings. Shared domain-router methods retain request parameters and preconditions; catalog handlers reuse boot-finalized representations. Synthetic resolver/dispatcher parity exercises these terminals and their refusal boundaries. The API producer remains legacy until its complete declaration table and all remaining handler families are admitted.
+
+Audit execution preparation adds a nonshared AuditApiRouter binding and public index action shared with legacy dispatch. An absent API-local model retains the empty response; an unhealthy declared adapter refuses explicit selection, including missing backing audit services. Resolver/dispatcher controls qualify this terminal only. Complete API metadata admission and installed graph export remain pending.
+MCP execution preparation adds explicit nonshared admin and approval router bindings. Public actions share existing request/response adapters. Approval selection must not resolve its store; controller validation and its sanitized 503 boundary remain authoritative. This qualifies terminal preparation only, without admitting the full API metadata producer.
+Content-search terminal preparation reuses its existing public request handler and one provider-owned execution factory for both projections. Optional service resolution remains inside validated request execution. This explicit binding does not admit the full API metadata producer or qualify installed graph export.
+Workflow execution preparation exposes shared domain-router actions and a deferred nonshared binding. Parameter and access adaptation remains in the existing router/controller; selected unhealthy services refuse rather than becoming nullable absence. This terminal preparation does not yet change legacy workflow route inclusion or admit the complete API producer.
+API-owned terminal preparation is complete at the discovery/OIDC-client binding slice, while provider metadata admission remains pending. Discovery reuses the kernel's finalized execution handler through the existing late HTTP capability. The provider-contract capability map now checks the existing routeDefinitions hook through ContributesRouteMetadataInterface. Direct resolved-callable controls qualify matched-ID authority independently of dispatcher forwarding; _route_params members are not a conflicting-argument control.
+
+ROUTE-METADATA-01 Foundation API terminal preparation: explicit nonshared provider bindings preserve JSON:API/translation request authority, access/exposure/internal visibility, mutation fences and existing document headers. Schema show reuses its legacy action and canonical registry; schema authority absence composes over the boot-scoped field-type registry, never the static default. Workflow list shares its legacy payload and allows absent optional model; unhealthy selected dependencies refuse. Full API metadata admission and installed qualification remain pending.
+
+ROUTE-METADATA-01 field autosave preparation: an explicit nonshared request adapter supplies the matched _entity_type/id/key attributes to the unchanged controller. Required kernel manager/access/field registry services fail closed on selection. The adapter retains media/body validation, working-copy mutation fencing, field/access checks, sanitization and representation behavior; named callable arguments cannot replace matched parameters. This preparatory binding adds no routes; complete API metadata admission and installed strict graph proof remain pending.
+
+ROUTE-METADATA-01 lazy HTTP execution: selected declarative closures use ControllerDispatcher directly with the existing optional Inertia renderer, avoiding construction of unused legacy domain routers. Builtin string and legacy selections retain the router chain. Finalized input custody is rechecked after both selected factory and renderer/legacy construction, so caught publication failure still refuses before handler execution. No fallback or route admission change is introduced.
+
+
+ROUTE-METADATA-01 frozen API availability prerequisite: the existing neutral boot publication now copies boolean api.route.* facts with exposure, validates their namespace and types, and exposes them only after freeze. Duplicate, malformed and late publication poisons both views. API publishes only after its existing successful install gates and catalog construction, adding no probes or service resolutions. The kernel projects copied facts with existing service-presence inputs into snapshot identity. Optional publish arguments preserve callers; absent API supplies no API route facts. Full API admission and installed strict Bimaaji proof remain open.
+
+
+ROUTE-METADATA-01 complete API admission: ApiServiceProvider contributes one pure table from finalized copied exposure, api.route availability and declared service presence. Fixed API rows and JsonApiRouteProvider structural rows share the same authority with bare compatibility replay through RouteMetadataCompiler. Canonical declarations identify explicitly bound, nonshared request adapters; no controller or domain-router construction occurs during inspection. The owned JSON structural generator is loaded during register, before cold reads. Canonical workflow inclusion uses declared TransitionService binding presence; an unhealthy selected dependency refuses execution rather than silently withdrawing routes. Bare compatibility retains its prior healthy-resolution gate and semantic controller/alias defaults until legacy callers migrate. OIDC admin inclusion uses copied entity presence. MCP permission/session/CSRF, retention roles/defaults, priorities and hidden opaque404 behavior remain unchanged. The stateless hidden handler accepts optional forwarded request/path arguments without service reads. Removal condition for semantic adapter mapping and bare replay is completion of legacy API callers under RM-06; owner waaseyaa/api. Admin Surface/FETDER producers and CLI/Bimaaji/installed strict export remain open.
+
+
+ROUTE-METADATA-01 Admin Surface admission: one table declares core, optional page-builder and SPA routes from copied binding presence and preloaded path authority. Explicit nonshared core/page-builder/SPA request handlers preserve existing gates, transport/status rules, principal/body forwarding and cookie rewrite. Host construction, package probes and SPA file reads occur only during selected execution. Canonical unhealthy declared host dependencies refuse; bare compatibility retains its healthy optional-host gate and projects the same table with the same handlers. Custom host factory lifetime is per selected construction, with factory-owned reuse and legacy once-at-registration behavior retained. Deptrac classifies the three handlers in existing Delivery and composition; generated dependency view is refreshed. Source admission does not complete FETDER/CLI/Bimaaji or installed strict export qualification.
+
+
+## ROUTE-METADATA-01 canonical inspection
+
+The kernel-services bus exposes RouteSnapshot through a lazy kernel-owned
+accessor. Every read performs completed-boot, participation and input-custody
+checks. Missing, restricted, failed or legacy participation refuses complete
+inspection without executing legacy hooks. This accessor precedes provider
+bindings and never caches around kernel refusal checks.
+
+Bimaaji's three route sections accept either an explicitly supplied bare
+RouteCollection or a lazy collection accessor. The default provider reads the
+canonical snapshot at each provide() and projects through RouteMetadataCompiler;
+no execution services, legacy hooks or HTTP router assembly are involved. Cached
+section instances therefore recheck custody on subsequent exports. A final
+route-authority check after all graph sections prevents even a caught late input
+mutation from escaping as graph output, in strict and ordinary generation.
+An absent kernel accessor permits the existing explicitly supplied collection or
+router compatibility path; a refused or malformed kernel authority never does.
+JSON:API entity identity reads canonical _entity_type defaults before the legacy
+parameters option. Routing/public classifications retain their existing shape.
+
+route:list uses that same completed snapshot in real kernel contexts. Its bare
+provider compatibility still builds builtins when there is no kernel accessor;
+this is not a complete application graph claim. GraphDumpHandler emits JSON
+through SymfonyCommandIO::writeRaw(), preserving literal strings and newlines.
+The new accessor/callback constructor arguments are optional; existing direct
+constructor callers remain valid. No dependencies or PHP runtime policy change.
+
+Source qualification includes a real booted ConsoleKernel command factory and
+canonical HTTP matching/dispatch of one nonempty application declaration, stable
+strict output, and installed legacy-contributor refusal without calling hooks.
+These synthetic profiles do not qualify the FETDER installed application.
+
+The command rechecks route authority after JSON serialization and before writing.
+Third-party JsonSerializable values may run code or catch mutation refusal;
+failed final custody returns exit1 with no graph bytes in either strict or ordinary
+mode. Serialization failures also return a command error without partial JSON.

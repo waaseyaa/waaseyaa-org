@@ -1,7 +1,6 @@
 {
     "fields": {
         "agent_audit_log|*|event_type": "internal",
-        "pipeline|*|label": "internal",
         "trace|*|label": "internal"
     }
 }

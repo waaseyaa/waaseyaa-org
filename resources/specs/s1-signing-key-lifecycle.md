@@ -1,0 +1,146 @@
+# S1 OIDC signing-key lifecycle
+
+Status: implementation contract for the signing-key lifecycle slice of
+`S1-FW-CFG-04`.
+
+This is a forge-neutral local contract. It authorizes synthetic tests and local
+source changes only; it does not authorize access to operational signing
+material, publication, deployment, production mutation, or a rotation ceremony.
+
+## Authority and states
+
+One migration-backed OIDC lifecycle owns four exact states:
+`staged-verify-only`, `active-sign-and-verify`,
+`retired-verify-only`, and `revoked`. At most one active key and one staged
+successor may exist. A monotonic database sequence allocates key versions; a
+version is never derived from key bytes and is never reused by a committed key.
+
+Reads perform no generation, rotation, repair, or DDL. An empty production
+lifecycle refuses signing and JWKS service until an explicitly confirmed
+initialization command establishes the first active key. Compatibility PEM
+loaders remain available to explicit callers, but issuer signing and JWKS
+composition always use the database lifecycle.
+
+## Custody and algorithms
+
+Public `SigningKey` metadata contains no private value. Private PEM crosses
+from encrypted persistence into a process-local `SecretHandle` and only the
+registered RS256 signing consumer can turn it into signature bytes. Signer
+handles refuse serialization and expose only redacted metadata. A closed
+algorithm policy applies at configuration ingestion, minting, and JWKS
+construction.
+
+## Ordinary rotation
+
+Ordinary rotation is a three-phase protocol:
+
+1. `stageSuccessor` transactionally allocates a version and publishes one
+   verify-only public key without changing the active signer.
+2. `recordPropagation` binds a SHA-256 digest of non-secret observable
+   propagation evidence to that staged key.
+3. `activateSuccessor` waits through the published JWKS cache lifetime plus
+   propagation margin, then one transaction compare-and-swaps the expected
+   active version to retired and the staged key to active.
+
+The predecessor receives:
+
+`retain_until = rotated_at + maximum configured token lifetime + maximum clock
+skew + JWKS cache lifetime + propagation margin`.
+
+Cleanup can delete only ordinary retired keys whose full boundary has elapsed.
+JWKS publishes the staged successor, active signer, and every unexpired retired
+verifier; it never publishes revoked or private material. Its cache max-age is
+read from the same lifecycle policy used in retention arithmetic. This ensures
+the first post-activation token verifies against the oldest cache permitted by
+the pre-activation policy.
+
+## Compromise boundary
+
+Emergency revocation is not ordinary rotation. It is a separately confirmed,
+request-identified mutation that records actor, reason, affected persisted
+access/refresh-token enumeration digests and counts, and the conservative
+stateless issuance window. Revoked keys leave signing and JWKS trust
+immediately. External key destruction and any operational invalidation remain
+deployment/operator responsibilities.
+
+## Configuration-manifest trust composition
+
+CFG-03 envelope signing is composed only by the configuration authority
+provider. Every profile receives a closed Ed25519 verifier. A profile receives
+a signer only when bootstrap configuration supplies an exact trusted public key
+reference and an exact non-secret secret-provider reference:
+
+```php
+'config_manifest_signing' => [
+    'trust_keys' => [
+        'cfg04:manifest-key-v1' => [
+            'algorithm' => 'Ed25519',
+            'public_key' => '<canonical-base64-32-byte-public-key>',
+        ],
+    ],
+    'revoked_trust_keys' => [],
+    'signing_key' => [
+        'trust_key_reference' => 'cfg04:manifest-key-v1',
+        'secret_reference' => [
+            'provider' => '<registered-provider-id>',
+            'identifier' => '<opaque-provider-reference>',
+            'secret_class' => 'token-signing-private-key',
+            'purpose' => 'waaseyaa.config.manifest-signing.v1',
+        ],
+    ],
+],
+```
+
+The provider registers that exact package, class, purpose, provider, and the
+resolver registry's canonical environment tuple before the kernel freezes the
+registry. It never accepts private material in configuration. Signing resolves
+one provider version into a non-exporting handle operation and derives its
+Ed25519 public key before signing; a rotated or stale private version that does
+not match the public key bound to the trust reference fails closed. Diagnostic
+and serialization surfaces cannot expose the provider identifier or private
+bytes. Verification
+accepts only the envelope's exact Ed25519 algorithm and trust reference, and a
+revoked, unknown, malformed, or tampered envelope fails closed. A verifier-only
+profile requires no signing provider and publishes no signing authority. This
+slice published the CFG-03 interface bindings only; the operational signing
+command arrived with #2430 as `config:manifest:sign`
+(`Waaseyaa\Config\Manifest\ConfigManifestBundleSigner`). Key ceremony —
+generation, distribution, rotation scheduling — remains out of scope here and is
+governed by the sections above. The command consumes custody; it never creates
+it, and it refuses outright on a profile that composes no signer. Its result
+object (`ConfigManifestSigningResult`) carries only public evidence: envelope
+path, manifest hash, scope, sequence, trust-key reference, and the required
+contract cohort. No provider identifier and no private bytes appear on it or on
+any surface derived from it.
+
+**Where the two profiles physically sit (#2430).** The signer profile belongs on
+an authoring host — a maintainer machine or a protected CI environment — and the
+verifier-only profile is what a consumer runs. A consumer receives the authored
+sync directory, the signed envelope beside it
+(`Waaseyaa\Config\Manifest\ConfigManifestEnvelopeFile`, so `config/sync` is
+authorized by `config/sync.envelope.json`), and the public `trust_keys`; it never
+receives the signing key. The signing secret must never be exposed to
+pull-request workflows or to ordinary production runtime. Moving the envelope
+between hosts moves no custody: the sidecar carries only signed public bytes, and
+reading it grants nothing until the verifier checks it against a trusted key.
+
+`project:config:authorize` uses this same authoring-host signer for fresh project
+composition. It renders the canonical plan and exact generated sync bytes before
+`project:init`, then emits a public authorization whose signed producer evidence
+binds the site manifest digest, plan digest, and sequence-1 configuration
+manifest. The generated consumer is provisioned once with the corresponding
+public `trust_keys` entry and its canonical `config/sync` path through
+`config.sync_path` or `WAASEYAA_CONFIG_SYNC_PATH`. It is never provisioned with
+the signing secret or secret-provider reference, and it neither signs nor trusts
+new caller-supplied keys during initialization. Each activation and exact retry
+verifies the authorization with the existing CFG-03 trust policy.
+
+## Schema and verification
+
+All lifecycle columns, version authority, indexes, and append-only revocation
+evidence arrive through a DB-02 migration. Runtime repositories only assert the
+schema and perform DML. Retained-red proofs cover empty-read refusal,
+non-exporting custody, rollback on successor failure, staged propagation,
+oldest-cache verification, exact retention arithmetic, competing successors,
+monotonic versions, cleanup boundaries, emergency revocation, and the CFG-03
+trust-policy seam.

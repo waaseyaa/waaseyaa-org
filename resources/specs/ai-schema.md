@@ -1,120 +1,86 @@
 # ai-schema
 
+<!-- Spec reviewed 2026-09-02 - #2786: EntityJsonSchemaGenerator is a principal-bound adapter over the lower-layer FieldSchemaAuthority. It enumerates effective fields, applies the shared internal-field metadata floor, emits a closed schema, and cannot run without an entity subject, access handler, and account. The package still has no runtime consumer. -->
+
 **Layer:** 5 — AI
 **Status:** alpha
 
-> This spec documents the shipped surface and sketches the capability-registry contract a future mission will implement.
+## Purpose and boundary
 
----
+`waaseyaa/ai-schema` contains one optional AI-facing adapter. It does not own
+field mappings, application-plan contracts, tool schemas, or a capability
+registry. The canonical structural authority is
+`Waaseyaa\Field\FieldSchemaAuthority` in the Layer-1 field package.
 
-## Purpose
+The package depends downward on `waaseyaa/access`, `waaseyaa/entity`, and
+`waaseyaa/field`. There is no current runtime consumer. `ai-agent`, `ai-pipeline`,
+`ai-tools`, and `mcp` neither require nor import it. Do not add a consumer edge
+merely to make this utility appear wired.
 
-The `waaseyaa/ai-schema` package serves two purposes:
-
-1. **Shipped:** Derives JSON Schema (draft 2020-12) from Waaseyaa entity type definitions, giving AI agents and pipelines a typed, standards-compliant description of the framework's data model.
-2. **Future:** Acts as the registry for AI tool input/output schemas — the "capability-registry" contract — so that AI pipeline and agent layers can declare and validate the structured data they exchange with language models.
-
----
-
-## Layer and position
-
-`ai-schema` sits at Layer 5 (AI). It depends downward on:
-
-- `waaseyaa/entity` (L1) — `EntityTypeManagerInterface`, `EntityTypeInterface`
-
-Upward consumers (Layer 5 peers and Layer 6):
-
-- `waaseyaa/ai-pipeline` — uses generated schemas to validate LLM tool call arguments
-- `waaseyaa/ai-agent` — resolves entity schemas when constructing tool definitions
-- `ai-tools` (forthcoming) — declares per-tool input/output schemas via the capability registry
-- `waaseyaa/mcp` (L6) — surfaces entity schemas as MCP resource descriptions
-
----
-
-## Current surface
-
-### `EntityJsonSchemaGenerator`
+## `EntityJsonSchemaGenerator`
 
 **Namespace:** `Waaseyaa\AI\Schema`
 **Marked:** `@api`
 
-```
-constructor(EntityTypeManagerInterface $entityTypeManager)
-```
+```php
+constructor(
+    EntityTypeManagerInterface $entityTypeManager,
+    ?FieldSchemaAuthority $fieldSchemas = null,
+)
 
-```
-generate(string $entityTypeId): array<string, mixed>
-generateAll(): array<string, array<string, mixed>>
-```
-
-**Behaviour of `generate()`:**
-
-Calls `EntityTypeManagerInterface::getDefinition($entityTypeId)` to retrieve the entity type. Reads the entity key map (`getKeys()`) and label (`getLabel()`). Produces a JSON Schema draft-2020-12 object with the following structure:
-
-```json
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "<entity label>",
-  "description": "Schema for <label> entities",
-  "type": "object",
-  "properties": { ... },
-  "required": [ ... ],
-  "additionalProperties": true
-}
+generate(
+    string $entityTypeId,
+    EntityInterface $entity,
+    EntityAccessHandler $accessHandler,
+    AuthorizationPrincipalInterface $account,
+): array
 ```
 
-**Property mapping (entity key → JSON Schema property):**
+`generate()` resolves the registry- and bundle-aware effective field set via
+`EntityTypeManagerInterface::resolveFieldDefinitions()`, requires explicit
+entity `view` access, removes credential/framework/application internal fields
+through `FieldVisibilityPolicy`, removes fields explicitly forbidden for `view`, and then
+delegates all structural emission to `FieldSchemaAuthority`. A subject whose
+entity type differs from the requested type is rejected.
 
-| Entity key | JSON Schema type | format | required? |
-|---|---|---|---|
-| `id` | `["integer", "string"]` | — | yes |
-| `uuid` | `"string"` | `"uuid"` | yes |
-| `label` | `"string"` | — | yes |
-| `bundle` | `"string"` | — | yes |
-| `langcode` | `"string"` | — | no |
-| `revision` | `"integer"` | — | yes (only if entity type `isRevisionable()`) |
+The returned draft-2020-12 schema:
 
-Keys not present in `getKeys()` are omitted silently. `additionalProperties` is always `true` — the schema describes known structural keys; field-level properties are not yet enumerated (forthcoming capability-registry work).
+- enumerates entity keys and every visible effective field;
+- includes field type, cardinality, required/read-only state,
+  translation/revision flags, safe constraints, and plugin-owned value shape;
+- uses `additionalProperties: false`; and
+- fails closed for an unregistered field type.
 
-**`generateAll()`:** Iterates `EntityTypeManagerInterface::getDefinitions()` and calls `generate()` for each. Returns a map keyed by entity type ID.
+There is deliberately no unscoped `generateAll()` method. A global field
+catalogue without a principal and matching subject would turn protected field
+metadata into an unauthorized introspection surface.
 
----
+## Projection ownership
 
-## Future capability-registry contract (sketched)
+Field plugins own two deliberately distinct schemas:
 
-The following subsections describe the design space for a future implementing mission. No PHP signatures are specified here — that is the implementing mission's responsibility.
+- `jsonSchemaFor()` describes the field-item/storage value object; and
+- `entityValueJsonSchemaFor()` describes the value accepted or exposed by an
+  entity authoring surface.
 
-### Input-schema declaration
+`FieldSchemaAuthority` uses the entity-value projection. This distinction is
+required for types such as `text`: its item has `value` and `format` members,
+while current entity authoring and JSON:API surfaces carry a string. API and AI
+adapters may decorate the canonical entity schema, but must not maintain a
+parallel field-type-to-JSON-Schema table.
 
-AI tools (MCP tools, agent actions, pipeline steps) need a way to declare the JSON Schema describing their expected input parameters. The capability registry should provide a surface for a tool class (or its metadata) to publish an input schema that is both machine-readable and cacheable. The schema should be derivable from either the entity system (via `EntityJsonSchemaGenerator`) or from a custom definition authored by the tool implementer. The registry must not require a live entity type to exist — some tool inputs are not entity-shaped.
+## Non-goals
 
-### Output-schema validation
-
-When a language model returns a structured response (tool call result, JSON mode output), the pipeline layer needs to validate it against a declared output schema before hydrating domain objects. The capability registry should provide a validation entry point that accepts an LLM response payload and a schema reference, returning a typed result or a structured validation error. The validation layer must not throw on schema mismatch — callers need the error details to retry or escalate.
-
-### Capability declaration
-
-The decision space for how tool classes declare their schemas includes:
-
-- **PHP attribute** on the tool class (e.g., `#[ToolSchema(input: InputDto::class, output: OutputDto::class)]`) — discoverable at compile time via `PackageManifestCompiler`.
-- **Interface** (`SchemaAwareToolInterface`) — discoverable at runtime via `instanceof`; no manifest needed.
-- **Service tag** in the container (`ai_schema.capability`) — consistent with the framework's tagged-collection patterns; resolved lazily.
-- **`extra.waaseyaa.*` manifest entry** — zero-dependency declaration in `composer.json`; usable by packages that cannot depend on `ai-schema` at runtime.
-
-The implementing mission must record the chosen strategy as an ADR and update this section.
-
----
+- MCP resources or automatic tool registration;
+- provider-specific schema dialects;
+- a Studio-owned application-plan schema;
+- a future capability registry; or
+- GraphQL scalar/object mapping, which is a separate wire-type adapter rather
+  than JSON Schema authority.
 
 ## Cross-references
 
-- `waaseyaa/ai-pipeline` — pipeline orchestration; consumes schemas for tool call validation
-- `waaseyaa/ai-agent` — agent execution loop; uses schemas when building LLM tool definitions
-- `ai-tools` (forthcoming) — per-tool capability declarations; primary consumer of the capability registry
-- `waaseyaa/mcp` — surfaces entity schemas as MCP resource descriptions (Layer 6)
-- `docs/specs/ai-integration.md` — broader AI integration architecture; ai-schema is a subsystem of this
-
----
-
-## Gotchas
-
-_To be populated by the capability-registry implementing mission._
+- `docs/specs/entity-system.md` — field plugin and effective-field authority
+- `docs/specs/api-layer.md` — authorized admin-schema decoration
+- `docs/specs/site-golden-path.md` — Layer-0 blueprint vocabulary conformance
+- `docs/specs/ai-integration.md` — broader AI architecture

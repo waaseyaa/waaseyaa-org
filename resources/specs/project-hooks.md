@@ -1,0 +1,79 @@
+# Project Hooks
+
+## Purpose
+
+Project hooks provide fast local feedback without duplicating the complete CI
+pipeline or silently depending on an undeclared executable. The tracked
+`bin/project-hooks` command is the single source of truth.
+
+## Installation contract
+
+`composer hooks:install` writes small `pre-commit` and `pre-push` shims into the
+Git hook directory. Each shim resolves the current worktree at invocation time,
+then delegates to that worktree's tracked runner. Installation is idempotent.
+It may replace this project's marked shims and generated Lefthook shims, but it
+must refuse to overwrite an unknown user-owned hook. The obsolete generated
+`prepare-commit-msg` hook is removed only when it identifies itself as a
+Lefthook shim.
+
+Installation stays manual because linked worktrees share a common hook
+directory. `composer hooks:doctor` reports missing, stale, or obsolete shims
+with a repair command.
+
+Both Composer scripts start `bin/project-hooks-launcher` with Composer's PHP
+rather than a bare `bash`, because Composer runs a script line through the host
+shell and on native Windows `cmd.exe` resolves `bash` to
+`C:\Windows\System32\bash.exe`, the WSL launcher. The launcher runs the runner
+from the repository root with the host's supported Bash
+(`repository_bash_command()` in `bin/lib/repository-bash.php`) and returns its
+exit status unchanged:
+
+- POSIX hosts use `bash` from `PATH`.
+- Native Windows uses `bin/bash.exe` of the Git for Windows installation that
+  owns the Windows Git executable (`repository_git_command()`, so
+  `WAASEYAA_SYSTEM_GIT` applies), found from `git --exec-path`. That is the
+  shell Git runs the installed shims with. The launcher never falls back to
+  `PATH` there: without Git for Windows Bash it exits 1 with a repair message.
+
+The launcher accepts only `install` and `doctor`; the hook shims start the
+runner directly. The runner writes to the inherited stdout and stderr, and its
+stdin is the null device. A runner still going after 60 seconds is stopped
+(terminate, then kill, direct child only) and the launcher exits 1. The Windows
+`git --exec-path` probe has a 10-second deadline and captures at most 4096
+bytes of stdout. A probe that fails, overflows, or times out selects no Bash.
+
+The runner takes the hook directory from `git rev-parse --git-path hooks`. It
+treats a drive-letter answer as absolute: `C:/...`, which Git for Windows
+reports for a linked worktree's common hook directory, and `C:\...`, which it
+echoes for a `core.hooksPath` configured in native spelling. It joins a
+relative answer to the checkout root.
+
+An unusable answer is never joined to the checkout root. If Git fails, answers
+nothing, or answers more than one line, `install` and `doctor` exit 1 before
+creating or changing anything. Stderr names the cause and the next step, for
+example ``project-hooks: could not resolve the Git hook directory:
+`git rev-parse --git-path hooks` failed in <checkout>. Check that Git can read
+this checkout, then retry.``
+
+Proof: `tests/Architecture/ProjectHooksLauncherTest.php` and
+`tests/Architecture/ProjectHooksDirectoryTest.php`; change records
+`docs/change-records/FW-2679-HOOKS-WINDOWS-LAUNCHER-01.md` and
+`docs/change-records/FW-2679-PROJECT-HOOKS-DIR-01.md`.
+
+## Gate contract
+
+- Pre-commit runs the code-style check only when PHP files are staged.
+- Pre-push runs Composer policy, Symfony import, and package-layer checks in
+  sequence. It also reports specification drift, advisory locally and blocking
+  in CI.
+- Missing required commands fail explicitly with an actionable message.
+- The full publication gate remains `composer verify`, followed by CI on the
+  exact pushed revision.
+
+## Agent context contract
+
+Claude `SessionStart` runs only for a new startup. It receives at most a short
+branch, base, committed-diff, and working-tree summary. Resume, compaction,
+clear, and fork events do not rerun specification drift or inject file lists.
+Specification review is an explicit task using
+`tools/drift-detector.sh origin/main`.

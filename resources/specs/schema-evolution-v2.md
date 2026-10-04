@@ -222,6 +222,24 @@ Ordered **array** of entries (namespace and/or path strings):
 - **String** value remains valid indefinitely until deprecation is announced; **array** form is additive.
 - `PackageManifest` typing must represent `string|list<string>` without losing order (PHP `array` list preservation).
 
+### 8.4 Root applications
+
+The Composer root package participates in the same manifest contract as an
+installed package. Its `name` is the default migration package identity; declaring
+`extra.waaseyaa.migrations` without a non-empty root package name is invalid and
+fails closed. Relative path entries resolve from the project root. The legacy
+automatic `<projectRoot>/migrations` scan remains available only when that same
+directory was not already declared. A root declaration resolving to that canonical
+directory (including path aliases) retains the historical `app:*` ledger IDs;
+other root paths retain Composer ownership. Upgrading discovery never makes an
+already-applied `app:*` migration pending under a new identity.
+
+Every stock migration lifecycle surface consumes the resulting legacy and V2
+catalogues: dry-run, apply, status, verify, `db:init`, and `install:init`.
+Stock apply compositions pass canonical `RuntimePolicy` and a logger to
+`Migrator`: checksum drift warns and skips in development-like environments,
+and throws in production-like environments without changing the applied row.
+
 ---
 
 ## 9. Coexistence with the current migration engine
@@ -235,6 +253,79 @@ Ordered **array** of entries (namespace and/or path strings):
 | **Producers** | Field-definition diff engine (future) may emit `SchemaDiff` that compile to SQL **or** to calls that align with `SqlSchemaHandler` where appropriate — convergence is incremental. |
 
 ---
+
+### 9.1 Fresh-install semantics for entity evolution (#2701)
+
+The canonical entity-schema materializer remains authoritative for entity
+base-table existence. A v2 migration neither creates that table itself nor
+performs database I/O; the runtime reconciles lifecycle state on its behalf,
+inside the node's transaction.
+
+For each pending v2 node, in order:
+
+1. The authored plan is compiled **in full** first, so `PlanPolicy` refusals and
+   SQLite capability refusals fire before anything touches the database. The
+   resulting compiled plan is what supplies `diff_hash`, whatever executes below.
+2. Any *registered entity base table* the plan targets that is absent is
+   materialized through the canonical materializer, injected by the composition
+   site as an `EntityTableMaterializerInterface`. Only targeted tables, never a
+   full synchronization, and never an existing table. Tables the materializer does
+   not own stay absent so the migration fails closed on real SQL.
+3. Each authored operation is classified against live state. An operation the
+   schema still needs is outstanding; one the schema **exactly** satisfies is
+   dropped from the executed set; one that exists in a different shape raises
+   `IncompatibleSchemaStateException`. Only `AddColumn` and `AddIndex` can be
+   exactly satisfied — renames and drops never qualify, because an absent source
+   is ambiguous and nothing may be skipped on the strength of a name.
+4. Outstanding operations execute. A node whose operations were all already
+   satisfied issues no SQL.
+
+Unrestricted schema synchronization is **not** run ahead of migrations: doing so
+would let it act before a migration's intended order and validation.
+
+**What exactness compares.** The authored vocabulary for a column is
+`ColumnSpec` — type, nullability, default, length — and the compiler renders
+exactly `<type-sql> [NOT NULL] [DEFAULT <literal>]`. A live column carrying
+anything else is not the column the operation declares, and SQLite's
+`column-constraint` and `table-constraint` productions are finite, so "anything
+else" is a closed list rather than an open-ended one. The runtime decides all of
+it: type affinity, nullability and default; **primary-key membership** at any
+position in a composite key; **generated or hidden** columns; **`UNIQUE`
+constraint** membership; foreign-key **source** membership; the effective
+**`COLLATE`**; the applied **`NOT NULL` conflict policy**; and whether any
+**`CHECK`** on the table can read the column, including through generated-column
+indirection. Everything with a catalogue is read from it — `PRAGMA table_xinfo`,
+`index_list` + `index_info`, `foreign_key_list` — and only the last three, which
+have no pragma, are read from the stored definition. Anything the reader cannot
+interpret is a refusal, never an assumption. `already_satisfied` is therefore a
+positive statement about a hand-written table, not merely the absence of a
+detected mismatch.
+
+Divergences fail closed under `[S1-DB110]`, naming what was found. Primary-key
+membership is checked before nullability because SQLite reports an
+`INTEGER PRIMARY KEY` rowid alias as `notnull = 0` while it cannot hold NULL,
+which makes the nullability reading untrustworthy for exactly that column.
+
+Three shapes are deliberately **accepted**, because each is a genuine equivalent:
+an independently created index — `origin = c` in `PRAGMA index_list`, including a
+`UNIQUE` one, since an index is a separate schema object authored by `AddIndex`;
+being the *target* of another table's foreign key; and explicit
+`ON CONFLICT ABORT` or `COLLATE BINARY`, which restate the compiler's own
+defaults. See `docs/specs/infrastructure.md` for the decision table and
+`docs/change-records/FW-2701.md` for the supported grammar and its limitations.
+
+**Backend dependence is the reason this contract exists.** On the framework
+default `sql-blob`, synchronization emits entity-key columns plus `_data` and
+never a per-field column, in either lifecycle — so a v2 `AddColumn` is genuinely
+outstanding on a fresh install and on an upgrade alike. On `sql-column` it emits
+the field column at creation and adds it to an existing table, so the same node is
+already satisfied once the table is materialized.
+
+**Ledger.** `checksum` and `diff_hash` are functions of the authored plan alone
+and are therefore identical across lifecycles; replay guarding and verification
+are unchanged. The nullable `apply_mode` column records `applied` or
+`already_satisfied` as audit evidence only, and is never consulted by either.
+
 
 ## 10. Non-goals (explicit)
 
