@@ -147,14 +147,14 @@ final class ContentPagesTest extends TestCase
     }
 
     #[Test]
-    public function production_index_shows_the_pi_block_only_with_fresh_telemetry(): void
+    public function production_index_does_not_claim_pi_hosting(): void
     {
         $file = tempnam(sys_get_temp_dir(), 'pi_');
         file_put_contents($file, json_encode(['uptime_days' => 5, 'temp_c' => 48.0, 'generated_at' => time()]));
 
         try {
             $withTelemetry = $this->production(new PiTelemetry($file))->index(Request::create('/production'));
-            self::assertStringContainsString('Live from the Raspberry Pi', (string) $withTelemetry->getContent());
+            self::assertStringNotContainsString('Live from the Raspberry Pi', (string) $withTelemetry->getContent());
         } finally {
             @unlink($file);
         }
