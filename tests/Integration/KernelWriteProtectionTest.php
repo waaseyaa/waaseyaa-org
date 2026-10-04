@@ -442,8 +442,23 @@ final class KernelWriteProtectionTest extends TestCase
     {
         return match ($action) {
             'create' => ['attributes' => $this->createAttributes($type)],
-            default => ['id' => $this->existingIdFor($type), 'attributes' => ['title' => 'runtime-tampered']],
+            default => [
+                'id' => $this->existingIdFor($type),
+                'attributes' => ['title' => 'runtime-tampered'],
+                'mutation_token' => $this->mutationTokenFor($type),
+            ],
         };
+    }
+
+    private function mutationTokenFor(string $type): string
+    {
+        $entities = $this->kernel()->getEntityTypeManager()->getRepository($type)->findBy([]);
+        $entity = $entities[0] ?? null;
+        self::assertInstanceOf(\Waaseyaa\Entity\EntityBase::class, $entity);
+        $token = $entity->mutationToken();
+        self::assertNotNull($token, 'The update must carry a real mutation token to reach the access policy.');
+
+        return $token->toOpaqueString();
     }
 
     /**
