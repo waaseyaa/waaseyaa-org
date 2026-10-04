@@ -61,7 +61,7 @@ final class SpecIndex
     }
 
     /**
-     * Idempotent: create the schema and (re)build the index only when the
+     * Idempotent: (re)build the migrated index only when the
      * synced corpus version differs from what is indexed.
      */
     public function ensure(): void
@@ -69,8 +69,6 @@ final class SpecIndex
         // Wait (don't abort) if another php-fpm worker is mid-rebuild after a
         // fresh deploy; the rebuild is sub-second so this never blocks long.
         $this->setBusyTimeout();
-
-        $this->ensureStateTable();
 
         $version = (string) ($this->corpus->frameworkVersion() ?? '');
         if ($version !== '' && $this->indexedVersion() === $version) {
@@ -222,13 +220,6 @@ final class SpecIndex
         }
 
         return substr($id, strlen(self::ID_PREFIX));
-    }
-
-    private function ensureStateTable(): void
-    {
-        $this->database->query(
-            'CREATE TABLE IF NOT EXISTS spec_index_state (id INTEGER PRIMARY KEY CHECK (id = 1), framework_version TEXT NOT NULL)',
-        );
     }
 
     private function indexedVersion(): ?string
