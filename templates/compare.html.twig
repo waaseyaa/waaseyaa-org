@@ -1,18 +1,10 @@
 {% extends "base.html.twig" %}
+{% set section = "project" %}
 
 {% block title %}Waaseyaa vs Drupal vs Laravel for sovereign content platforms{% endblock %}
 {% block description %}A factual comparison of Waaseyaa, Drupal 11, and Laravel for building sovereign content platforms: entities, revisions, access control, audit, agent readiness, and honest gaps.{% endblock %}
 
-{% block nav %}
-  <a href="/start">Start</a>
-  <a href="/docs">Docs</a>
-  <a href="/releases">Releases</a>
-  <a href="/roadmap">Roadmap</a>
-  <a href="/production">Production</a>
-  <a href="/why">Why</a>
-  <a href="/compare" aria-current="page">Compare</a>
-  <a href="https://github.com/waaseyaa/framework">GitHub</a>
-{% endblock %}
+
 
 {% block head %}
 <link rel="canonical" href="{{ canonical_base }}/compare">

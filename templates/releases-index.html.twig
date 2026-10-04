@@ -1,18 +1,10 @@
 {% extends "base.html.twig" %}
+{% set section = "project" %}
 
 {% block title %}Waaseyaa releases: the changelog, served from entities{% endblock %}
 {% block description %}Every tracked waaseyaa/framework release with honest notes. Served from revisionable entities synced from git, also available as Markdown and over MCP.{% endblock %}
 
-{% block nav %}
-  <a href="/start">Start</a>
-  <a href="/docs">Docs</a>
-  <a href="/releases" aria-current="page">Releases</a>
-  <a href="/roadmap">Roadmap</a>
-  <a href="/production">Production</a>
-  <a href="/why">Why</a>
-  <a href="/compare">Compare</a>
-  <a href="https://github.com/waaseyaa/framework">GitHub</a>
-{% endblock %}
+
 
 {% block head %}
 <link rel="canonical" href="{{ canonical_base }}/releases">

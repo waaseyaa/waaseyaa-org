@@ -24,7 +24,7 @@ final class SitemapController
 
     public function serve(): Response
     {
-        $paths = ['/', '/start', '/why', '/compare', '/docs'];
+        $paths = ['/', '/build', '/project', '/start', '/why', '/compare', '/docs'];
         foreach ($this->corpus->all() as $spec) {
             $paths[] = '/docs/specs/' . $spec['name'];
         }

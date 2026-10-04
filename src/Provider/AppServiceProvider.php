@@ -59,6 +59,24 @@ final class AppServiceProvider extends ServiceProvider
         );
 
         $router->addRoute(
+            'build',
+            RouteBuilder::create('/build')
+                ->controller(fn () => $pages->build())
+                ->allowAll()
+                ->methods('GET')
+                ->build(),
+        );
+
+        $router->addRoute(
+            'project',
+            RouteBuilder::create('/project')
+                ->controller(fn () => $pages->project())
+                ->allowAll()
+                ->methods('GET')
+                ->build(),
+        );
+
+        $router->addRoute(
             'why',
             RouteBuilder::create('/why')
                 ->controller(fn () => $pages->why())

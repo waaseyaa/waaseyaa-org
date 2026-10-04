@@ -26,6 +26,16 @@ final class StaticPageController
         return $this->render('start.html.twig');
     }
 
+    public function build(): Response
+    {
+        return $this->render('build.html.twig');
+    }
+
+    public function project(): Response
+    {
+        return $this->render('project.html.twig');
+    }
+
     public function why(): Response
     {
         return $this->render('why.html.twig');

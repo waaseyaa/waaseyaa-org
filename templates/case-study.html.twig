@@ -1,18 +1,10 @@
 {% extends "base.html.twig" %}
+{% set section = "showcase" %}
 
 {% block title %}{{ study.title }}{% endblock %}
 {% block description %}{{ study.summary }}{% endblock %}
 
-{% block nav %}
-  <a href="/start">Start</a>
-  <a href="/docs">Docs</a>
-  <a href="/releases">Releases</a>
-  <a href="/roadmap">Roadmap</a>
-  <a href="/production" aria-current="page">Production</a>
-  <a href="/why">Why</a>
-  <a href="/compare">Compare</a>
-  <a href="https://github.com/waaseyaa/framework">GitHub</a>
-{% endblock %}
+
 
 {% block head %}
 <link rel="canonical" href="{{ canonical_base }}/production/{{ study.slug }}">

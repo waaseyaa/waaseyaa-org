@@ -1,18 +1,10 @@
 {% extends "base.html.twig" %}
+{% set section = "docs" %}
 
 {% block title %}Docs: the Waaseyaa spec corpus{% endblock %}
 {% block description %}Every Waaseyaa framework spec, served three ways: HTML, Markdown on the same URL, and a read-only MCP endpoint.{% endblock %}
 
-{% block nav %}
-  <a href="/start">Start</a>
-  <a href="/docs" aria-current="page">Docs</a>
-  <a href="/releases">Releases</a>
-  <a href="/roadmap">Roadmap</a>
-  <a href="/production">Production</a>
-  <a href="/why">Why</a>
-  <a href="/compare">Compare</a>
-  <a href="https://github.com/waaseyaa/framework">GitHub</a>
-{% endblock %}
+
 
 {% block content %}
 <main id="main" class="page">
@@ -24,6 +16,10 @@
     <li><strong>MCP</strong>: <code>spec_list</code>, <code>spec_search</code>, <code>spec_read</code> at <code>/mcp</code>, no authentication. Server card: <a href="/.well-known/mcp.json">/.well-known/mcp.json</a>.</li>
   </ul>
 
+  <h2>Start with a task</h2>
+  <p><a href="/build">Build a first application</a>, <a href="/docs/specs/entity-system">model content</a>, <a href="/docs/specs/field-access">define field access</a>, or <a href="/docs/specs/mcp-endpoint">connect an agent</a>. The full specifications remain available below.</p>
+  {% include 'docs-assistant.html.twig' %}
+  <h2>Framework specifications</h2>
   <ul class="spec-list">
     {% for spec in specs %}
     <li>
@@ -34,4 +30,10 @@
     {% endfor %}
   </ul>
 </main>
+{% endblock %}
+{% block head %}<link rel="stylesheet" href="/workspace/assets/workspace-chat.css">{% endblock %}
+{% block scripts %}
+<script src="/workspace/assets/workspace-md.js"></script>
+<script src="/workspace/assets/workspace-chat.js"></script>
+<script src="/js/docs-assistant.js"></script>
 {% endblock %}

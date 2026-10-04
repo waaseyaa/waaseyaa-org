@@ -1,199 +1,29 @@
 {% extends "base.html.twig" %}
-
-{% block title %}Waaseyaa: sovereign content platforms, readable by humans and agents alike{% endblock %}
-
-{% block head %}
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
-  "name": "Waaseyaa",
-  "applicationCategory": "DeveloperApplication",
-  "operatingSystem": "Linux, macOS, Windows",
-  "programmingLanguage": "PHP",
-  "softwareVersion": "{{ framework_version|default('alpha') }}",
-  "releaseNotes": "Alpha. In production at First Nations Procurement Inc.",
-  "license": "https://spdx.org/licenses/GPL-2.0-or-later.html",
-  "downloadUrl": "https://packagist.org/packages/waaseyaa/framework",
-  "codeRepository": "https://github.com/waaseyaa/framework",
-  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-  "description": "Waaseyaa is a sovereignty-first, entity-first PHP framework for content platforms readable by humans and agents alike."
-}
-</script>
-<link rel="stylesheet" href="/workspace/assets/workspace-chat.css">
-<style>
-  /* Storage note + clear control under the chat surface. */
-  .chat-f {
-    display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    margin-top: 8px; font-size: 12px; color: #46615d;
-  }
-  .chat-f button {
-    border: 1px solid #d4e6e2; background: #fff; color: #0d4f4f;
-    border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer;
-  }
-  .chat-f button:hover { background: #e4f4f1; }
-
-  /* Theme the shared chat surface with the site tokens. */
-  [data-ws-chat] {
-    --ws-accent: #0f766e;
-    --ws-accent-strong: #0d4f4f;
-    --ws-accent-soft: #e4f4f1;
-    --ws-ink: #0c1f1d;
-    --ws-muted: #46615d;
-    --ws-line: #d4e6e2;
-    --ws-bg: #f4faf8;
-    --ws-user-bubble: #07211e;
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    min-height: 0;
-  }
-</style>
-{% endblock %}
-
+{% block title %}Waaseyaa: build content applications you control{% endblock %}
+{% block head %}<link rel="canonical" href="https://waaseyaa.org/"><script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Waaseyaa","applicationCategory":"DeveloperApplication","operatingSystem":"Linux, macOS, Windows","programmingLanguage":"PHP","softwareVersion":{{ framework_version|json_encode|raw }},"license":"https://spdx.org/licenses/GPL-2.0-or-later.html","codeRepository":"https://github.com/waaseyaa/framework","description":"An open-source PHP framework for content applications."}</script>{% endblock %}
 {% block content %}
 <main id="main">
+<section class="hero wrap">
 
-  <section class="hero">
-    <h1>Sovereign content platforms,<br><em>readable by humans and agents alike.</em></h1>
-    <p class="lede">Spec-driven inside, agent-readable outside. One docs corpus, three renderings: HTML pages, clean Markdown at the same URLs, and an MCP server your agent can call.</p>
-    <p class="stage">{{ framework_version|default('alpha') }} &middot; alpha{% if release_date %} &middot; released {{ release_date }}{% endif %} &middot; <a href="/releases">what changed</a> &middot; in production at First Nations Procurement Inc.</p>
-  </section>
-
-  <section class="installs">
-    <div class="card">
-      <h3>For you</h3>
-      <div class="cmd">$ composer create-project waaseyaa/waaseyaa my-app --stability=dev</div>
-      <p>PHP 8.5, SQLite by default, one process. Runs in production on a Raspberry Pi.</p>
-    </div>
-    <div class="card">
-      <h3>For your AI client</h3>
-      <div class="cmd">$ vendor/bin/waaseyaa bimaaji:install</div>
-      <p>Framework guidelines and skills for Claude Code, Cursor, Copilot, Codex, Gemini, Windsurf, and Junie, installed from the framework itself.</p>
-    </div>
-  </section>
-
-  <section class="proof">
-    <div>7 enforced layers</div>
-    <div>Spec-driven, natively</div>
-    <div>OCAP audit log in core</div>
-    <div>Real entities under this site</div>
-    <div>Production on a Raspberry Pi</div>
-  </section>
-
-  <section class="demo">
-    <h2>This site is the demo</h2>
-    <p>waaseyaa.org is a Waaseyaa application. The releases, roadmap, and case studies are revisionable entities synced from markdown in git at deploy time, published as HTML, Markdown, and MCP, and write-locked by an explicit access policy: content:sync is the only writer. Both commands below are covered by this site's test suite.</p>
-    <div class="cmd">$ curl -s -H 'Accept: text/markdown' https://waaseyaa.org/releases</div>
-    <div class="cmd">$ curl -s -X POST https://waaseyaa.org/mcp -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"release_list","arguments":{}}}'</div>
-  </section>
-
-  <section class="surface">
-    <div class="chat">
-      <div class="chat-h">Ask the docs &middot; answers cite the specs</div>
-      {% include 'workspace/chat-panel.html.twig' with { chat: {
-        title: 'Docs assistant',
-        subtitle: 'Grounded on the spec corpus',
-        avatar: 'W',
-        placeholder: 'Ask about the framework...',
-        intro: 'I answer from the framework spec corpus and cite the spec behind every answer. The same corpus is on /docs, as Markdown, and over MCP.',
-        chips: ['How do I add an entity type?', 'What is Bimaaji?', 'How does the OCAP audit log work?'],
-      } } only %}
-      <div class="chat-f">
-        <span>Transcripts are stored under a random cookie and deleted after 30 days. No account, no raw IP address.</span>
-        <button type="button" id="chat-clear" title="Delete every conversation stored for this browser">Clear conversation</button>
-      </div>
-    </div>
-    <div class="doc" id="doc">
-      <div class="crumb"><span><a href="/docs/specs/entity-system">docs / specs / entity-system.md</a></span>
-        <div class="raw" data-toggle hidden><button type="button" class="on" data-view="html">HTML</button><button type="button" data-view="md">Markdown</button></div>
-      </div>
-      <div class="htmlview">
-        <h1>Entity system</h1>
-        <p class="lede">Every piece of content is a typed, revisionable, access-controlled entity. The docs pages on this site are served from the same spec corpus your agent can query.</p>
-        <div class="code">
-<span class="k">new</span> <span class="t">EntityType</span>(<br>
-&nbsp;&nbsp;id: <span class="s">'story'</span>,<br>
-&nbsp;&nbsp;label: <span class="s">'Story'</span>,<br>
-&nbsp;&nbsp;class: <span class="t">Story</span>::class,<br>
-&nbsp;&nbsp;storageClass: <span class="t">SqlEntityStorage</span>::class,<br>
-&nbsp;&nbsp;keys: [<span class="s">'id'</span> =&gt; <span class="s">'id'</span>, <span class="s">'label'</span> =&gt; <span class="s">'title'</span>],<br>
-&nbsp;&nbsp;revisionable: <span class="k">true</span>,<br>
-);</div>
-        <h2>Two-axis storage</h2>
-        <p>Revisionable and translatable are independent axes, resolved at schema time. The same pipeline serves this website and a Nation's member portal.</p>
-      </div>
-      <div class="md"># Entity system
-
-Every piece of content is a typed, revisionable, access-controlled
-entity. The docs pages on this site are served from the same spec
-corpus your agent can query.
-
-```php
-new EntityType(
-    id: 'story',
-    label: 'Story',
-    class: Story::class,
-    storageClass: SqlEntityStorage::class,
-    keys: ['id' => 'id', 'label' => 'title'],
-    revisionable: true,
-);
-```
-
-## Two-axis storage
-
-Revisionable and translatable are independent axes, resolved at
-schema time.</div>
-    </div>
-  </section>
-
+<div class="hero-grid"><h1>Build content<br>applications<br><em>you control.</em></h1><div class="hero-aside"><p>Your content. Your infrastructure.<br>Your way forward.</p><p class="muted">An open-source PHP framework for structured content, publishing workflows, and AI-assisted tools.</p><div class="actions"><a class="button primary" href="/build">Start building </a><a class="text-link" href="#demo">See it in action </a></div><div class="hero-meta"><span>PHP 8.5</span><span>Open source</span><span>Self-hosted</span></div></div></div>
+</section>
+<section class="demo-section wrap" id="demo" aria-labelledby="demo-heading">
+<div class="section-label"><span id="demo-heading">EXAMPLE APPLICATION</span><span>Local simulation · sample content</span></div>
+<div class="demo-shell">
+<div class="demo-top"><div class="sample-brand"><span class="sample-icon">f.</span><div>Fieldnotes <small>A community journal</small></div></div><div class="segmented" aria-label="Demo view"><button class="active" data-demo="editor" aria-pressed="true">Workspace</button><button data-demo="preview" aria-pressed="false">Public view</button><button data-demo="api" aria-pressed="false">API</button></div><span class="demo-tag">EXAMPLE APPLICATION</span></div>
+<div class="demo-content" id="editor-view">
+<aside class="app-sidebar"><span class="sidebar-caption">WORKSPACE</span><span class="sidebar-item selected">▤ <b>Stories</b> <small>03</small></span><span class="sidebar-item">◉ <b>People</b> <small>08</small></span><span class="sidebar-item">⊞ <b>Collections</b> <small>02</small></span><div class="app-sidebar-bottom"><span class="avatar">JL</span><div>Jamie Lee<small>Editor · sample role</small></div></div></aside>
+<div class="editor-main"><div class="breadcrumb">Stories <span>/</span> Community garden</div><div class="editor-heading"><h2>A little space to grow.</h2><span class="pill" id="story-status">Draft</span></div><p class="editor-intro">A neighbourhood garden, built one Saturday at a time.</p><div class="landscape" aria-label="Abstract illustration of a community garden"><div class="sun"></div><div class="hill hill-one"></div><div class="hill hill-two"></div><div class="garden-lines"></div><span>FIELDNOTES / PLACES WE SHARE</span></div><div class="editor-fields"><div><small>COLLECTION</small><strong>Community stories</strong></div><div><small>AUTHOR</small><strong>Jamie Lee</strong></div><div><small>VISIBILITY</small><strong>Public, after approval</strong></div></div></div>
+<aside class="review-panel"><div class="eyebrow">PUBLISHING</div><h3>A clear path<br>from draft to live.</h3><p>Give people room to create, with a review step before the world sees it.</p><ol class="workflow"><li class="done"><span>✓</span><div>Write your story<small>Saved as a draft</small></div></li><li id="review-step"><span>2</span><div>Review the change<small id="review-step-note">An editor approves</small></div></li><li id="publish-step"><span>3</span><div>Publish with confidence<small>Keep a revision history</small></div></li></ol><button class="button primary full" id="review-button">Review &amp; publish </button><p class="micro" id="demo-feedback" aria-live="polite">Try it. This demo stays in your browser.</p><button class="reset-link" id="reset-demo">Reset example</button></aside>
+</div>
+<div class="public-preview" id="preview-view" hidden><div class="public-masthead"><strong>Fieldnotes.</strong><span>Stories from the places we share.</span></div><div class="public-story"><div><div class="eyebrow" id="preview-state">DRAFT PREVIEW</div><h2>A little space<br>to grow.</h2><p>A neighbourhood garden, built one Saturday at a time. Meet the people turning an empty lot into something everyone can share.</p><div class="byline">By Jamie Lee <span>4 minute read · sample story</span></div></div><div class="landscape"><div class="sun"></div><div class="hill hill-one"></div><div class="hill hill-two"></div><div class="garden-lines"></div></div></div></div>
+<div class="api-preview" id="api-view" hidden><div><div class="eyebrow">THE SAME CONTENT, ANOTHER WAY IN</div><h2>Ready for your<br>next interface.</h2><p>This illustrative response shows the same story as structured data. No request is sent.</p><span class="pill">Illustrative API response</span></div><pre><code id="api-output"></code></pre></div>
+<div class="demo-bottom"><span><span class="status-dot"></span> One story. Explicit permissions. Multiple interfaces.</span><a href="/build">Explore the learning path </a></div>
+</div></section>
+<section class="principles wrap"><div class="principles-intro"><div class="eyebrow">BUILT AROUND OWNERSHIP</div><h2>A foundation.<br>With room to grow.</h2><p>Start with the application you need.<br>Keep the freedom to decide what comes next.</p></div><div class="principle"><span class="principle-number">01</span><h3>Content with structure.</h3><p>Give your content a model, relationships, and a life beyond a single page.</p><a href="/build#learn">Explore the content model </a></div><div class="principle"><span class="principle-number">02</span><h3>Control that stays yours.</h3><p>Choose your infrastructure. Make access deliberate. Keep your data portable.</p><a href="#project">Meet the project </a></div><div class="principle"><span class="principle-number">03</span><h3>AI with boundaries.</h3><p>Make useful tools available to agents, with permissions and review built into the workflow.</p><a href="/build#learn">Explore the learning path </a></div></section>
+<section class="possibilities wrap" id="possibilities"><div class="section-heading"><div><div class="eyebrow">WHAT COULD YOU BUILD?</div><h2>Useful software.<br>For real communities.</h2></div><p>Three starting points for the imagination.<br><span class="muted">Illustrative use cases, not customer case studies.</span></p></div><div class="use-cases"><a class="use-case" href="/build"><div class="case-art journal-art"><span>THE EVERYDAY<br><em>extraordinary.</em></span><i>FIELDNOTES / VOL. 01</i></div><div class="case-info"><span>01 / PUBLISHING</span><h3>A community journal </h3><p>Stories, contributors, and a considered publishing process.</p></div></a><a class="use-case" href="/build#learn"><div class="case-art directory-art"><div class="directory-line"><i>MK</i><span>Maker &amp; craftsperson<small>Arts and culture</small></span></div><div class="directory-line"><i>NG</i><span>Neighbourhood growers<small>Food and community</small></span></div><div class="directory-line"><i>LC</i><span>Learning circle<small>Education</small></span></div></div><div class="case-info"><span>02 / CONNECTION</span><h3>A living directory </h3><p>People, places, and the relationships that connect them.</p></div></a><a class="use-case" href="/build#learn"><div class="case-art knowledge-art"><span class="orbit o1"></span><span class="orbit o2"></span><span class="orbit o3"></span><strong>Knowledge,<br><em>connected.</em></strong></div><div class="case-info"><span>03 / KNOWLEDGE</span><h3>A shared resource library </h3><p>Structured knowledge for people and the tools they use.</p></div></a></div></section>
+<section class="proof-section wrap"><div class="eyebrow">VERIFIABLE EXAMPLES</div><h2>This site is the demo</h2><p>Waaseyaa.org is a Waaseyaa application. Its releases, roadmap, and case studies are revisionable entities synced from Markdown in Git. The same content is available as HTML, Markdown, and read-only MCP. Runtime writes are blocked by the site's access policy.</p><p>Explore <a href="/production">the documented applications</a>, including First Nations Procurement Inc. The case studies explain their scope and limits.</p><pre><code>curl -s -H 'Accept: text/markdown' https://waaseyaa.org/releases</code></pre><pre><code>curl -s -X POST https://waaseyaa.org/mcp -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"release_list","arguments":{}}}'</code></pre><p>For organizations evaluating operations and support, read <a href="/why">the project's values</a>, <a href="/compare">the comparison</a>, and <a href="/project">current maturity and support</a>.</p></section><section class="project-section" id="project"><div class="wrap project-grid"><div><div class="eyebrow">OPEN BY DESIGN</div><h2>The Waaseyaa<br>project.</h2><p>Waaseyaa is an open-source project. Explore the code, understand the tradeoffs, and help shape what comes next.</p><a class="button light" href="/build">Start building </a></div><div class="project-notes"><article><span>THE FOUNDATION</span><h3>Waaseyaa Framework</h3><p>The reusable engine for content applications. Useful on its own, on infrastructure you choose.</p></article><article><span>THE BUILDER DIRECTION</span><h3>Waaseyaa Studio</h3><p>An open-source builder distribution composing the framework. Availability and verified capabilities will be documented separately.</p></article><div class="release-note"><span class="status-dot"></span><p>Framework is alpha.<br><small>Running {{ framework_version }}. Released {{ release_date }}. <a href="/releases">Release notes</a> and <a href="/roadmap">roadmap</a>.</small></p></div></div></div></section>
 </main>
+<dialog id="review-dialog"><form method="dialog"><button class="dialog-close" aria-label="Close review">×</button></form><div class="eyebrow">LOCAL PUBLISHING SIMULATION</div><h2>One last look.</h2><p>You’re reviewing <strong>A little space to grow.</strong> The sample story will become visible in this prototype’s public view.</p><div class="change-summary"><span>Story status</span><strong>Draft to published</strong><span>Audience</span><strong>Public</strong><span>Reviewer</span><strong>Jamie Lee · sample editor</strong></div><label class="check-label"><input type="checkbox" id="review-check"> I’ve reviewed this sample story.</label><p class="form-error" id="review-error" aria-live="polite"></p><button class="button primary full" id="confirm-publish">Publish in demo </button><p class="micro">Local simulation. Nothing is sent or published online.</p></dialog>
 {% endblock %}
-
-{% block scripts %}
-<script src="/workspace/assets/workspace-md.js"></script>
-<script src="/workspace/assets/workspace-chat.js"></script>
-<script>
-(function () {
-  var doc = document.getElementById('doc');
-  var bar = doc ? doc.querySelector('[data-toggle]') : null;
-  if (bar) {
-    bar.hidden = false;
-    bar.addEventListener('click', function (e) {
-      var btn = e.target.closest('button[data-view]');
-      if (!btn) return;
-      doc.classList.toggle('rawmode', btn.dataset.view === 'md');
-      bar.querySelectorAll('button').forEach(function (b) {
-        b.classList.toggle('on', b === btn);
-      });
-    });
-  }
-
-  var clearBtn = document.getElementById('chat-clear');
-  if (clearBtn) {
-    clearBtn.addEventListener('click', function () {
-      fetch('/docs-chat/clear', { method: 'POST' }).then(function () {
-        try { localStorage.removeItem('ws.chat.docs.pub'); } catch (e) {}
-        window.location.reload();
-      });
-    });
-  }
-
-  if (window.WaaseyaaChat) {
-    WaaseyaaChat.mount(document.querySelector('[data-ws-chat]'), {
-      endpoints: {
-        send: '/docs-chat/send',
-        apply: '/docs-chat/send',
-        messages: function (id) { return '/docs-chat/' + id + '/messages'; }
-      },
-      thread: { key: 'ws.chat.docs.pub', initial: 0 },
-      user: { id: 0, label: 'You' },
-      limit: 500,
-      chips: ['How do I add an entity type?', 'What is Bimaaji?', 'How does the OCAP audit log work?'],
-      avatars: { user: 'YOU', ai: 'W' }
-    });
-  }
-})();
-</script>
-{% endblock %}
+{% block scripts %}<script src="/js/fieldnotes-demo.js" defer></script>{% endblock %}

@@ -1,18 +1,10 @@
 {% extends "base.html.twig" %}
+{% set section = "docs" %}
 
 {% block title %}{{ title }}: Waaseyaa spec{% endblock %}
 {% block description %}Waaseyaa framework spec {{ name }}.md, framework {{ framework_version|default('unknown') }}. Also available as Markdown and over MCP.{% endblock %}
 
-{% block nav %}
-  <a href="/start">Start</a>
-  <a href="/docs" aria-current="page">Docs</a>
-  <a href="/releases">Releases</a>
-  <a href="/roadmap">Roadmap</a>
-  <a href="/production">Production</a>
-  <a href="/why">Why</a>
-  <a href="/compare">Compare</a>
-  <a href="https://github.com/waaseyaa/framework">GitHub</a>
-{% endblock %}
+
 
 {% block head %}
   <link rel="canonical" href="{{ canonical_url }}">

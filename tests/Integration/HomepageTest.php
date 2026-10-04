@@ -31,16 +31,16 @@ final class HomepageTest extends TestCase
     }
 
     #[Test]
-    public function homepage_renders_the_hero_and_install_block(): void
+    public function homepage_renders_the_learning_path_and_local_demo(): void
     {
         $response = new HomeController(new PiTelemetry(null))->index();
         $html = (string) $response->getContent();
 
         $this->assertSame(200, $response->getStatusCode());
-        $this->assertStringContainsString('Sovereign content platforms', $html);
-        $this->assertStringContainsString('composer create-project waaseyaa/waaseyaa', $html);
-        $this->assertStringContainsString('bimaaji:install', $html);
-        $this->assertStringContainsString('OCAP audit log in core', $html);
+        $this->assertStringContainsString('Build content', $html);
+        $this->assertStringContainsString('href="/build"', $html);
+        $this->assertStringContainsString('Local simulation', $html);
+        $this->assertStringContainsString('Nothing is sent or published online.', $html);
         $this->assertStringNotContainsString('{%', $html, 'No raw Twig tags in output');
     }
 
@@ -53,9 +53,9 @@ final class HomepageTest extends TestCase
         // Strip every script block: all page content must survive.
         $withoutScripts = (string) preg_replace('#<script\b[^>]*>.*?</script>#si', '', $html);
 
-        $this->assertStringContainsString('Sovereign content platforms', $withoutScripts);
-        $this->assertStringContainsString('Entity system', $withoutScripts);
-        $this->assertStringContainsString('Two-axis storage', $withoutScripts);
+        $this->assertStringContainsString('Build content', $withoutScripts);
+        $this->assertStringContainsString('Content with structure.', $withoutScripts);
+        $this->assertStringContainsString('This site is the demo', $withoutScripts);
     }
 
     #[Test]
@@ -65,7 +65,7 @@ final class HomepageTest extends TestCase
         $html = (string) $response->getContent();
 
         $this->assertStringContainsString('alpha', $html);
-        $this->assertStringContainsString('in production at First Nations Procurement', $html);
+        $this->assertStringContainsString('including First Nations Procurement Inc.', $html);
     }
 
     #[Test]
@@ -78,7 +78,7 @@ final class HomepageTest extends TestCase
     }
 
     #[Test]
-    public function pi_chip_renders_with_fresh_telemetry(): void
+    public function retired_pi_chip_stays_hidden_with_old_telemetry(): void
     {
         $file = tempnam(sys_get_temp_dir(), 'pi_status_');
         file_put_contents($file, json_encode([
@@ -91,9 +91,9 @@ final class HomepageTest extends TestCase
             $response = new HomeController(new PiTelemetry($file))->index();
             $html = (string) $response->getContent();
 
-            $this->assertStringContainsString('served from a raspberry pi', $html);
-            $this->assertStringContainsString('up 41d', $html);
-            $this->assertStringContainsString('47.2', $html);
+            $this->assertStringNotContainsString('served from a raspberry pi', $html);
+            $this->assertStringNotContainsString('up 41d', $html);
+            $this->assertStringNotContainsString('47.2', $html);
         } finally {
             @unlink($file);
         }
@@ -105,7 +105,7 @@ final class HomepageTest extends TestCase
         $response = new HomeController(new PiTelemetry(null))->index();
         $html = (string) $response->getContent();
 
-        $this->assertStringContainsString('released 2026-10-04', $html);
+        $this->assertStringContainsString('Released 2026-10-04', $html);
         $this->assertStringContainsString('href="/releases"', $html);
     }
 

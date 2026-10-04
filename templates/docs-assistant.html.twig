@@ -1,0 +1,12 @@
+<section aria-labelledby="assistant-heading">
+  <h2 id="assistant-heading">Ask the docs</h2>
+  <p>The optional assistant answers from the spec corpus and cites its sources. You can also browse the index or use your browser's find command.</p>
+  {% include 'workspace/chat-panel.html.twig' with { chat: {
+    title: 'Docs assistant', subtitle: 'Grounded on the spec corpus', avatar: 'W',
+    placeholder: 'Ask about the framework...',
+    intro: 'I answer from the framework specs and cite the pages behind each answer.',
+    chips: ['How do I add an entity type?', 'How does field access work?']
+  } } %}
+  <p>Transcripts are stored under a random browser cookie and deleted after 30 days. No account or raw IP address is stored.</p>
+  <button type="button" class="button primary" id="chat-clear">Clear conversation</button>
+</section>

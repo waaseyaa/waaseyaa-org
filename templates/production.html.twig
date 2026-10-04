@@ -1,18 +1,10 @@
 {% extends "base.html.twig" %}
+{% set section = "showcase" %}
 
 {% block title %}Waaseyaa in production{% endblock %}
 {% block description %}Where the Waaseyaa framework runs today, stated factually: production deployments served from case-study entities synced from git, plus live telemetry from the Raspberry Pi serving this page.{% endblock %}
 
-{% block nav %}
-  <a href="/start">Start</a>
-  <a href="/docs">Docs</a>
-  <a href="/releases">Releases</a>
-  <a href="/roadmap">Roadmap</a>
-  <a href="/production" aria-current="page">Production</a>
-  <a href="/why">Why</a>
-  <a href="/compare">Compare</a>
-  <a href="https://github.com/waaseyaa/framework">GitHub</a>
-{% endblock %}
+
 
 {% block head %}
 <link rel="canonical" href="{{ canonical_base }}/production">

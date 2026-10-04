@@ -63,6 +63,29 @@ final class PagesAndSchemaTest extends TestCase
 
         $this->assertSame('why', $router->match('/why')['_route'] ?? null);
         $this->assertSame('compare', $router->match('/compare')['_route'] ?? null);
+        $this->assertSame('build', $router->match('/build')['_route'] ?? null);
+        $this->assertSame('project', $router->match('/project')['_route'] ?? null);
+    }
+
+    #[Test]
+    public function learning_and_project_pages_preserve_evidence_and_valid_spec_links(): void
+    {
+        foreach (['build', 'project'] as $page) {
+            $response = self::$pages->{$page}();
+            $this->assertSame(200, $response->getStatusCode());
+            $html = (string) $response->getContent();
+            $this->assertSame('TechArticle', $this->jsonLdBlocks($html)[0]['@type']);
+            preg_match_all('#href="/docs/specs/([^"\#]+)#', $html, $links);
+            foreach ($links[1] as $name) {
+                $this->assertFileExists(dirname(__DIR__, 2) . '/resources/specs/' . $name . '.md');
+            }
+        }
+        $build = (string) self::$pages->build()->getContent();
+        $this->assertStringContainsString('href="/start"', $build);
+        $this->assertStringContainsString('illustrative browser demo', $build);
+        $project = (string) self::$pages->project()->getContent();
+        $this->assertStringContainsString('alpha', $project);
+        $this->assertStringContainsString('Studio', $project);
     }
 
     #[Test]
@@ -137,6 +160,8 @@ final class PagesAndSchemaTest extends TestCase
 
         $this->assertStringContainsString('<loc>https://waaseyaa.org/</loc>', $xml);
         $this->assertStringContainsString('<loc>https://waaseyaa.org/why</loc>', $xml);
+        $this->assertStringContainsString('<loc>https://waaseyaa.org/build</loc>', $xml);
+        $this->assertStringContainsString('<loc>https://waaseyaa.org/project</loc>', $xml);
         $this->assertStringContainsString('<loc>https://waaseyaa.org/compare</loc>', $xml);
         foreach (self::$corpus->all() as $spec) {
             $this->assertStringContainsString('/docs/specs/' . $spec['name'] . '</loc>', $xml);

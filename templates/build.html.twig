@@ -1,0 +1,27 @@
+{% extends "base.html.twig" %}
+{% set section = "build" %}
+{% block title %}Build your first application: Waaseyaa{% endblock %}
+{% block body_class %}build-page{% endblock %}
+{% block head %}
+<link rel="canonical" href="{{ canonical_base }}/build">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"Build your first Waaseyaa application","url":"{{ canonical_base }}/build"}</script>
+{% endblock %}
+{% block content %}
+<main id="main" class="wrap">
+  <section class="build-hero">
+    <div><h1>Your first<br><em>content application.</em></h1><p>Start with a tested example. Then explore how content, access, publishing, and delivery fit together.</p></div>
+    <div class="lesson-card"><span class="sample-icon">w.</span><h3>Build a todo app.</h3><p>Define an entity, register routes, and render content. The maintained walkthrough is checked against {{ framework_version }}.</p><div><span>4 starting points</span><span>PHP 8.5</span></div></div>
+  </section>
+  <section class="learning-layout" id="learn" aria-label="Learning path">
+    <aside class="lesson-sidebar"><div class="eyebrow">IN THIS GUIDE</div><nav aria-label="Chapters"><a href="#model">01 &nbsp; Start with a model</a><a href="#access">02 &nbsp; Make access explicit</a><a href="#publishing">03 &nbsp; Review and publish</a><a href="#delivery">04 &nbsp; Open another door</a></nav><div class="guide-note"><span>VERSIONED LEARNING</span><p>The todo code patterns run in this site's test suite. The Fieldnotes interaction on the homepage is an illustrative browser demo.</p></div><a class="text-link" href="/#demo">Explore Fieldnotes</a></aside>
+    <article class="lesson-content">
+      <div class="lesson-meta"><span>GETTING STARTED</span><span>{{ framework_version }}</span></div>
+      <section id="model"><h2>Give your content a shape.</h2><p>A content model describes what your application stores. Begin with the <a href="/start">tested todo walkthrough</a>: install the project, declare an entity with PHP attributes, and register its routes.</p><a class="button primary" href="/start">Start the walkthrough</a><p>Continue with the <a href="/docs/specs/entity-system">entity system</a> and <a href="/docs/specs/entity-storage-two-axis">storage contracts</a> when you need richer models.</p></section>
+      <section id="access"><h2>Make access a decision.</h2><p>Decide who can read each field and who can create, update, or delete an entity. The walkthrough declares field read levels explicitly. Read the <a href="/docs/specs/field-access">field access contract</a> and <a href="/docs/specs/access-control">access policy guide</a> before exposing another interface.</p><div class="lesson-callout"><h3>Keep the decision on the server</h3><p>The sample roles in Fieldnotes explain an application policy. They do not establish permissions for a real account.</p></div></section>
+      <section id="publishing"><h2>Make the change deliberate.</h2><p>For applications that need review, explore <a href="/docs/specs/workflow">workflow states and transitions</a>. Choose the states, permissions, and review requirements your application needs.</p><p>This site uses a different publishing path: author content in Git, review the change, then sync it during deployment. Its runtime content writes are blocked.</p></section>
+      <section id="delivery"><h2>Open another door.</h2><p>HTML, Markdown, and MCP on this site all read the same published docs corpus. Try <a href="/docs">the docs</a>, <a href="/llms.txt">the Markdown index</a>, and <a href="/.well-known/mcp.json">the MCP server card</a>.</p><p>For your own application, consult the <a href="/docs/specs/api-layer">API contract</a> and <a href="/docs/specs/mcp-endpoint">MCP contract</a>. Changing format must preserve the application's access decisions.</p></section>
+    </article>
+  </section>
+  <section class="build-bottom"><div><div class="eyebrow">CONTINUE LEARNING</div><h2>Further reading</h2></div><a href="/docs"><span>Explore the documentation</span><small>Versioned framework specifications</small></a><a href="/project"><span>Understand the project</span><small>Maturity, boundaries, and contribution</small></a></section>
+</main>
+{% endblock %}

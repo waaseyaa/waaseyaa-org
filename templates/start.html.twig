@@ -1,18 +1,10 @@
 {% extends "base.html.twig" %}
+{% set section = "build" %}
 
 {% block title %}Start: build a todo app on Waaseyaa{% endblock %}
 {% block description %}A tested walkthrough: define an entity with PHP attributes, register routes, write a typed controller, and get a JSON:API surface. Every code sample runs in this site's test suite against {{ framework_version }}.{% endblock %}
 
-{% block nav %}
-  <a href="/start" aria-current="page">Start</a>
-  <a href="/docs">Docs</a>
-  <a href="/releases">Releases</a>
-  <a href="/roadmap">Roadmap</a>
-  <a href="/production">Production</a>
-  <a href="/why">Why</a>
-  <a href="/compare">Compare</a>
-  <a href="https://github.com/waaseyaa/framework">GitHub</a>
-{% endblock %}
+
 
 {% block head %}
 <link rel="canonical" href="{{ canonical_base }}/start">
@@ -40,10 +32,11 @@
 
   <pre><code>composer create-project waaseyaa/waaseyaa my-app --stability=dev
 cd my-app
-./vendor/bin/waaseyaa db:init
-./vendor/bin/waaseyaa serve</code></pre>
+APP_ENV=local ./vendor/bin/waaseyaa db:init
+APP_ENV=local ./vendor/bin/waaseyaa install:init
+APP_ENV=local ./vendor/bin/waaseyaa serve</code></pre>
 
-  <p>The <code>--stability=dev</code> flag is required during the alpha. <code>db:init</code> creates the SQLite database and applies migrations; it is idempotent and safe to run on every deploy. The dev server answers at <code>http://localhost:8080</code>.</p>
+  <p>The <code>--stability=dev</code> flag is required during the alpha. <code>db:init</code> creates the SQLite database and applies migrations; it is idempotent and safe to run on every deploy. <code>install:init</code> activates the initial configuration generation before the first full boot. The dev server answers at <code>http://localhost:8080</code>.</p>
 
   <h2>2. Define the entity</h2>
 

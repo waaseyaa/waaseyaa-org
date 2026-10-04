@@ -1,18 +1,10 @@
 {% extends "base.html.twig" %}
+{% set section = "project" %}
 
 {% block title %}Why Waaseyaa: data sovereignty as architecture{% endblock %}
 {% block description %}Waaseyaa exists so that Nations and organizations can run content platforms on infrastructure they own, with OCAP-aligned access and audit built into the framework core.{% endblock %}
 
-{% block nav %}
-  <a href="/start">Start</a>
-  <a href="/docs">Docs</a>
-  <a href="/releases">Releases</a>
-  <a href="/roadmap">Roadmap</a>
-  <a href="/production">Production</a>
-  <a href="/why" aria-current="page">Why</a>
-  <a href="/compare">Compare</a>
-  <a href="https://github.com/waaseyaa/framework">GitHub</a>
-{% endblock %}
+
 
 {% block head %}
 <link rel="canonical" href="{{ canonical_base }}/why">

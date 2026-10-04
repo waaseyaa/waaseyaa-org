@@ -1,18 +1,10 @@
 {% extends "base.html.twig" %}
+{% set section = "project" %}
 
 {% block title %}Waaseyaa roadmap: stage-based horizons{% endblock %}
 {% block description %}The Waaseyaa framework roadmap grouped by stage-based horizons (now, next, later), with honest status notes and links into the specs each item depends on.{% endblock %}
 
-{% block nav %}
-  <a href="/start">Start</a>
-  <a href="/docs">Docs</a>
-  <a href="/releases">Releases</a>
-  <a href="/roadmap" aria-current="page">Roadmap</a>
-  <a href="/production">Production</a>
-  <a href="/why">Why</a>
-  <a href="/compare">Compare</a>
-  <a href="https://github.com/waaseyaa/framework">GitHub</a>
-{% endblock %}
+
 
 {% block head %}
 <link rel="canonical" href="{{ canonical_base }}/roadmap">

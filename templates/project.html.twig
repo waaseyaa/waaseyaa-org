@@ -1,0 +1,19 @@
+{% extends "base.html.twig" %}
+{% set section = "project" %}
+{% block title %}The Waaseyaa project{% endblock %}
+{% block head %}<link rel="canonical" href="{{ canonical_base }}/project"><script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"The Waaseyaa project","url":"{{ canonical_base }}/project"}</script>{% endblock %}
+{% block content %}
+<main id="main" class="page page-prose">
+  <h1>The Waaseyaa project</h1>
+  <p>Waaseyaa is an open-source PHP framework for content applications. This site runs {{ framework_version }}. The framework is alpha software; APIs and operational requirements can change between releases.</p>
+  <h2>Framework and Studio</h2>
+  <p>Framework is the reusable foundation for developers. Studio is the open-source builder direction that composes Framework. Studio availability and verified capabilities are documented separately; using Framework does not require a hosted account.</p>
+  <p>Read the <a href="/docs/specs/builder-product-boundaries">product boundaries</a>, <a href="/releases">release notes</a>, <a href="/roadmap">roadmap</a>, and <a href="/docs/specs/stability-charter">stability charter</a> before choosing a release.</p>
+  <h2>Origins and ownership</h2>
+  <p>The project's sovereignty goals guide choices about hosting, data portability, and explicit access. <a href="/why">Why Waaseyaa</a> explains those values and the First Nations context. The framework itself is released under GPL-2.0-or-later.</p>
+  <h2>Evidence and support</h2>
+  <p><a href="/production">Application case studies</a> explain what has been built and their limitations. Alpha use requires your own evaluation and operational testing. See the <a href="https://github.com/waaseyaa/waaseyaa-org/blob/main/SUPPORT.md">support policy</a> and <a href="/compare">framework comparison</a>.</p>
+  <h2>Contribute</h2>
+  <p>Browse <a href="https://github.com/waaseyaa/framework">Framework source and issues</a> and <a href="https://github.com/waaseyaa/waaseyaa-org">this site's source</a>. Report security concerns through the repositories' security policies.</p>
+</main>
+{% endblock %}
