@@ -41,7 +41,6 @@ final class ChatMaintenance implements ScheduleEntriesInterface
     public static function prune(DatabaseInterface $database, ChatLimits $limits): void
     {
         try {
-            new ChatSchema($database)->ensure();
             $removed = new ConversationStore($database)->pruneOlderThan($limits->retentionDays);
             new ChatGuard($database, $limits, hashKey: 'prune-only')->pruneExpired();
             if ($removed > 0) {
