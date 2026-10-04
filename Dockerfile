@@ -7,11 +7,13 @@ FROM php:8.5-fpm-alpine AS base
 # ("Package 'icu-uc' not found"), which is why the image never built.
 RUN apk add --no-cache \
     sqlite-libs \
+    libzip \
     icu-libs \
     && apk add --no-cache --virtual .build-deps \
     $PHPIZE_DEPS \
     icu-dev \
-    && docker-php-ext-install -j"$(nproc)" intl \
+    libzip-dev \
+    && docker-php-ext-install -j"$(nproc)" intl zip \
     && apk del .build-deps
 
 # The base image activates NEITHER shipped php.ini, so PHP's own defaults

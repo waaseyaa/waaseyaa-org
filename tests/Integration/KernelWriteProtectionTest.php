@@ -64,19 +64,8 @@ use Waaseyaa\Routing\WaaseyaaRouter;
  * fully authenticated `administer content` principal, which is precisely the
  * account ContentWriteProtectionPolicy exists to stop.
  *
- * On the literal status code: the admin surface transports its denial as an
- * envelope, not as an HTTP status. The route controller returns
- * AdminSurfaceResultData::toArray() (vendor/waaseyaa/admin-surface/src/Host/AbstractAdminSurfaceHost.php:143),
- * which has an `error.status` key but no `statusCode` key, and
- * ControllerDispatcher::handleCallable() maps an array result with
- * `$result['statusCode'] ?? 200`
- * (vendor/waaseyaa/foundation/src/Http/ControllerDispatcher.php:141). So the
- * wire response is HTTP 200 carrying `{"ok":false,"error":{"status":403,...}}`.
- * The write is refused either way, which is the security property; the
- * transport shape is pinned separately in
- * denial_is_transported_as_an_http_200_with_a_403_envelope() so that a future
- * framework release promoting the envelope status to the HTTP status is caught
- * as a deliberate change rather than silently absorbed.
+ * Alpha.305's explicit AdminSurfaceHttpController promotes the denial status
+ * to HTTP 403 and retains the error envelope. Both are asserted below.
  *
  * Isolation is mandatory, not defensive. Booting the kernel installs
  * process-global state that outlives this class: SsrServiceProvider::boot()
@@ -509,9 +498,10 @@ final class KernelWriteProtectionTest extends TestCase
     #[Test]
     public function the_admin_surface_host_uses_the_kernel_composed_access_handler(): void
     {
-        $used = new \ReflectionFunction($this->adminSurfaceActionController())->getClosureUsedVariables();
-        $host = $used['host'] ?? null;
-        self::assertIsObject($host, 'the admin_surface.action closure must capture the surface host.');
+        $controller = new \ReflectionFunction($this->adminSurfaceActionController())->getClosureThis();
+        self::assertInstanceOf(\Waaseyaa\AdminSurface\Http\AdminSurfaceHttpController::class, $controller);
+        $host = new \ReflectionProperty($controller, 'host')->getValue($controller);
+        self::assertIsObject($host, 'the admin_surface.action controller must hold the surface host.');
 
         $handler = new \ReflectionProperty($host, 'accessHandler')->getValue($host);
 
@@ -585,15 +575,10 @@ final class KernelWriteProtectionTest extends TestCase
     }
 
     /**
-     * Pins the transport shape described in the class docblock: the admin
-     * surface reports its 403 inside the result envelope, and
-     * ControllerDispatcher::handleCallable() emits HTTP 200 because
-     * AdminSurfaceResultData::toArray() has no `statusCode` key. If a framework
-     * release ever promotes `error.status` to the HTTP status, this test fails
-     * and the change gets reviewed instead of silently landing.
+     * Pins the explicit controller's HTTP status and error envelope together.
      */
     #[Test]
-    public function denial_is_transported_as_an_http_200_with_a_403_envelope(): void
+    public function denial_is_transported_as_http_403_with_a_403_envelope(): void
     {
         $response = $this->dispatchWrite('release', 'update', $this->payloadFor('release', 'update'));
         $envelope = $this->decode($response);
@@ -604,9 +589,9 @@ final class KernelWriteProtectionTest extends TestCase
             'release: the admin-surface envelope must carry the 403 refusal.',
         );
         self::assertSame(
-            200,
+            403,
             $response->getStatusCode(),
-            'release: admin-surface denials currently ride an HTTP 200 envelope (ControllerDispatcher::handleCallable defaults the status when the array has no `statusCode` key). Update this test deliberately if the framework changes that.',
+            'release: admin-surface denial must carry HTTP 403 as well as its envelope.',
         );
     }
 
