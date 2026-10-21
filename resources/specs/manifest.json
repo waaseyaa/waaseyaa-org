@@ -1,7 +1,7 @@
 {
-    "framework_version": "v0.1.0-alpha.306",
-    "source_released_at": "2026-10-21T20:09:13+00:00",
-    "corpus_sha1": "4fc11cc1f6ea9d53e06dba1da375d0eddc67c258",
+    "framework_version": "v0.1.0-alpha.307",
+    "source_released_at": "2026-10-21T22:38:57+00:00",
+    "corpus_sha1": "4b5c1e1715c7e952b82f4bbe56ca00fd242f9a50",
     "source": "vendor/waaseyaa/framework/docs/specs",
     "specs": [
         {
@@ -502,7 +502,7 @@
         {
             "name": "site-golden-path",
             "title": "Fresh-site golden path",
-            "sha1": "9857dd209f19c81fc11d560020da07fb2b07825d"
+            "sha1": "bda369268c287ec01d3917a67e39d01332c4897c"
         },
         {
             "name": "social-capabilities",

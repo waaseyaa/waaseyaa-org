@@ -319,13 +319,6 @@ php vendor/bin/waaseyaa optimize:manifest
 composer site-verify</code></pre>
 
   <p><code>install:init</code> applies migrations, creates entity tables, and activates configuration. <code>composer site-verify</code> checks the generated site contract. Stop and fix any reported error before serving. The single-worker PHP development server is sufficient for this exercise; applications needing concurrent requests can use the starter's FrankenPHP runtime.</p>
-  <p>For the published alpha.306 starter, Git must record <code>bin/maintenance/site-verify</code> with mode <code>100755</code>. Git on Windows does not infer the executable bit from Windows file attributes. If you plan to commit this app, set the Git index mode after staging the completed app and before committing:</p>
-  <pre><code>git init
-git add -A
-git update-index --chmod=+x bin/maintenance/site-verify
-git ls-files --stage bin/maintenance/site-verify</code></pre>
-  <p>Check that the output begins with <code>100755</code>. A Windows <code>chmod</code> command alone does not set the mode Git will commit. This step applies to the published alpha.306 release used by this guide.</p>
-
   <p>Choose a free local port before starting the server. The default is 8080. On Windows, check whether a listener already uses it:</p>
   <pre><code>Get-NetTCPConnection -State Listen -LocalPort 8080 -ErrorAction SilentlyContinue</code></pre>
   <p>No output means port 8080 has no listener. If it is free, start the server and open the matching URL:</p>
