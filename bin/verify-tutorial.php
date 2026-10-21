@@ -91,7 +91,10 @@ if ($socket === false) {
 $address = stream_socket_get_name($socket, false);
 $port = substr($address, strrpos($address, ':') + 1);
 fclose($socket);
-$server = new Process([PHP_BINARY, 'vendor/bin/waaseyaa', 'serve', '--host=127.0.0.1', '--port=' . $port], $project, ['PHP_CLI_SERVER_WORKERS' => '1'], timeout: 120);
+// Use the same public adapter as `waaseyaa serve`, owning the PHP server
+// directly so Unix and Windows cleanup cannot leave a grandchild listening.
+$serverCommand = [PHP_BINARY, '-S', '127.0.0.1:' . $port, '-t', $project . '/public', $project . '/public/index.php'];
+$server = new Process($serverCommand, $project, ['PHP_CLI_SERVER_WORKERS' => false], timeout: 120);
 $client = HttpClient::create(['base_uri' => 'http://127.0.0.1:' . $port, 'max_redirects' => 0, 'timeout' => 10]);
 $assert = static function (bool $condition, string $message): void {
     if (!$condition) {
@@ -147,7 +150,7 @@ try {
         $assert($client->request('POST', '/todos/' . $id . '/' . $action)->getStatusCode() === 404, 'Unknown entity ' . $action . ' returns 404');
     }
     $server->stop(3);
-    $server = new Process([PHP_BINARY, 'vendor/bin/waaseyaa', 'serve', '--host=127.0.0.1', '--port=' . $port], $project, ['PHP_CLI_SERVER_WORKERS' => '1', 'WAASEYAA_DEV_FALLBACK_ACCOUNT' => 'false'], timeout: 60);
+    $server = new Process($serverCommand, $project, ['PHP_CLI_SERVER_WORKERS' => false, 'WAASEYAA_DEV_FALLBACK_ACCOUNT' => 'false'], timeout: 60);
     $server->start();
     $anonymousStatus = null;
     for ($attempt = 0; $attempt < 30; ++$attempt) {
