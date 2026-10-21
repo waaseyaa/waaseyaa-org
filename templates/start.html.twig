@@ -31,6 +31,13 @@
   <h2>1. Create the project and site contract</h2>
 
   <p>You need PHP 8.5 or later, Composer 2, and the SQLite extensions <code>pdo_sqlite</code> and <code>sqlite3</code>. Run these commands in a terminal. The <code>php vendor/bin/waaseyaa</code> form works in PowerShell as well as a POSIX shell.</p>
+  <p>On Windows, install PHP 8.5 or later and Composer 2, add both to <code>PATH</code>, then open a new PowerShell window. Confirm PowerShell can find them and PHP has both SQLite extensions:</p>
+  <pre><code>Get-Command php, composer
+php --version
+composer --version
+php --ini
+php -m | Select-String 'pdo_sqlite|sqlite3'</code></pre>
+  <p>The last command should show both <code>pdo_sqlite</code> and <code>sqlite3</code>. If either is missing, enable it in the PHP configuration used by the <code>php</code> command, then open a new terminal and check again.</p>
   <pre><code>composer create-project waaseyaa/waaseyaa my-app {{ framework_version }} --stability=alpha
 cd my-app</code></pre>
 
@@ -309,12 +316,28 @@ final class TodoController
   <pre><code>composer dump-autoload
 php vendor/bin/waaseyaa install:init
 php vendor/bin/waaseyaa optimize:manifest
-composer site-verify
-php vendor/bin/waaseyaa serve --host=127.0.0.1</code></pre>
+composer site-verify</code></pre>
 
   <p><code>install:init</code> applies migrations, creates entity tables, and activates configuration. <code>composer site-verify</code> checks the generated site contract. Stop and fix any reported error before serving. The single-worker PHP development server is sufficient for this exercise; applications needing concurrent requests can use the starter's FrankenPHP runtime.</p>
+  <p>For the published alpha.306 starter, Git must record <code>bin/maintenance/site-verify</code> with mode <code>100755</code>. Git on Windows does not infer the executable bit from Windows file attributes. If you plan to commit this app, set the Git index mode after staging the completed app and before committing:</p>
+  <pre><code>git init
+git add -A
+git update-index --chmod=+x bin/maintenance/site-verify
+git ls-files --stage bin/maintenance/site-verify</code></pre>
+  <p>Check that the output begins with <code>100755</code>. A Windows <code>chmod</code> command alone does not set the mode Git will commit. This step applies to the published alpha.306 release used by this guide.</p>
 
-  <p>Open <code>http://127.0.0.1:8080/todos</code>. Add a todo and see it under Pending. Click Complete and see it under Completed. Click Mark pending, refresh the page to check persistence, then Delete. An unknown todo URL should return 404. Stop the server with Ctrl+C.</p>
+  <p>Choose a free local port before starting the server. The default is 8080. On Windows, check whether a listener already uses it:</p>
+  <pre><code>Get-NetTCPConnection -State Listen -LocalPort 8080 -ErrorAction SilentlyContinue</code></pre>
+  <p>No output means port 8080 has no listener. If it is free, start the server and open the matching URL:</p>
+  <pre><code>php vendor/bin/waaseyaa serve --host=127.0.0.1 --port=8080</code></pre>
+  <p>Open <code>http://127.0.0.1:8080/todos</code>.</p>
+  <p>If a listener appears, leave it running unless you know it is yours. Choose another port, such as 8081, and check it on Windows too:</p>
+  <pre><code>Get-NetTCPConnection -State Listen -LocalPort 8081 -ErrorAction SilentlyContinue</code></pre>
+  <p>When that port is free, use the same port in the server command and browser URL. You can choose another free port by replacing <code>8081</code> in both:</p>
+  <pre><code>php vendor/bin/waaseyaa serve --host=127.0.0.1 --port=8081</code></pre>
+  <p>Open <code>http://127.0.0.1:8081/todos</code>.</p>
+  <p>Add a todo and see it under Pending. Click Complete and see it under Completed. Click Mark pending, refresh the page to check persistence, then Delete. An unknown todo URL should return 404. If you see a 404 or connection error, check the server's startup output and whether the port is used by another app. Use a free port; do not stop an unrelated service. Stop your server with Ctrl+C.</p>
+  <p>If you later clone the app repository on Windows, run <code>composer install</code> followed by <code>php bin/post-create-setup.php</code> to create the local ignored <code>.env</code> and fresh secrets before <code>install:init</code>.</p>
 
   <h2>6. Before exposing an API</h2>
 
