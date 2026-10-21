@@ -26,10 +26,9 @@ use Waaseyaa\Routing\RouteBuilder;
 use Waaseyaa\Routing\WaaseyaaRouter;
 
 /**
- * Validates that every code pattern shown on the /start getting-started
- * page (templates/start.html.twig) compiles and works against the locked
- * framework version. The page and this test state the same code; when the
- * framework breaks this test, the page is wrong and must change with it.
+ * Component checks for the entity and route concepts used by /start.
+ * bin/verify-tutorial.php separately extracts the displayed application files
+ * and verifies the full install and HTTP lifecycle in a fresh starter.
  *
  * @see https://waaseyaa.org/start
  */

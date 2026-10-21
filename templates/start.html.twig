@@ -2,7 +2,7 @@
 {% set section = "build" %}
 
 {% block title %}Start: build a todo app on Waaseyaa{% endblock %}
-{% block description %}A tested walkthrough: define an entity with PHP attributes, register routes, write a typed controller, and get a JSON:API surface. Every code sample runs in this site's test suite against {{ framework_version }}.{% endblock %}
+{% block description %}Build a complete local todo application on {{ framework_version }}: install, define an entity, register routes, render a template, and verify the result.{% endblock %}
 
 
 
@@ -24,19 +24,30 @@
 <main id="main" class="page page-prose spec-body">
   <h1>Start: build a todo app</h1>
 
-  <p>This is the one walkthrough this site maintains by hand, and it is kept honest mechanically: every code sample below also lives in <a href="https://github.com/waaseyaa/waaseyaa-org/blob/main/tests/Tutorial/TodoAppTest.php">this site's test suite</a>, which runs against the exact framework version serving this page ({{ framework_version }}). If the framework changes under the tutorial, the tests break and this page changes with them. Everything deeper than the walkthrough lives in the <a href="/docs">spec corpus</a>, which is published from the framework repository with provenance and cannot go stale by construction.</p>
+  <p>Build a complete local todo application with {{ framework_version }}. The <a href="https://github.com/waaseyaa/waaseyaa-org/blob/main/bin/verify-tutorial.php">fresh-install check</a> extracts the application files displayed here and exercises the application over HTTP. Component tests separately check entity operations and route matching. The <a href="/docs">reference docs</a> come from the same released framework version.</p>
 
   <p>Waaseyaa is alpha software; APIs still move between releases. The <a href="/docs/specs/stability-charter">stability charter</a> says which surfaces are protected.</p>
 
-  <h2>1. Install</h2>
+  <h2>1. Create the project and site contract</h2>
 
-  <pre><code>composer create-project waaseyaa/waaseyaa my-app --stability=dev
-cd my-app
-APP_ENV=local ./vendor/bin/waaseyaa db:init
-APP_ENV=local ./vendor/bin/waaseyaa install:init
-APP_ENV=local ./vendor/bin/waaseyaa serve</code></pre>
+  <p>You need PHP 8.5 or later, Composer 2, and the SQLite extensions <code>pdo_sqlite</code> and <code>sqlite3</code>. Run these commands in a terminal. The <code>php vendor/bin/waaseyaa</code> form works in PowerShell as well as a POSIX shell.</p>
+  <pre><code>composer create-project waaseyaa/waaseyaa my-app {{ framework_version }} --stability=alpha
+cd my-app</code></pre>
 
-  <p>The <code>--stability=dev</code> flag is required during the alpha. <code>db:init</code> creates the SQLite database and applies migrations; it is idempotent and safe to run on every deploy. <code>install:init</code> activates the initial configuration generation before the first full boot. The dev server answers at <code>http://localhost:8080</code>.</p>
+  <p>The starter version is pinned to this guide. The installer creates your local <code>.env</code> and application secrets. Keep <code>APP_ENV=local</code> and <code>WAASEYAA_DEV_FALLBACK_ACCOUNT=true</code> for this exercise. This single-user example uses development authentication; use sample data and keep the server bound to your own computer.</p>
+  <p>Create <code>site.seed.yaml</code> in the project root. The minimal preset supplies the site's baseline contract; the Todo entity below is application-owned.</p>
+  <pre><code data-tutorial-file="site.seed.yaml">schema: waaseyaa.site-seed
+version: 1
+application:
+  id: todo-tutorial
+  name: Todo Tutorial
+  canonical_origin:
+    config_key: APP_URL
+content_types:
+  - id: page
+    canonical_route: /pages/{slug}</code></pre>
+  <pre><code>php vendor/bin/waaseyaa site:init --preset=minimal --answers=site.seed.yaml --yes --no-interaction</code></pre>
+  <p>This records the site contract and generates its verification command. Add the application files in the following steps before running <code>install:init</code>. Create any missing parent directories when saving a file.</p>
 
   <h2>2. Define the entity</h2>
 
@@ -46,7 +57,7 @@ APP_ENV=local ./vendor/bin/waaseyaa serve</code></pre>
 
   <p>Create <code>src/Entity/Todo.php</code>:</p>
 
-  <pre><code>&lt;?php
+  <pre><code data-tutorial-file="src/Entity/Todo.php">&lt;?php
 
 declare(strict_types=1);
 
@@ -60,7 +71,7 @@ use Waaseyaa\Entity\FieldReadLevel;
 
 #[ContentEntityType(id: 'todo', label: 'Todo', api: true)]
 #[ContentEntityKeys(label: 'title')]
-class Todo extends ContentEntityBase
+final class Todo extends ContentEntityBase
 {
     #[Field(label: 'Title', required: true, read: FieldReadLevel::Public)]
     public string $title = '';
@@ -84,7 +95,7 @@ class Todo extends ContentEntityBase
 
   <p>Register it in <code>config/entity-types.php</code>. Because the class carries its own metadata, registration is one line:</p>
 
-  <pre><code>&lt;?php
+  <pre><code data-tutorial-file="config/entity-types.php">&lt;?php
 
 declare(strict_types=1);
 
@@ -94,18 +105,15 @@ return [
     EntityType::fromClass(\App\Entity\Todo::class),
 ];</code></pre>
 
-  <p>Then create the table and rebuild the compiled manifest:</p>
-
-  <pre><code>./vendor/bin/waaseyaa schema:sync
-./vendor/bin/waaseyaa optimize:manifest</code></pre>
+  <p>The installation step below creates the table and activates configuration after all application files are in place.</p>
 
   <h2>3. Routes and a typed controller</h2>
 
-  <p>A service provider registers routes. <code>entityParameter('todo', 'todo')</code> marks <code>{todo}</code> as an entity segment: the framework loads the row and passes a <code>Todo</code> instance into any action parameter typed as <code>Todo</code>. Unknown ids become a 404 before your code runs. <code>allowAll()</code> and <code>csrfExempt()</code> are tutorial settings; routes are deny-by-default and real applications use permissions and CSRF, per <a href="/docs/specs/access-control">access-control.md</a>.</p>
+  <p>A service provider registers routes. <code>entityParameter('todo', 'todo')</code> marks <code>{todo}</code> as an entity segment: the framework loads the row and passes a <code>Todo</code> instance into an action parameter typed as <code>Todo</code>. Unknown or unreadable ids become a 404 before your code runs. Every route requires <code>manage todos</code>, which the local development account holds. The <code>csrfExempt()</code> setting is only for this local exercise; real applications also require CSRF protection.</p>
 
   <p>Create <code>src/Provider/TodoServiceProvider.php</code>:</p>
 
-  <pre><code>&lt;?php
+  <pre><code data-tutorial-file="src/Provider/TodoServiceProvider.php">&lt;?php
 
 declare(strict_types=1);
 
@@ -115,22 +123,24 @@ use Waaseyaa\Foundation\ServiceProvider\ServiceProvider;
 use Waaseyaa\Routing\RouteBuilder;
 use Waaseyaa\Routing\WaaseyaaRouter;
 
-class TodoServiceProvider extends ServiceProvider
+final class TodoServiceProvider extends ServiceProvider
 {
+    public function register(): void {}
+
     public function routes(
         WaaseyaaRouter $router,
-        ?\Waaseyaa\Entity\EntityTypeManager $entityTypeManager = null,
+        \Waaseyaa\Entity\EntityTypeManager $entityTypeManager,
     ): void {
         $router->addRoute('todo.list', RouteBuilder::create('/todos')
             ->controller('App\Controller\TodoController::list')
             ->methods('GET')
-            ->allowAll()
+            ->requirePermission('manage todos')
             ->build());
 
         $router->addRoute('todo.create', RouteBuilder::create('/todos')
             ->controller('App\Controller\TodoController::create')
             ->methods('POST')
-            ->allowAll()
+            ->requirePermission('manage todos')
             ->csrfExempt()
             ->build());
 
@@ -138,7 +148,7 @@ class TodoServiceProvider extends ServiceProvider
             ->controller('App\Controller\TodoController::toggle')
             ->entityParameter('todo', 'todo')
             ->methods('POST')
-            ->allowAll()
+            ->requirePermission('manage todos')
             ->csrfExempt()
             ->build());
 
@@ -146,17 +156,54 @@ class TodoServiceProvider extends ServiceProvider
             ->controller('App\Controller\TodoController::delete')
             ->entityParameter('todo', 'todo')
             ->methods('POST')
-            ->allowAll()
+            ->requirePermission('manage todos')
             ->csrfExempt()
             ->build());
     }
 }</code></pre>
 
-  <p>Add the provider class to <code>extra.waaseyaa.providers</code> in <code>composer.json</code>, next to the default entry, and run <code>./vendor/bin/waaseyaa optimize:manifest</code> again.</p>
+  <p>In <code>composer.json</code>, append <code>"App\\Provider\\TodoServiceProvider"</code> to the existing <code>extra.waaseyaa.providers</code> array. Preserve every existing entry, including the provider generated by <code>site:init</code>. Do not replace the rest of the manifest.</p>
+
+  <p>Typed entity arguments also require an entity access policy. Create <code>src/Access/TodoAccessPolicy.php</code>. The attribute makes this policy discoverable; it grants Todo access only to accounts with <code>manage todos</code>. This entity has public fields and no protected-read policy. For entities with protected fields, follow the additional policy contract in <a href="/docs/specs/field-access">field access</a>.</p>
+  <pre><code data-tutorial-file="src/Access/TodoAccessPolicy.php">&lt;?php
+
+declare(strict_types=1);
+
+namespace App\Access;
+
+use Waaseyaa\Access\AccessPolicyInterface;
+use Waaseyaa\Access\AccessResult;
+use Waaseyaa\Access\AccountInterface;
+use Waaseyaa\Access\Gate\PolicyAttribute;
+use Waaseyaa\Entity\EntityInterface;
+
+#[PolicyAttribute(entityType: 'todo')]
+final class TodoAccessPolicy implements AccessPolicyInterface
+{
+    public function appliesTo(string $entityTypeId): bool
+    {
+        return $entityTypeId === 'todo';
+    }
+
+    public function access(EntityInterface $entity, string $operation, AccountInterface $account): AccessResult
+    {
+        return in_array($operation, ['view', 'update', 'delete'], true)
+            &amp;&amp; $account->hasPermission('manage todos')
+            ? AccessResult::allowed('Account may manage todos.')
+            : AccessResult::neutral('Todo permission required.');
+    }
+
+    public function createAccess(string $entityTypeId, string $bundle, AccountInterface $account): AccessResult
+    {
+        return $account->hasPermission('manage todos')
+            ? AccessResult::allowed('Account may create todos.')
+            : AccessResult::neutral('Todo permission required.');
+    }
+}</code></pre>
 
   <p>Persistence goes through the entity repository: <code>create()</code> builds a new, unsaved entity with defaults applied, <code>save()</code> inserts or updates, <code>find()</code> loads by id, <code>findBy([])</code> returns everything, <code>delete()</code> removes one entity. Create <code>src/Controller/TodoController.php</code>:</p>
 
-  <pre><code>&lt;?php
+  <pre><code data-tutorial-file="src/Controller/TodoController.php">&lt;?php
 
 declare(strict_types=1);
 
@@ -224,17 +271,54 @@ final class TodoController
     }
 }</code></pre>
 
-  <p>The HTML lives in Twig, not in the controller. A minimal <code>templates/todo/list.html.twig</code> is a form posting to <code>/todos</code> plus two loops over <code>pending</code> and <code>completed</code>; the shape is yours to choose.</p>
+  <h2>4. Add the complete template</h2>
+  <p>Create <code>templates/todo/list.html.twig</code>. Twig escapes the titles when rendering them. Each form submits to one of the routes above.</p>
+  <pre><code data-tutorial-file="templates/todo/list.html.twig">{% apply escape('html') %}{% verbatim %}<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>My todos</title></head>
+<body>
+  <main>
+    <h1>My todos</h1>
+    <form method="post" action="/todos">
+      <label>Title <input name="title" required></label>
+      <label>Priority <select name="priority"><option value="normal">Normal</option><option value="high">High</option></select></label>
+      <button type="submit">Add todo</button>
+    </form>
+    {% for heading, items in {'Pending': pending, 'Completed': completed} %}
+      <section aria-label="{{ heading }}">
+        <h2>{{ heading }}</h2>
+        <ul>
+        {% for todo in items %}
+          <li data-todo-id="{{ todo.id() }}">
+            <span>{{ todo.get('title') }}</span> ({{ todo.get('priority') }})
+            <form method="post" action="/todos/{{ todo.id() }}/toggle"><button type="submit">{{ todo.isCompleted() ? 'Mark pending' : 'Complete' }}</button></form>
+            <form method="post" action="/todos/{{ todo.id() }}/delete"><button type="submit">Delete</button></form>
+          </li>
+        {% else %}
+          <li>No todos here.</li>
+        {% endfor %}
+        </ul>
+      </section>
+    {% endfor %}
+  </main>
+</body>
+</html>{% endverbatim %}{% endapply %}</code></pre>
 
-  <h2>4. Run it</h2>
+  <h2>5. Install, verify, and run</h2>
 
-  <pre><code>./vendor/bin/waaseyaa serve</code></pre>
+  <pre><code>composer dump-autoload
+php vendor/bin/waaseyaa install:init
+php vendor/bin/waaseyaa optimize:manifest
+composer site-verify
+php vendor/bin/waaseyaa serve --host=127.0.0.1</code></pre>
 
-  <p>Open <code>http://localhost:8080/todos</code>. Add a few todos, toggle them, delete one. That is the whole loop: entity, registration, routes, controller, template.</p>
+  <p><code>install:init</code> applies migrations, creates entity tables, and activates configuration. <code>composer site-verify</code> checks the generated site contract. Stop and fix any reported error before serving. The single-worker PHP development server is sufficient for this exercise; applications needing concurrent requests can use the starter's FrankenPHP runtime.</p>
 
-  <h2>5. The API you already have</h2>
+  <p>Open <code>http://127.0.0.1:8080/todos</code>. Add a todo and see it under Pending. Click Complete and see it under Completed. Click Mark pending, refresh the page to check persistence, then Delete. An unknown todo URL should return 404. Stop the server with Ctrl+C.</p>
 
-  <p>Because the class declared <code>api: true</code>, the same type is served over JSON:API at <code>/api/todo</code>. Entity access still applies there: JSON:API runs view and create checks per entity, and with no access policy the collection is empty. That asymmetry is intentional; the web routes above said <code>allowAll()</code>, the API makes you say who may see what. Add a policy when you want the API open, per <a href="/docs/specs/access-control">access-control.md</a> and <a href="/docs/specs/jsonapi">jsonapi.md</a>.</p>
+  <h2>6. Before exposing an API</h2>
+
+  <p>The entity's <code>api: true</code> declaration opts it into <code>/api/todo</code>, subject to the same entity access policy. Development authentication is not evidence of production readiness. Before sharing the app, restore CSRF protection, disable development authentication, and assign <code>manage todos</code> only to the intended authenticated users. Read <a href="/docs/specs/access-control">access control</a> and <a href="/docs/specs/jsonapi">JSON:API</a>.</p>
 
   <h2>Where to go next</h2>
 
@@ -242,7 +326,7 @@ final class TodoController
     <li><strong>The entity system in full</strong>: revisions, translations, bundles, storage backends. See <a href="/docs/specs/entity-system">entity-system.md</a> and <a href="/docs/specs/entity-storage-v2">entity-storage-v2.md</a>.</li>
     <li><strong>Field-level access</strong>: read levels, protected reads, and the deployment preflight. See <a href="/docs/specs/field-access">field-access.md</a>.</li>
     <li><strong>Routing and typed controllers</strong>: the invocation contract this tutorial leaned on. See <a href="/docs/specs/app-controller-invocation">app-controller-invocation.md</a>.</li>
-    <li><strong>Ask the corpus</strong>: the docs assistant on the <a href="/">homepage</a> answers from the same specs, with citations, and your own agent can do the same over <a href="/docs/specs/mcp-endpoint">MCP</a>.</li>
+    <li><strong>Read the corpus</strong>: browse the <a href="/docs">versioned docs</a> or use the site's read-only <a href="/.well-known/mcp.json">MCP endpoint</a>.</li>
   </ul>
 </main>
 {% endblock %}

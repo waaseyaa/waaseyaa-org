@@ -59,6 +59,12 @@ jobs:
       - name: PHPUnit (unit, integration, tutorial verification)
         run: vendor/bin/phpunit
 
+      - name: Fresh-install walkthrough from the displayed guide
+        run: |
+          version=$(php -r '$c=json_decode(file_get_contents("composer.json"),true); echo $c["require"]["waaseyaa/framework"];')
+          composer create-project waaseyaa/waaseyaa "$RUNNER_TEMP/tutorial" "$version" --stability=alpha --no-interaction --prefer-dist
+          php bin/verify-tutorial.php "$RUNNER_TEMP/tutorial"
+
   docker-smoke:
     name: Production-shaped container smoke
     runs-on: ubuntu-latest
