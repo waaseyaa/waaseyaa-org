@@ -21,7 +21,7 @@ final class WalkthroughContractTest extends TestCase
             new FilesystemLoader(dirname(__DIR__, 2) . '/templates'),
         ]), ['autoescape' => 'html']);
         $html = $twig->render('start.html.twig', [
-            'framework_version' => 'v0.1.0-alpha.305',
+            'framework_version' => 'v0.1.0-alpha.306',
             'canonical_base' => 'https://waaseyaa.org',
         ]);
         foreach (['site:init', 'install:init', 'composer site-verify'] as $command) {

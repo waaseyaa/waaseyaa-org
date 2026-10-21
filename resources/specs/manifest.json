@@ -1,7 +1,7 @@
 {
-    "framework_version": "v0.1.0-alpha.305",
-    "source_released_at": "2026-10-04T14:48:22+00:00",
-    "corpus_sha1": "9eb724df613557b928a8ece82230b8eaa64d5a8f",
+    "framework_version": "v0.1.0-alpha.306",
+    "source_released_at": "2026-10-21T20:09:13+00:00",
+    "corpus_sha1": "4fc11cc1f6ea9d53e06dba1da375d0eddc67c258",
     "source": "vendor/waaseyaa/framework/docs/specs",
     "specs": [
         {
@@ -12,7 +12,7 @@
         {
             "name": "admin-spa",
             "title": "Admin SPA",
-            "sha1": "041f10f66a92e27142e1ea87392140ecfda8cf7e"
+            "sha1": "30b0b4135813a0f2526d32001ff47410310fadca"
         },
         {
             "name": "agent-executor",
@@ -32,7 +32,7 @@
         {
             "name": "ai-integration",
             "title": "AI Integration",
-            "sha1": "118fcf21ba2107649dd004acf28dc40a9bada21b"
+            "sha1": "086f999c8e87fdb471797ec244e031bbf4a7d799"
         },
         {
             "name": "ai-schema",
@@ -42,7 +42,7 @@
         {
             "name": "api-layer",
             "title": "API Layer",
-            "sha1": "083371eae47de7566f738d6e16b377c540a64b50"
+            "sha1": "f7a340a939dce2953c050b8472d726008064bf79"
         },
         {
             "name": "app-controller-invocation",
@@ -72,12 +72,12 @@
         {
             "name": "broadcasting",
             "title": "Broadcasting (Server-Sent Events)",
-            "sha1": "ee63fdf51dc5ef33774dad8122d69bb6a037569a"
+            "sha1": "06702c9e4012e544e25c3e1a4008ca5b9c6daf30"
         },
         {
             "name": "builder-product-boundaries",
             "title": "Framework and builder product boundaries",
-            "sha1": "21f03d14f43c9eb72644c9c2904084533c341afe"
+            "sha1": "b7e009941480e1477836a838e398ee0aa095ffe3"
         },
         {
             "name": "bundle-scoped-fields",
@@ -112,22 +112,17 @@
         {
             "name": "config-management",
             "title": "Configuration Management (CMI) \u2014 Active/Sync Store Split",
-            "sha1": "335e2b2c92678640fd6d59a592f0f780daf5b336"
-        },
-        {
-            "name": "config-management-v1",
-            "title": "Configuration Management v1 \u2014 Active/Sync Store Split",
-            "sha1": "32b31adb73309db406842a3c9865ed0c1ed01765"
+            "sha1": "3b7e942d1057a6f033111f4179dceb4dfb0e57b7"
         },
         {
             "name": "content-publishing",
             "title": "Content Publishing v1 \u2014 agent-operable editorial CRUD over the entity substrate",
-            "sha1": "228cbffd7906eb40c6f0ed5637e3673e0a56cf0c"
+            "sha1": "2541291a5e69b9e05fbaf391a609ee4e2f00becc"
         },
         {
             "name": "content-workflow",
             "title": "Content Workflow (CW-v1)",
-            "sha1": "b009b1c6fec2a13d7333b71cd091a096c7c71f53"
+            "sha1": "7284a0e0742f12168e0645c3dca8b3de8205b415"
         },
         {
             "name": "controller-dispatcher-split",
@@ -142,7 +137,7 @@
         {
             "name": "debugging-dx",
             "title": "Debugging & Developer Experience",
-            "sha1": "c413612f1143c7623f4056ca88b1cfe1fd959a16"
+            "sha1": "8fc8cf678f032ae75365ed4a544e2ddb261ceb27"
         },
         {
             "name": "delivery-agent-event-batches",
@@ -167,32 +162,22 @@
         {
             "name": "entity-field-read-boundary",
             "title": "Entity Field-Read Boundary",
-            "sha1": "556579decccad420e47c81a8b970790df3cbe2ad"
-        },
-        {
-            "name": "entity-storage-translatable-revisions",
-            "title": "Entity Storage \u2014 Translatable + Revisionable Two-Axis Interaction",
-            "sha1": "a01059b82b146de812813197cb3eed6d58411a5b"
+            "sha1": "5cce1f72b2901a5c1dbf80ccab5eebb6e41ba1f6"
         },
         {
             "name": "entity-storage-translations-v1",
             "title": "Entity Storage \u2014 Single-Axis Translations v1",
-            "sha1": "c6d3c22dafd6a1f15048f3c099d9ca5ef512c31a"
-        },
-        {
-            "name": "entity-storage-two-axis",
-            "title": "Entity Storage \u2014 Two-Axis (Revisionable \u00d7 Translatable)",
-            "sha1": "8082a7aa4e8d8eac6cf531813e6007c2252e4955"
+            "sha1": "d62a3d441a086b79a92f46394735ab7ea5c345dd"
         },
         {
             "name": "entity-storage-v2",
             "title": "Entity Storage v2 \u2014 Multi-Backend Storage with Revisions",
-            "sha1": "982f81a36c0d949dab9c9ceadbb80667e5a761f7"
+            "sha1": "ba11961f92e4fb7a4219d489741f47df6f09fa19"
         },
         {
             "name": "entity-system",
             "title": "Entity System",
-            "sha1": "9f4e6c58bf09854dff2e9d2d1f58b56733d2450d"
+            "sha1": "8fff378cb2a0c77f78e18fc40f0059c7a75bc53a"
         },
         {
             "name": "exact-source-artifact",
@@ -207,7 +192,7 @@
         {
             "name": "extension-compatibility-matrix",
             "title": "Extension Compatibility Matrix (v1.0-v1.3)",
-            "sha1": "ec05ecb5bff35bbbdfd99b76f4be9c045b89b117"
+            "sha1": "481a1719f349d52b1712d9e1fd565fe10f881f53"
         },
         {
             "name": "extension-release-playbook",
@@ -240,6 +225,11 @@
             "sha1": "b4baccb65907962d03894b315b37d05fd308ce01"
         },
         {
+            "name": "framework-audit-journeys",
+            "title": "Framework audit journeys",
+            "sha1": "e662bda90c9bb140c3ea95550b86ce2dcc298c50"
+        },
+        {
             "name": "genealogy",
             "title": "Genealogy package (v0.1)",
             "sha1": "41979d85712b374114bef1916334ceadffc193fd"
@@ -262,7 +252,7 @@
         {
             "name": "governed-gates",
             "title": "Governed Gates: Preflight, Refresh, and Recorded-Artifact Identity",
-            "sha1": "8147895bb70ac26c89dcad2ad333bdb2fa7552ec"
+            "sha1": "0881bfd5fd4b982de3cee70e74a235da7595344f"
         },
         {
             "name": "http-entry-point",
@@ -272,12 +262,12 @@
         {
             "name": "infrastructure",
             "title": "Infrastructure",
-            "sha1": "63544a23f6153d75656949bb9270f2ffca2fa75c"
+            "sha1": "edefeb83be9f17fb46897b722f9b3019ffb0aff5"
         },
         {
             "name": "ingestion-defaults",
             "title": "Ingestion Defaults",
-            "sha1": "150d961b124745c73fe31ab670913087aa60fdb1"
+            "sha1": "21fd75e0dac006325229c5275abd2124f3da53fe"
         },
         {
             "name": "ingestion-editorial-dashboard-contract",
@@ -312,7 +302,7 @@
         {
             "name": "listing-pipeline-v1",
             "title": "Listing Pipeline v1 \u2014 Views-equivalent surface for entity listings",
-            "sha1": "41508ba073d41fffdae8bf9d46a0aa23ac3c06ae"
+            "sha1": "abb23d088667f686a36ed9bac5b6897a0e4d8e70"
         },
         {
             "name": "mcp-endpoint",
@@ -326,8 +316,8 @@
         },
         {
             "name": "messaging",
-            "title": "Messaging \u2014 L3 Chat Substrate",
-            "sha1": "398f1ff3cf797b9f366b3edcf94df358f82f34d5"
+            "title": "Messaging package contract",
+            "sha1": "8821ef66fb7a7eaa2f479df36acfe4564f67221b"
         },
         {
             "name": "middleware-pipeline",
@@ -338,11 +328,6 @@
             "name": "migration-platform",
             "title": "Migration Platform",
             "sha1": "f8beedafa62a2d2a692c88c7f0e7518c0ea78aaa"
-        },
-        {
-            "name": "migration-platform-v1",
-            "title": "Migration Platform v1 \u2014 Substrate in Core",
-            "sha1": "e343b1c1c769ed287b006e8573c52d23edabc15e"
         },
         {
             "name": "native-host-support",
@@ -357,17 +342,17 @@
         {
             "name": "ocap-audit-log",
             "title": "OCAP Audit Log Substrate",
-            "sha1": "4cf4e49b8d08577c06d8ba87b2b9781025277d4a"
+            "sha1": "5cfa568f4b24d74e7d47d3d39693fdcee4633f64"
         },
         {
             "name": "operations-playbooks",
             "title": "Operations Playbooks",
-            "sha1": "f8e0638760bfac8d5e784019fc98e2f23824505f"
+            "sha1": "7285f6566c05c7029c3df8c6d131f2b8d6a40162"
         },
         {
             "name": "operator-diagnostics",
             "title": "Operator Diagnostics",
-            "sha1": "991745af3e5da30ea67e01375017425617d17682"
+            "sha1": "a1bb980ee9121296b42d9ffddd98bc6e2bcbd8bd"
         },
         {
             "name": "package-discovery",
@@ -382,7 +367,7 @@
         {
             "name": "per-site-convergence-audit",
             "title": "Per-site convergence audit (Waaseyaa ecosystem)",
-            "sha1": "150086333b19872e1fec65667c21fd85f5dc4f7b"
+            "sha1": "78a654c6cf7a2d62a291052594b91124659d8b1e"
         },
         {
             "name": "phpunit-skip-governance",
@@ -407,7 +392,7 @@
         {
             "name": "public-surface-declarations",
             "title": "Public-surface declarations",
-            "sha1": "a8c4d993089b5f584d063a50662baacbe90e99ca"
+            "sha1": "193b32df37f98b0650d6db63101317e1884a8a67"
         },
         {
             "name": "relationship-inference-contract",
@@ -432,7 +417,7 @@
         {
             "name": "revision-system-unified",
             "title": "Revision system (unified, with an optional translation axis)",
-            "sha1": "77082441a5020918b9db776825a2decd1b087322"
+            "sha1": "fb2e742c2fed313759bafeeb2e0be0cc7db55b00"
         },
         {
             "name": "route-metadata",
@@ -472,7 +457,7 @@
         {
             "name": "s1-support-lifecycle",
             "title": "S1 support and lifecycle contract",
-            "sha1": "9b82ee65f67d0e936b4b9c1d88e701f5bb0fd6d5"
+            "sha1": "3d32ab4217f3ac54cda9fa82f5c2aaafbbb0a981"
         },
         {
             "name": "s1-upgrade-compatibility",
@@ -487,7 +472,7 @@
         {
             "name": "schema-evolution-v2",
             "title": "Schema evolution v2.0 \u2014 SchemaDiff engine (design)",
-            "sha1": "ac9008fbae0b177cf5f82b8af3e3fe34e605f577"
+            "sha1": "b7f41cf9967d175494bf779e9d8076858151b0ad"
         },
         {
             "name": "search",
@@ -517,7 +502,12 @@
         {
             "name": "site-golden-path",
             "title": "Fresh-site golden path",
-            "sha1": "fcaef97882dd4b38cfafa977ec1b36964a739a41"
+            "sha1": "9857dd209f19c81fc11d560020da07fb2b07825d"
+        },
+        {
+            "name": "social-capabilities",
+            "title": "Shared social capabilities",
+            "sha1": "92ad888e1d70208c0bf58d63e397caf75686a26a"
         },
         {
             "name": "source-priority-merge-contract",
@@ -547,7 +537,7 @@
         {
             "name": "stability-charter",
             "title": "Waaseyaa Stability Charter",
-            "sha1": "69e26e1680a34621bab7aa550b57e71960c500ef"
+            "sha1": "2e2ec8346405d0f3dc488de38590b553d31622a6"
         },
         {
             "name": "structured-import",
@@ -567,7 +557,7 @@
         {
             "name": "two-factor-auth",
             "title": "Two-Factor Authentication",
-            "sha1": "4818473e5d25546d4cde7213767d9058634578c1"
+            "sha1": "8fbb7aa2b4209d1ffe6ad7b1a42177df3ca0fc9c"
         },
         {
             "name": "v1.5-verification-gate-contract",
@@ -582,7 +572,7 @@
         {
             "name": "waaseyaa-migrate-source-wordpress",
             "title": "WordPress Source Reader \u2014 `waaseyaa-migrate-source-wordpress`",
-            "sha1": "b13670ff0d44c1738acb00b36734bb6a5b5dc5cc"
+            "sha1": "26e8582e3d3e052057059448251a83f66260d32a"
         },
         {
             "name": "wayfinding",
@@ -597,7 +587,7 @@
         {
             "name": "workflow",
             "title": "Workflow governance (forge-neutral change record + design-first)",
-            "sha1": "997d9e2a51a8cc7bedeb5047321d704ace6b4290"
+            "sha1": "3ef750e6d0f9c2c2cf630857b32aaf8dc99f1b67"
         },
         {
             "name": "workspace-chat-surface",
