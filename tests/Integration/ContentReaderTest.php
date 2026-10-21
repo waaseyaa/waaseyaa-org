@@ -53,6 +53,8 @@ final class ContentReaderTest extends TestCase
     public function releases_use_semantic_version_order_when_release_dates_match(): void
     {
         $this->release('v0.1.0-alpha.9', '2026-02-01');
+        new ContentSync($this->manager, $this->root)->sync();
+
         $this->release('v0.1.0-alpha.10', '2026-02-01');
         $this->release('v0.1.0-alpha.11', '2026-01-31');
         new ContentSync($this->manager, $this->root)->sync();
