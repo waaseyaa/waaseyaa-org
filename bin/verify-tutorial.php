@@ -17,9 +17,14 @@ use Twig\Loader\FilesystemLoader;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
-$project = realpath($argv[1] ?? '');
-if ($project === false || !is_file($project . '/vendor/autoload.php')
+if (count($argv) !== 2) {
+    throw new RuntimeException('Usage: php bin/verify-tutorial.php /absolute/path/to/fresh-project');
+}
+$project = realpath($argv[1]);
+if ($project === false || $project === realpath(dirname(__DIR__))
+    || !is_file($project . '/vendor/autoload.php')
     || !is_file($project . '/bin/post-create-setup.php')
+    || is_file($project . '/storage/waaseyaa.sqlite')
     || is_file($project . '/.waaseyaa/site.yaml')
     || is_file($project . '/src/Entity/Todo.php')) {
     throw new RuntimeException('Pass a newly created, disposable Waaseyaa starter directory.');
