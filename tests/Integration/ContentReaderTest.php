@@ -50,6 +50,25 @@ final class ContentReaderTest extends TestCase
     }
 
     #[Test]
+    public function releases_use_semantic_version_order_when_release_dates_match(): void
+    {
+        $this->release('v0.1.0-alpha.9', '2026-02-01');
+        new ContentSync($this->manager, $this->root)->sync();
+
+        $this->release('v0.1.0-alpha.10', '2026-02-01');
+        $this->release('v0.1.0-alpha.11', '2026-01-31');
+        new ContentSync($this->manager, $this->root)->sync();
+
+        $versions = array_map(fn ($entity) => $entity->get('version'), new ContentReader($this->manager)->releases());
+
+        self::assertSame([
+            'v0.1.0-alpha.10',
+            'v0.1.0-alpha.9',
+            'v0.1.0-alpha.11',
+        ], $versions);
+    }
+
+    #[Test]
     public function roadmap_groups_by_horizon(): void
     {
         file_put_contents($this->root . '/roadmap/a.md', "---\ntitle: A\nhorizon: now\nstatus_note: open\nweight: 1\n---\n");

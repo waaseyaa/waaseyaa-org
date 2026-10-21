@@ -17,6 +17,7 @@ use App\Mcp\Tool\RoadmapReadTool;
 use App\Mcp\Tool\SpecListTool;
 use App\Mcp\Tool\SpecReadTool;
 use App\Mcp\Tool\SpecSearchTool;
+use App\Support\FrameworkVersion;
 use App\Support\SiteUrl;
 use App\Tests\Support\ContentEntityHarness;
 use PHPUnit\Framework\Attributes\Test;
@@ -81,9 +82,11 @@ final class ContentMcpToolsTest extends TestCase
         $payload = json_decode($result['result']['content'][0]['text'], true, 16, JSON_THROW_ON_ERROR);
 
         self::assertGreaterThanOrEqual(1, $payload['count']);
-        self::assertSame('v0.1.0-alpha.306', $payload['releases'][0]['version']);
-        self::assertSame('https://waaseyaa.org/releases/v0.1.0-alpha.306', $payload['releases'][0]['canonical_url']);
-        self::assertSame('https://waaseyaa.org/releases/v0.1.0-alpha.306.md', $payload['releases'][0]['markdown_url']);
+        $version = FrameworkVersion::pretty();
+        self::assertNotNull($version);
+        self::assertSame($version, $payload['releases'][0]['version']);
+        self::assertSame('https://waaseyaa.org/releases/' . $version, $payload['releases'][0]['canonical_url']);
+        self::assertSame('https://waaseyaa.org/releases/' . $version . '.md', $payload['releases'][0]['markdown_url']);
     }
 
     #[Test]

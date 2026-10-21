@@ -26,7 +26,14 @@ final class ContentReader
     public function releases(): array
     {
         $releases = $this->published('release');
-        usort($releases, fn (EntityInterface $a, EntityInterface $b): int => strcmp((string) $b->get('released_at'), (string) $a->get('released_at')));
+        usort($releases, static function (EntityInterface $a, EntityInterface $b): int {
+            $dateOrder = strcmp((string) $b->get('released_at'), (string) $a->get('released_at'));
+            if ($dateOrder !== 0) {
+                return $dateOrder;
+            }
+
+            return version_compare((string) $b->get('version'), (string) $a->get('version'));
+        });
 
         return $releases;
     }
