@@ -5,7 +5,7 @@ Guidance for Claude Code (and any agent) working in this repository.
 ## Overview
 
 **waaseyaa.org** is the Waaseyaa framework's own public site, built as a Waaseyaa
-consuming app (composer-depends on `waaseyaa/framework`, alpha.285). It is the
+consuming app (the exact `waaseyaa/framework` version is in `composer.json`). It is the
 source of truth for humans *and* agents and is meant to dogfood the framework.
 
 The architecture is **one docs corpus, three renderings**:
@@ -18,7 +18,7 @@ The architecture is **one docs corpus, three renderings**:
 
 The docs corpus is the framework's own `docs/specs/*.md`, synced at build time
 with provenance (spec name + framework version). The site is **alpha** and runs
-in production on a Raspberry Pi (live at https://waaseyaa.org). Be honest in all
+in production on Intersnipe (live at https://waaseyaa.org). Be honest in all
 copy: no em dashes, no "cutting edge", stage labels accurate (enforced by tests,
 see `tests/Unit/ContentHonestyTest.php`).
 
@@ -167,27 +167,15 @@ back to APP_URL), `WAASEYAA_ORG_PI_STATUS_FILE` points at a telemetry JSON for
 the Pi status chip (chip is hidden when unset/stale). Use `getenv()`, never
 `$_ENV`.
 
-## Deploy (Raspberry Pi)
+## Deploy (Intersnipe)
 
-Deployed via `waaseyaa-infra` (the shared Pi stack), per its
-`runbooks/03-add-a-site.md`: a composer-only `compose/waaseyaa-org/Dockerfile`
-that clones this repo at a pinned `WAASEYAA_ORG_REF`, a Caddy vhost
-(`waaseyaa.org`, `www`, `waaseyaa.oiatc.ca`), and `deploy-waaseyaa-org.yml`.
-
-- **Cut a deploy:** push this repo's `main`, then bump `WAASEYAA_ORG_REF` in
-  `waaseyaa-infra/compose/docker-compose.yml` and push → the GitHub Action
-  rebuilds on the Pi over Tailscale. Don't build by hand.
-- **First-deploy DB quirk:** in `APP_ENV=production` the kernel won't boot with
-  a missing SQLite file, and that abort precedes `db:init` registration. The
-  deploy workflow runs the one-shot `db:init` with `-e APP_ENV=local` so the DB
-  is created/migrated; the long-running container stays production.
-- **`content:sync` deploy step:** waaseyaa-infra PR #36 added the one-shot
-  `content:sync` immediately after `db:init`, with the same `APP_ENV=local`
-  pattern. Keep that ordering: malformed git-authored content must abort the
-  candidate before the running container is swapped.
-- Secrets (incl. `ANTHROPIC_API_KEY`) come from the `waaseyaa-infra` ansible
-  vault, never committed. Caddyfile changes need `docker compose up -d
-  --force-recreate caddy` (not `restart`).
+The Pi application was retired on 2026-10-04. Production uses the isolated
+`waaseyaa-org.service` PHP-FPM service behind nginx on Intersnipe. Follow
+[the current deployment runbook](docs/deployment.md), using an exact qualified
+source commit and the committed Composer lock. Existing server-only secrets
+stay in `/etc/waaseyaa-org/runtime.env`; the application never needs a paid
+model key for readiness. The older alpha.305 deployment document records the
+migration plan, not the current host state.
 
 ## Conventions
 
