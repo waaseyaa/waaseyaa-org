@@ -13,22 +13,22 @@ posture while describing the alpha product honestly.
 One docs corpus, three renderings, plus a grounded assistant:
 
 - **HTML** at [/docs](https://waaseyaa.org/docs): the framework's spec
-  corpus (83+ specs) with provenance, synced from the exact framework
+  corpus with provenance, synced from the exact framework
   version this app has locked.
 - **Markdown**: every docs URL negotiates `Accept: text/markdown` (or
   append `.md`); [/llms.txt](https://waaseyaa.org/llms.txt) indexes it all.
 - **MCP**: a public, read-only MCP endpoint at `/mcp` (server card at
-  `/.well-known/mcp.json`) exposing exactly three tools: `spec_list`,
-  `spec_search`, `spec_read`.
+  `/.well-known/mcp.json`) exposing five tools: `spec_list`,
+  `spec_search`, `spec_read`, `release_list`, and `roadmap_read`.
 - **Docs chat**: single-turn answers grounded on the corpus, with a
   citation in every answer. With no model key it quotes passages
   verbatim rather than imitating a model. Transcripts live under a
   random cookie, are deleted after 30 days, and are clearable by the
   visitor.
 - **[/start](https://waaseyaa.org/start)**: the one hand-maintained
-  walkthrough. Its code samples are mirrored by
-  `tests/Tutorial/TodoAppTest.php`, so CI fails when the framework
-  breaks the tutorial.
+  walkthrough. CI extracts its displayed application files with
+  `bin/verify-tutorial.php` and checks a fresh installed starter over HTTP.
+  `tests/Tutorial/TodoAppTest.php` provides separate component checks.
 
 ## Development
 
@@ -36,6 +36,8 @@ One docs corpus, three renderings, plus a grounded assistant:
 composer install
 touch storage/waaseyaa.sqlite
 APP_ENV=local php vendor/bin/waaseyaa db:init
+APP_ENV=local php vendor/bin/waaseyaa install:init
+APP_ENV=local php vendor/bin/waaseyaa content:sync
 APP_ENV=local php -S 127.0.0.1:8098 -t public public/index.php
 ```
 
@@ -55,13 +57,12 @@ line.
 
 ## Production
 
-Runs on a Raspberry Pi via the `waaseyaa-infra` compose stack behind
-Caddy and a Cloudflare tunnel. Deploys are cut by pinning a commit of
-this repository in `waaseyaa-infra` and rebuilding the container; the
-entrypoint runs the framework's production boot sequence (db:init,
-field-access activation artifact, warm-up boot) and the container
-health command is `php bin/health-probe.php`. `/healthz` reports
-readiness with pass/fail check names only.
+Runs on Intersnipe using an isolated PHP-FPM service behind nginx. Deploys
+select an exact qualified commit and install its committed Composer lock.
+The [deployment runbook](docs/deployment.md) covers isolated qualification,
+database snapshots, initialization, activation, promotion and rollback.
+The health command is `php bin/health-probe.php`; `/healthz` reports
+readiness with pass/fail check names only. The old Pi application is retired.
 
 Operational posture:
 
@@ -73,12 +74,13 @@ Operational posture:
 - See [SECURITY.md](SECURITY.md) for reporting and the full statement
   of what this site stores.
 
-## Repository dual role
+## Application starter
 
-`composer create-project waaseyaa/waaseyaa` currently targets this
-package as the application skeleton (`bin/post-create-setup.php` runs
-once after create-project). The skeleton role predates the site build
-and is kept working; the repository's primary identity is waaseyaa.org.
+`composer create-project waaseyaa/waaseyaa` installs the published framework
+starter, maintained in the framework's `skeleton/` directory and released
+through its split pipeline. This repository is the documentation site.
+Follow [/start](https://waaseyaa.org/start) to create a new application;
+clone this repository only when contributing to waaseyaa.org.
 
 ## License
 
