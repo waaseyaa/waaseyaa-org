@@ -77,9 +77,9 @@ jobs:
       - name: Build production-shaped image
         run: docker build -f docker/Dockerfile.ci -t waaseyaa-org-ci .
 
-      # The image that actually ships. Built here because nothing else in CI
-      # builds it, so a Dockerfile regression would only surface on the Pi.
-      - name: Build deployed image
+      # Retain the distributable container proof alongside the native
+      # Intersnipe deployment. Both entrypoints must keep working.
+      - name: Build distributable image
         run: docker build -t waaseyaa-org-prod .
 
       # Diagnostics must never be displayed to visitors and must always be

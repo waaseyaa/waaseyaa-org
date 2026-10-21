@@ -46,20 +46,17 @@ return [
         'token_secret' => getenv('WAASEYAA_AUTH_TOKEN_SECRET') ?: '',
     ],
 
-    // Reverse proxies allowed to assert X-Forwarded-* headers. In
-    // production this is the Docker bridge network Caddy connects from
-    // (set WAASEYAA_TRUSTED_PROXIES, comma-separated CIDRs); without it
-    // the app cannot see that requests arrived over HTTPS, so session
-    // and XSRF cookies are minted without the Secure flag and client
-    // IPs resolve to the proxy address.
+    // Reverse proxies allowed to assert X-Forwarded-* headers. Container
+    // deployments can set WAASEYAA_TRUSTED_PROXIES to comma-separated CIDRs.
+    // The Intersnipe nginx/FPM deployment passes HTTPS and client IP directly.
     'trusted_proxies' => array_values(array_filter(array_map(
         'trim',
         explode(',', getenv('WAASEYAA_TRUSTED_PROXIES') ?: ''),
     ), static fn (string $p): bool => $p !== '')),
 
     // Session cookie hardening on top of the framework's secure
-    // defaults: in production the site is HTTPS-only (Cloudflare +
-    // Caddy), so Secure is forced rather than left to HTTPS detection.
+    // defaults: in production the site is HTTPS-only behind nginx, so Secure
+    // is forced rather than left to HTTPS detection.
     'session' => [
         'cookie' => [
             'secure' => (getenv('APP_ENV') ?: 'production') === 'production' ? true : 'auto',

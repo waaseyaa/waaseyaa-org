@@ -28,6 +28,27 @@ then verify public HTML, Markdown, MCP and health after cutover.
 
 ## Guide qualification before the release cut
 
+Guide PR [#30](https://github.com/waaseyaa/waaseyaa-org/pull/30) merged on
+2026-10-21 at 20:16:44 UTC as `e7e2bbca4608e6954bd5f0280637e1071acc02c1`.
+The exact PR head was `5e546b8bb5fcdbeef113c96e537c46d3f872f485`. Its Quality
+workflow run 39668195163 and Production-shaped container smoke run 39668195163
+passed; CodeQL run 39668188443 passed. The merge used the one-owner-admin
+allowance under the repository's existing `enforce_admins: false` setting and
+Russell's deployment authorization. This records self-review and does not claim
+independent code-owner approval.
+
+Canonical release-cut run [39667684622](https://github.com/waaseyaa/framework/actions/runs/39667684622)
+passed all five pre-tag gates for `028ca8b3e5c1e650d685f532c63667d551c4fba1`.
+Exact-source full CI run 39667817611 and Release Readiness run 39669415861 passed.
+The unsharded random-order proof passed 1873 tests / 45782 assertions; the final
+packaged-form fresh-install boot proof passed. The canonical workflow created
+`v0.1.0-alpha.306` at that same commit. Split publication run
+[39671193929](https://github.com/waaseyaa/framework/actions/runs/39671193929)
+passed package/tag parity and verified every package is installable. Published
+starter smoke run [39671238212](https://github.com/waaseyaa/framework/actions/runs/39671238212)
+passed. The [GitHub release](https://github.com/waaseyaa/framework/releases/tag/v0.1.0-alpha.306)
+was published at 20:45:44 UTC on 2026-10-21.
+
 The corrected guide supplies seven complete files, including its Twig template
 and a permission-based Todo access policy. Generated pages use `/pages/{slug}`
 so they cannot capture `/todos`. The provider implements `register()`. All Todo
@@ -59,3 +80,27 @@ to loopback and stops its children on success or failure. It fails on a framewor
 version mismatch. The authored code is documentation for a local example, not a
 change to the public site's authorization or persistence implementation. Existing
 quality and production-container gates remain required; no release gate changed.
+
+## Published alpha.306 website upgrade
+
+The dedicated upgrade pins the five direct Waaseyaa requirements to alpha.306.
+All 67 locked Waaseyaa packages resolve to the same release, with no non-Waaseyaa
+package version changes. The generator produced 119 specifications from the
+published framework. Four retired specs were removed and two current specs were
+added. The Build page now links to the current entity-storage-v2 specification;
+its existing link test caught the retired two-axis target. Release-date and MCP
+latest-release expectations were updated to alpha.306 without weakening them.
+
+A second, completely fresh published starter was created at
+`C:/dev/waaseyaa/tutorial-alpha306-20261021`. The displayed-guide verifier passed
+its full installation lifecycle and all 17 HTTP assertions. Browser verification
+on the same installation passed create, complete, reload persistence, mark
+pending, delete and reload. Its loopback server was stopped after verification.
+The completed-state screenshot is retained with the local task evidence.
+
+Composer strict validation, the locked production dependency audit, PHPStan and
+coding style passed. The final local PHPUnit run passed 169 tests / 1993
+assertions. Exact PR checks are recorded with the upgrade pull request.
+Deployment uses the isolated staging and recovery
+procedure in `docs/deployment.md`; the resulting deployed SHA and public checks
+are recorded in the pull request and retained deployment receipt.

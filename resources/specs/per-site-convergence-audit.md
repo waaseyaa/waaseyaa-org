@@ -9,7 +9,7 @@ Provide a **repeatable, adversarial, invariant-driven** checklist for each Waase
 ## Audience
 
 - Human maintainers running periodic or pre-release reviews.
-- Agents executing structured passes; pair with each app’s `CLAUDE.md` / `AGENTS.md` for local gotchas.
+- Agents executing structured passes; pair with each app’s `AGENTS.md` for local gotchas.
 
 ## Related specs
 
@@ -118,7 +118,7 @@ Manual / agent review (no single automated gate yet).
 |-------|------|
 | One `EntityType` per ID | No duplicate registrations for the same `entityTypeId` across providers |
 | `fieldDefinitions` | Present for every entity type exposed via GraphQL (empty definitions → no GraphQL fields) |
-| Provider registration | No duplicate `extra.waaseyaa.providers` entries; providers follow `ServiceProvider` API (`register()` / `boot()` boundaries per [skeleton CLAUDE.md](../skeleton/CLAUDE.md)) |
+| Provider registration | No duplicate `extra.waaseyaa.providers` entries; providers follow `ServiceProvider` API (`register()` / `boot()` boundaries per [skeleton CLAUDE.md](../../skeleton/CLAUDE.md)) |
 
 ---
 
@@ -242,4 +242,4 @@ For repositories that **do not** ship a Waaseyaa `composer.json` app root (e.g. 
 
 ## Orchestration index
 
-When adding this spec to `CLAUDE.md` orchestration tables, use specialist skill **`waaseyaa:spec-maintenance`** for edits to `docs/specs/**`.
+When adding this spec to `AGENTS.md` orchestration tables, use specialist skill **`waaseyaa:spec-maintenance`** for edits to `docs/specs/**`.
