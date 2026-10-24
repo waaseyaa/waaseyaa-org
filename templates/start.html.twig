@@ -39,10 +39,14 @@ php --ini
 php -m | Select-String 'pdo_sqlite|sqlite3'</code></pre>
   <p>The last command should show both <code>pdo_sqlite</code> and <code>sqlite3</code>. If either is missing, enable it in the PHP configuration used by the <code>php</code> command, then open a new terminal and check again.</p>
   <pre><code>composer create-project waaseyaa/waaseyaa my-app {{ framework_version }} --stability=alpha
-cd my-app</code></pre>
+cd my-app
+composer require waaseyaa/framework:{{ framework_version }} --no-update
+composer update "waaseyaa/*" --with-all-dependencies
+composer show waaseyaa/framework</code></pre>
 
-  <p>The starter version is pinned to this guide. The installer creates your local <code>.env</code> and application secrets. Keep <code>APP_ENV=local</code> and <code>WAASEYAA_DEV_FALLBACK_ACCOUNT=true</code> for this exercise. This single-user example uses development authentication; use sample data and keep the server bound to your own computer.</p>
-  <p>Create <code>site.seed.yaml</code> in the project root. The minimal preset supplies the site's baseline contract; the Todo entity below is application-owned.</p>
+  <p>The starter tag and the installed framework are separate versions. The starter allows a range of framework releases, so the next two commands pin the framework to this guide and resolve its related packages together. Check that <code>composer show</code> reports <code>{{ framework_version }}</code> before continuing. Keep the resulting <code>composer.lock</code>; use <code>composer install</code> to reproduce it on another machine.</p>
+  <p>The installer creates your local <code>.env</code> and application secrets. Keep <code>APP_ENV=local</code> and <code>WAASEYAA_DEV_FALLBACK_ACCOUNT=true</code> for this exercise. This single-user example uses development authentication; use sample data and keep the server bound to your own computer.</p>
+  <p>Create <code>site.seed.yaml</code> in the project root. This seed supplies answers for generating the site contract: its identity, the environment key for its origin, and a published <code>page</code> content bundle at <code>/pages/{slug}</code>. It does not insert sample pages or todos. The minimal preset generates the published-content setup; the Todo entity, routes, policy and template below remain application-owned.</p>
   <pre><code data-tutorial-file="site.seed.yaml">schema: waaseyaa.site-seed
 version: 1
 application:
@@ -54,7 +58,14 @@ content_types:
   - id: page
     canonical_route: /pages/{slug}</code></pre>
   <pre><code>php vendor/bin/waaseyaa site:init --preset=minimal --answers=site.seed.yaml --yes --no-interaction</code></pre>
-  <p>This records the site contract and generates its verification command. Add the application files in the following steps before running <code>install:init</code>. Create any missing parent directories when saving a file.</p>
+  <p>Successful initialization reports <code>Initialized ... generated artifacts.</code> and creates the following files. The exact count can change between releases; <code>.waaseyaa/generated.json</code> records the managed files.</p>
+  <ul>
+    <li><code>.waaseyaa/site.yaml</code> records the resolved contract and framework provenance; <code>.waaseyaa/site.schema.json</code> and <code>.waaseyaa/generated.json</code> describe its schema and generated-file ownership.</li>
+    <li><code>src/Provider/PublishedContentServiceProvider.php</code>, the files under <code>src/Content/</code>, <code>src/Controller/PublishedContentController.php</code>, and <code>templates/content/</code> implement the baseline published pages.</li>
+    <li><code>config/waaseyaa-recipes/published-content.php</code> and <code>composer.site-recipes.json</code> describe the recipe. Initialization also adds its provider to the existing <code>extra.waaseyaa.providers</code> array in <code>composer.json</code>.</li>
+    <li><code>AGENTS.md</code>, <code>tests/Architecture/SiteContractTest.php</code>, <code>tests/Acceptance/</code>, and <code>bin/maintenance/site-verify</code> provide guidance and contract verification, run later with <code>composer site-verify</code>.</li>
+  </ul>
+  <p>Keep those generated files. Add the application files in the following steps before running <code>install:init</code>; a successful <code>site:init</code> alone does not install the Todo application. Create any missing parent directories when saving a file.</p>
 
   <h2>2. Define the entity</h2>
 
@@ -100,7 +111,7 @@ final class Todo extends ContentEntityBase
     }
 }</code></pre>
 
-  <p>Register it in <code>config/entity-types.php</code>. Because the class carries its own metadata, registration is one line:</p>
+  <p>Register it in <code>config/entity-types.php</code>. In this fresh minimal project, that file returns an empty array; replace that empty example with the complete file below. In an existing application, keep every existing registration and add the <code>EntityType::fromClass(\App\Entity\Todo::class)</code> entry to the returned array, adding the import if needed. Do not overwrite existing entries or the generated recipe files. The published-page bundle is registered by its generated provider.</p>
 
   <pre><code data-tutorial-file="config/entity-types.php">&lt;?php
 
@@ -313,12 +324,15 @@ final class TodoController
 
   <h2>5. Install, verify, and run</h2>
 
+  <p><strong>Provider checkpoint:</strong> before these commands, confirm that <code>composer.json</code>'s <code>extra.waaseyaa.providers</code> still contains <code>App\Provider\AppServiceProvider</code> and <code>App\Provider\PublishedContentServiceProvider</code>, with <code>App\Provider\TodoServiceProvider</code> appended once. PHP namespace separators are written as <code>\\</code> inside JSON strings. Saving the provider file alone does not register its routes.</p>
+
   <pre><code>composer dump-autoload
 php vendor/bin/waaseyaa install:init
 php vendor/bin/waaseyaa optimize:manifest
 composer site-verify</code></pre>
 
   <p><code>install:init</code> applies migrations, creates entity tables, and activates configuration. <code>composer site-verify</code> checks the generated site contract. Stop and fix any reported error before serving. The single-worker PHP development server is sufficient for this exercise; applications needing concurrent requests can use the starter's FrankenPHP runtime.</p>
+  <p><strong>If you missed the Todo provider:</strong> stop your tutorial server, add its entry while preserving the existing providers, then rerun all four commands above and restart the server. This rebuilds autoloading and the manifest and verifies the site without deleting your saved todos. Do not delete the database or regenerate the site contract to fix a missing provider. If <code>/todos</code> still returns 404, check that you opened the URL and port of this application. A 404 for an unknown todo id is expected.</p>
   <p>Choose a free local port before starting the server. The default is 8080. On Windows, check whether a listener already uses it:</p>
   <pre><code>Get-NetTCPConnection -State Listen -LocalPort 8080 -ErrorAction SilentlyContinue</code></pre>
   <p>No output means port 8080 has no listener. If it is free, start the server and open the matching URL:</p>
