@@ -63,6 +63,8 @@ jobs:
         run: |
           version=$(php -r '$c=json_decode(file_get_contents("composer.json"),true); echo $c["require"]["waaseyaa/framework"];')
           composer create-project waaseyaa/waaseyaa "$RUNNER_TEMP/tutorial" "$version" --stability=alpha --no-interaction --prefer-dist
+          composer --working-dir="$RUNNER_TEMP/tutorial" require "waaseyaa/framework:$version" --no-update --no-interaction
+          composer --working-dir="$RUNNER_TEMP/tutorial" update 'waaseyaa/*' --with-all-dependencies --no-interaction --prefer-dist
           php bin/verify-tutorial.php "$RUNNER_TEMP/tutorial"
 
   docker-smoke:

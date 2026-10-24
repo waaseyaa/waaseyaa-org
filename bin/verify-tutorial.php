@@ -75,18 +75,58 @@ $run = static function (array $command) use ($project): void {
 };
 $write('site.seed.yaml', $files['site.seed.yaml']);
 $run([PHP_BINARY, 'vendor/bin/waaseyaa', 'site:init', '--preset=minimal', '--answers=site.seed.yaml', '--yes', '--no-interaction']);
+// Verify the guide's generated-file checkpoint before adding application files.
+$generatedPaths = [
+    '.waaseyaa/site.yaml',
+    '.waaseyaa/site.schema.json',
+    '.waaseyaa/generated.json',
+    'src/Provider/PublishedContentServiceProvider.php',
+    'src/Content/Bundle/PageBundle.php',
+    'src/Controller/PublishedContentController.php',
+    'templates/content/detail.html.twig',
+    'templates/content/index.html.twig',
+    'config/waaseyaa-recipes/published-content.php',
+    'composer.site-recipes.json',
+    'AGENTS.md',
+    'tests/Architecture/SiteContractTest.php',
+    'tests/Acceptance/SiteGoldenPathTest.php',
+    'tests/Acceptance/PublishedContentRecipeTest.php',
+    'bin/maintenance/site-verify',
+];
+$generatedHashes = [];
+foreach ($generatedPaths as $name) {
+    if (!is_file($project . '/' . $name)) {
+        throw new RuntimeException('Missing documented generated file: ' . $name);
+    }
+    $generatedHashes[$name] = hash_file('sha256', $project . '/' . $name);
+}
+if ((require $project . '/config/entity-types.php') !== []) {
+    throw new RuntimeException('The fresh minimal starter must have an empty entity registration array; preserve existing registrations in an existing app.');
+}
+echo "PASS: Documented generated files exist and the fresh entity registration array is empty\n";
 unset($files['site.seed.yaml']);
 foreach ($files as $name => $content) {
     $write($name, $content);
 }
 // site:init adds its own provider. Keep it and every original starter entry.
 $manifest = json_decode(file_get_contents($project . '/composer.json'), true, flags: JSON_THROW_ON_ERROR);
+$originalProviders = $manifest['extra']['waaseyaa']['providers'];
+if (!in_array('App\\Provider\\AppServiceProvider', $originalProviders, true)
+    || !in_array('App\\Provider\\PublishedContentServiceProvider', $originalProviders, true)) {
+    throw new RuntimeException('The starter and generated provider must be registered before adding Todo.');
+}
 $manifest['extra']['waaseyaa']['providers'][] = 'App\\Provider\\TodoServiceProvider';
 $write('composer.json', json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
 $run(['composer', 'dump-autoload', '--no-interaction']);
 $run([PHP_BINARY, 'vendor/bin/waaseyaa', 'install:init', '--no-interaction']);
 $run([PHP_BINARY, 'vendor/bin/waaseyaa', 'optimize:manifest']);
 $run(['composer', 'site-verify']);
+foreach ($generatedHashes as $name => $hash) {
+    if (hash_file('sha256', $project . '/' . $name) !== $hash) {
+        throw new RuntimeException('The tutorial changed a generated file: ' . $name);
+    }
+}
+echo "PASS: Adding the Todo application preserves the generated site files\n";
 
 // Ask the OS for an unused loopback port; no shared developer server is touched.
 $socket = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
@@ -154,6 +194,53 @@ try {
     foreach (['toggle', 'delete'] as $action) {
         $assert($client->request('POST', '/todos/' . $id . '/' . $action)->getStatusCode() === 404, 'Unknown entity ' . $action . ' returns 404');
     }
+
+    // Reproduce a missing provider, then follow the documented recovery while
+    // retaining a saved row. Restart the owned server for each boot contract.
+    $post('/todos', ['title' => 'Preserve this todo during provider recovery', 'priority' => 'normal']);
+    $assert((bool) preg_match('/data-todo-id="([0-9]+)"/', $get(), $recoveryMatch), 'Recovery fixture is persisted');
+    $server->stop(3);
+    $registeredManifest = file_get_contents($project . '/composer.json');
+    $missingProvider = json_decode($registeredManifest, true, flags: JSON_THROW_ON_ERROR);
+    $missingProvider['extra']['waaseyaa']['providers'] = $originalProviders;
+    try {
+        $write('composer.json', json_encode($missingProvider, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
+        $run([PHP_BINARY, 'vendor/bin/waaseyaa', 'optimize:manifest']);
+        $server = new Process($serverCommand, $project, ['PHP_CLI_SERVER_WORKERS' => false], timeout: 120);
+        $server->start();
+        $missingStatus = null;
+        for ($attempt = 0; $attempt < 30; ++$attempt) {
+            try {
+                $missingStatus = $client->request('GET', '/todos')->getStatusCode();
+                break;
+            } catch (Throwable) {
+                usleep(200000);
+            }
+        }
+        $assert($missingStatus === 404, 'Missing Todo provider reproduces the /todos 404');
+    } finally {
+        $server->stop(3);
+        $write('composer.json', $registeredManifest);
+    }
+    $run(['composer', 'dump-autoload', '--no-interaction']);
+    $run([PHP_BINARY, 'vendor/bin/waaseyaa', 'install:init', '--no-interaction']);
+    $run([PHP_BINARY, 'vendor/bin/waaseyaa', 'optimize:manifest']);
+    $run(['composer', 'site-verify']);
+    $server = new Process($serverCommand, $project, ['PHP_CLI_SERVER_WORKERS' => false], timeout: 120);
+    $server->start();
+    $recovered = null;
+    for ($attempt = 0; $attempt < 30; ++$attempt) {
+        try {
+            $recovered = $get();
+            break;
+        } catch (Throwable) {
+            usleep(200000);
+        }
+    }
+    $assert(is_string($recovered)
+        && str_contains($recovered, 'Preserve this todo during provider recovery')
+        && str_contains($recovered, 'data-todo-id="' . $recoveryMatch[1] . '"'), 'Documented provider recovery restores /todos and preserves its saved row');
+    $post('/todos/' . $recoveryMatch[1] . '/delete');
     $server->stop(3);
     $server = new Process($serverCommand, $project, ['PHP_CLI_SERVER_WORKERS' => false, 'WAASEYAA_DEV_FALLBACK_ACCOUNT' => 'false'], timeout: 60);
     $server->start();
